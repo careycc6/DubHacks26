@@ -113,3 +113,27 @@ a { color: inherit; }
 .right { display: flex; flex-direction: column; min-height: 0; }
 .right iframe { flex: 1; border: 0; width: 100%; }
 .typing { font-size: 12px; color: #8a8a8e; padding: 0 14px 6px; height: 18px; }
+
+/* ---------- Evidence */
+.exhibits { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.exhibit { margin: 0; background: #fffdf8; border: 1px solid var(--rule); border-radius: 10px; padding: 10px; transform: rotate(-1deg); box-shadow: 0 2px 0 var(--rule); }
+.exhibit:nth-child(even) { transform: rotate(1.2deg); }
+.exhibit img, .exhibit .noimg { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 6px; background: var(--paper-2); display: grid; place-items: center; font-size: 40px; }
+.exhibit figcaption { font-size: 13px; margin-top: 8px; line-height: 1.4; }
+.exhibit figcaption b { font-family: var(--mono); color: var(--cut); }
+.ordered[hidden] { display: none; }
+.exhibit .noimg { aspect-ratio: auto; height: 72px; font-size: 30px; }
+@media (max-width: 640px) {
+  .file { padding-top: 20px; }
+  .totals { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .totals .total.wide { grid-column: 1 / -1; }
+  .total { padding: 10px; }
+  .total .label { font-size: 10px; letter-spacing: 0.5px; }
+  .total .value { font-size: 20px; }
+  .total .value s { display: block; font-size: 12px; margin: 0 0 2px; }
+  .exhibits { grid-template-columns: repeat(2, 1fr); }
+  .stamp { font-size: 18px; top: 14px; right: 12px; padding: 3px 10px; }
+  .ruling { padding: 58px 14px 14px; }
+  .timeline { margin-right: 24px; }
+  .timeline .tick { font-size: 11px; }
+}

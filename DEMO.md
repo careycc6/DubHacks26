@@ -22,14 +22,19 @@ Roles: **Presenter** talks. **Driver** clicks and types in the simulator, and pl
 > right time to buy. T-Mobile asked for the one that says *wait*. We built a judge for your family group chat."
 
 ### 0:15, the argument (Driver clicks **▶ Play the argument**)
-The family argues in the group chat, line by line. Maya pastes a link, Dad says "let's just order everything tonight."
-**Point out:** the court stayed **silent** while they argued. It only speaks when it's called or handed something to shop with.
+The family argues in the group chat, line by line. Maya pastes a store link, and the court files it at once:
+*"📎 Filed into the family cart: iPhone 17 Pro Max 512GB for Maya ($1,399). You can close that tab."*
+Dad says "let's just order everything tonight."
+**Point out:** the court ignored the chatter. It only speaks when it's called or handed something to shop with,
+like that link. "Close your tabs. Text them to us."
 Then it posts the result: *"📥 Entered into the family cart… Sticker total $3,597."* The case file fills with **PENDING** cards.
 > "Photon's track asks for agents that join human conversations with taste. It doesn't jump in on every message."
 
 ### 0:40, approach the bench (Driver switches to the **🔒 Elena ↔ Court** tab)
 Driver types: **`honestly money is tight this month, please don't tell the kids`**
 > "Anyone can text the court privately. Watch what happens to the ruling, and notice it never reveals who said what."
+
+No need to wait for the court's DM reply (Gemini can take 5–20 seconds). The note counts the moment it's sent, so go straight to the trial.
 
 ### 0:55, the trial (Driver back in **Family group**, as Marco)
 Driver types: **`ok court, rule. we want to check out tonight`**
@@ -45,6 +50,12 @@ Stamps land on the case file. **Read the projector, not the chat:**
 > "Spend today: **$3,933 → $709**. The court saved this family **$2,348**, and Dad's phone gets to testify."
 
 Point at Marco's **witness statement**: *"I am Marco's iPhone 15 Pro… I'd like to be heard before I'm replaced."*
+
+### Optional, if a judge asks "what if her phone is actually broken?"
+Driver (as Maya, group chat) attaches a photo of a cracked screen or a battery-health screenshot, then types **`see??`**
+→ *"Exhibit A entered…"* The evidence card appears on the case file and Maya's ruling updates. A cracked screen on a
+healthy phone becomes a **$129 repair today**, still WAIT on the new phone. A low battery flips her to buy-now.
+Without Gemini, type it instead: **`court, my screen is cracked`** or **`court, battery is 76%`**.
 
 ### 1:45, waiting is part of buying (Driver clicks **+41 days**)
 The group gets: *"⏳➡️✅ Marco, it's time. Your iPhone 17 Pro is ready at $407 instead of $1,099."*

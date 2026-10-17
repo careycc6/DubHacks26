@@ -6,6 +6,7 @@ import type {
 const LOW_BATTERY = 80; // below this, upgrading now is justified
 const PROMO_LOOKAHEAD_DAYS = 90;
 const DAYS_PER_PAYMENT = 30;
+export const SCREEN_REPAIR = 129;
 
 export const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
@@ -134,6 +135,11 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     reasons.unshift(`${m.name}'s ${m.device.model} is at ${m.device.batteryHealth}% battery health. Upgrading now makes sense`);
   }
 
+  // A cracked screen on an otherwise healthy phone is a repair, not a reason to buy a new phone.
+  const repairNow = holdUntilDay !== undefined && !!m.device.screenCracked;
+  if (repairNow) reasons.splice(1, 0, `Exhibit A shows a cracked screen. A ${usd(SCREEN_REPAIR)} screen repair fixes that today. A new phone doesn't have to`);
+  else if (m.device.screenCracked) reasons.splice(1, 0, "Exhibit A shows a cracked screen too");
+
   const changed = target.id !== picked.id || gb !== pickedGB;
   const stamp = holdUntilDay !== undefined ? "WAIT" : changed ? "SWAP" : "KEEP";
   const waitSavings = holdUntilDay !== undefined ? paymentsLeft * m.device.monthlyInstallment : 0;
@@ -144,9 +150,9 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     stamp,
     reasons,
     originalCost,
-    nowCost: stamp === "WAIT" ? 0 : price,
+    nowCost: stamp === "WAIT" ? (repairNow ? SCREEN_REPAIR : 0) : price,
     heldCost: stamp === "WAIT" ? price : 0,
-    savings: originalCost - price + waitSavings,
+    savings: originalCost - price + waitSavings - (repairNow ? SCREEN_REPAIR : 0),
     holdUntilDay,
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
     witness: stamp === "WAIT" ? witnessStatement(m) : undefined,
@@ -271,4 +277,21 @@ export function recommend(world: World, memberId: string, opts: { budget?: numbe
 
 export function promosFor(world: World, phoneId: string, day: number): Promo[] {
   return world.offers.promos.filter((p) => p.phones.includes(phoneId) && p.endsOnDay > day);
+}
+
+/** "Close your tabs": turn a pasted store URL into a catalog phone + storage. */
+export function parseProductLink(world: World, url: string): { phone: Phone; storageGB: number } | undefined {
+  let decoded = url;
+  try {
+    const u = new URL(url);
+    decoded = `${u.pathname} ${u.search}`;
+  } catch {}
+  decoded = decodeURIComponent(decoded);
+  const words = decoded.replace(/[-_/+=&?.,:]+/g, " ").replace(/([a-z])(\d)/gi, "$1 $2").replace(/(\d)([a-z])/gi, "$1 $2");
+  const p = findPhone(world, words);
+  if (!p) return undefined;
+  const opts = Object.keys(p.prices).map(Number);
+  const nums = [...decoded.matchAll(/(\d{2,4})\s*(?:gb)?/gi)].map((x) => Number(x[1]));
+  const gb = nums.find((n) => opts.includes(n)) ?? Math.min(...opts);
+  return { phone: p, storageGB: gb };
 }

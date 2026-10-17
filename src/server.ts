@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { fileURLToPath } from "node:url";
-import { handle, remember } from "./agent.ts";
+import { handle } from "./agent.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
 import { startPhoton } from "./channels/photon.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
@@ -98,7 +98,9 @@ app.post("/api/demo/argue", async (_req, res) => {
   try {
     for (const [from, text] of ARGUMENT) {
       addChat({ spaceId, from, text, private: false });
-      remember(spaceId, `${world.household.members.find((m) => m.id === from)?.name}: ${text}`);
+      // Goes through the real agent: chatter stays unanswered (taste), the pasted link gets filed.
+      const reply = await handle({ spaceId, isGroup: true, memberId: from, text });
+      if (reply) await sendTo(spaceId, reply);
       await new Promise((r) => setTimeout(r, 1100));
     }
     seedCart();
@@ -117,6 +119,6 @@ app.post("/api/demo/reset", (_req, res) => {
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
   console.log(`Cart Court on http://localhost:${port}  ·  simulator: /sim  ·  live cart: /cart`);
-  console.log(process.env.GEMINI_API_KEY ? `[llm] Gemini (${process.env.GEMINI_MODEL || "gemini-3.8-flash"})` : "[llm] no GEMINI_API_KEY: rules-only mode");
+  console.log(process.env.GEMINI_API_KEY ? `[llm] Gemini (${process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || "gemini-3.8-flash + fallbacks"})` : "[llm] no GEMINI_API_KEY: rules-only mode");
 });
 startPhoton().catch((err) => console.error("[photon] failed to start:", err));

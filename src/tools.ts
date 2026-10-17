@@ -1,6 +1,6 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
-  findPhone, leavingNest, member, phone, promosFor, recommend, runTrial, usd,
+  findPhone, leavingNest, member, parseProductLink, phone, promosFor, recommend, runTrial, usd,
 } from "./engine.ts";
 import { changed, newId, refreshTrial, state, trialOpts, world } from "./store.ts";
 import type { Ruling, Stamp, Trial } from "./types.ts";
@@ -87,6 +87,42 @@ export const tools = {
       return { added: `${addon.name} for ${m.name}`, monthly: addon.monthly };
     },
   },
+  add_from_link: {
+    description: "Someone pasted a store link. Parse it into a catalog phone + storage and add it to the cart for that member.",
+    params: { url: { type: "string" }, member: { type: "string", description: "who the phone is for (usually the sender)" } },
+    required: ["url", "member"],
+    run: (a: { url: string; member: string }): unknown => {
+      const hit = parseProductLink(world, a.url);
+      if (!hit) throw new Error(`Couldn't match that link to a phone in the catalog`);
+      return callTool("add_phone_to_cart", { member: a.member, phone: hit.phone.id, storageGB: hit.storageGB, addedBy: resolveMember(a.member).id });
+    },
+  },
+  enter_evidence: {
+    description: "File a photo or claim as evidence about someone's CURRENT phone (e.g. a battery-health screenshot or a cracked screen). Updates the data the rulings use. Only pass what the evidence actually shows.",
+    params: {
+      member: { type: "string", description: "whose phone the evidence is about" },
+      batteryHealth: { type: "number", description: "battery health % if visible" },
+      screenCracked: { type: "boolean", description: "true if the screen is visibly cracked" },
+      finding: { type: "string", description: "one short line: what the evidence shows" },
+    },
+    required: ["member", "finding"],
+    run: (a: { member: string; batteryHealth?: number; screenCracked?: boolean; finding: string }) => {
+      const m = resolveMember(a.member);
+      if (typeof a.batteryHealth === "number" && a.batteryHealth > 0 && a.batteryHealth <= 100) m.device.batteryHealth = Math.round(a.batteryHealth);
+      if (a.screenCracked) m.device.screenCracked = true;
+      const img = state.pendingImage;
+      state.pendingImage = undefined;
+      state.exhibits.push({ id: newId("x"), memberId: m.id, finding: a.finding, image: img?.dataUrl, private: img?.private ?? false, at: Date.now() });
+      refreshTrial();
+      changed();
+      const ruling = state.trial?.rulings.find((r) => r.memberId === m.id);
+      return {
+        exhibit: `Exhibit ${String.fromCharCode(64 + state.exhibits.length)}`,
+        device: m.device,
+        updatedRuling: ruling ? { stamp: ruling.stamp, reasons: ruling.reasons, nowCost: ruling.nowCost } : "no trial yet; it will count when the cart goes on trial",
+      };
+    },
+  },
   remove_from_cart: {
     description: "Remove a cart item by id.",
     params: { itemId: { type: "string" } },
@@ -129,7 +165,7 @@ export const tools = {
 
 export type ToolName = keyof typeof tools;
 
-export function callTool(name: string, args: Record<string, unknown>) {
+export function callTool(name: string, args: Record<string, unknown>): unknown {
   const t = (tools as Record<string, { run: (a: any) => unknown }>)[name];
   if (!t) return { error: `Unknown tool ${name}` };
   try {

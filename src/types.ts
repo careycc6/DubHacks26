@@ -35,6 +35,7 @@ export interface Member {
     installmentsLeft: number;
     monthlyInstallment: number;
     tradeInValue: number;
+    screenCracked?: boolean; // set by photo evidence
   };
 }
 

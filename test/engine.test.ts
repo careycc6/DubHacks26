@@ -96,3 +96,23 @@ test("a held ruling keeps its promised numbers until its day", async () => {
   const t41 = advanceTrial(world, demoCart, t0, 41)!;
   assert.deepEqual(t41.rulings.find((r) => r.itemId === "3"), t0.rulings.find((r) => r.itemId === "3"));
 });
+
+test("store links become catalog phones with the right storage", async () => {
+  const { parseProductLink } = await import("../src/engine.ts");
+  const a = parseProductLink(world, "https://store.example.com/iphone-17-pro-max?storage=512")!;
+  assert.equal(a.phone.id, "iphone-17-pro-max");
+  assert.equal(a.storageGB, 512);
+  const b = parseProductLink(world, "https://shop.example.com/phones/google-pixel-10-pro-256gb")!;
+  assert.equal(b.phone.id, "pixel-10-pro");
+  assert.equal(b.storageGB, 256);
+  assert.equal(parseProductLink(world, "https://example.com/blog/best-headphones"), undefined);
+});
+
+test("a cracked screen on a healthy phone gets a repair today, not a new phone", () => {
+  const w = structuredClone(world);
+  w.household.members.find((m) => m.id === "maya")!.device.screenCracked = true;
+  const r = runTrial(w, demoCart, 0).rulings.find((x) => x.itemId === "3")!;
+  assert.equal(r.stamp, "WAIT");
+  assert.equal(r.nowCost, 129);
+  assert.match(r.reasons.join(" "), /screen repair/);
+});

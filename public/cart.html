@@ -23,6 +23,7 @@
     </header>
 
     <section class="totals" id="totals"></section>
+    <div id="exhibitsWrap"></div>
     <div id="sections"></div>
     <div id="timelineWrap"></div>
     <div id="nestWrap"></div>
@@ -136,6 +137,11 @@ function render(s) {
     $("ordered").hidden = false;
     $("orderedDay").textContent = `day ${t.day}`;
   }
+
+  const ex = s.exhibits ?? [];
+  $("exhibitsWrap").innerHTML = ex.length ? `<h2 class="section-title">Evidence<span>photos the family sent the court</span></h2><div class="exhibits">${ex.map((e, i) => `
+    <figure class="exhibit">${e.image ? `<img src="${e.image}" alt="">` : `<div class="noimg">🗂️</div>`}
+      <figcaption><b>Exhibit ${String.fromCharCode(65 + i)}</b> · ${esc(names[e.memberId])}<br>${esc(e.finding)}</figcaption></figure>`).join("")}</div>` : "";
 
   $("nestWrap").innerHTML = s.nest ? `<h2 class="section-title">Leaving the nest<span>stay on the family plan, or go solo?</span></h2><div class="rulings">
     <article class="ruling">${stampHtml({ itemId: "nest", stamp: s.nest.stamp })}

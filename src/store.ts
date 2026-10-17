@@ -14,6 +14,15 @@ export interface ChatLine {
   at: number;
 }
 
+export interface Exhibit {
+  id: string;
+  memberId: string;
+  finding: string; // what the court concluded from it, e.g. "Battery health 76%"
+  image?: string; // data URL
+  private: boolean; // sent in a DM: shapes rulings, never shown on the case file
+  at: number;
+}
+
 export interface State {
   day: number;
   cart: CartItem[];
@@ -22,12 +31,14 @@ export interface State {
   privateNotes: Record<string, string[]>; // memberId -> things said in DMs; never repeated in the group
   chat: ChatLine[];
   groupSpaceId?: string; // where proactive "it's time" messages go
+  exhibits: Exhibit[];
+  pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
 
 export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
-const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [] });
+const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [] });
 export let state: State = fresh();
 
 let seq = 0;
@@ -51,6 +62,7 @@ export function publicState() {
     }),
     trial: state.trial,
     nest: state.nest,
+    exhibits: state.exhibits.filter((e) => !e.private).map(({ private: _p, ...e }) => e),
   };
 }
 
@@ -74,6 +86,7 @@ export function refreshTrial() {
 }
 
 export function reset() {
+  Object.assign(world, loadWorld()); // evidence edits device data; restore the pristine household
   state = fresh();
   changed();
 }
