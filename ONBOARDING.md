@@ -22,10 +22,11 @@ Open **http://localhost:3000/setup**, then in step 1:
 
 You'll see ✓ Works. Now the court chats naturally and reads photos.
 
-> **A Google AI Pro subscription is for the Gemini app. As far as we know it doesn't raise API limits**
-> (check your key's usage page in AI Studio). The API key has its own free tier (about 20 requests per day per model). Cart Court rotates
-> across several Flash models and falls back to rules mode, so it keeps working when the quota runs out.
-> For heavy use, turn on billing for that key's project in AI Studio.
+> **Quotas and credits.** A new key's free tier is small (about 20 requests per day per model), so Cart Court
+> rotates through Flash-Lite and Flash models and falls back to rules mode when they're all busy.
+> If you redeem Google credits (e.g. from a Google AI Pro plan), the key's project may switch to **prepaid billing**.
+> Make sure the credits land on **that same project** at [ai.studio/projects](https://ai.studio/projects).
+> Otherwise every call fails with "prepayment credits are depleted", and the setup page will tell you.
 
 ## 3. Text it from a real iPhone (optional, 2 min)
 

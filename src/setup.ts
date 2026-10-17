@@ -66,7 +66,7 @@ setupRouter.post("/api/setup", async (req, res) => {
 
 setupRouter.post("/api/setup/test-gemini", async (_req, res) => {
   if (!process.env.GEMINI_API_KEY) return res.json({ ok: false, error: "No Gemini key saved yet." });
-  const models = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite").split(",");
+  const models = (process.env.GEMINI_MODELS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash").split(",");
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   let lastError = "";
   for (const model of models.map((m) => m.trim())) {
@@ -75,10 +75,10 @@ setupRouter.post("/api/setup/test-gemini", async (_req, res) => {
       return res.json({ ok: true, model, reply: r.text?.trim() });
     } catch (err) {
       lastError = String((err as Error).message ?? err);
-      if (!/429|RESOURCE_EXHAUSTED|abort|timed? ?out/i.test(lastError)) break; // a bad key won't fix itself on another model
+      if (/402|prepayment/i.test(lastError) || !/429|RESOURCE_EXHAUSTED|abort|timed? ?out/i.test(lastError)) break; // key/billing problems hit every model
     }
   }
-  res.json({ ok: false, error: /API key not valid|API_KEY_INVALID/i.test(lastError) ? "That key isn't valid. Copy it again from aistudio.google.com/apikey." : /429|RESOURCE_EXHAUSTED/.test(lastError) ? "The key works, but today's free quota is used up on every model." : lastError.slice(0, 200) });
+  res.json({ ok: false, error: /402|prepayment/i.test(lastError) ? "This key's project is on prepaid billing with no credits left. Open ai.studio/projects, pick this key's project, and add credits or apply your promo credits there. (Until then the court uses rules mode.)" : /API key not valid|API_KEY_INVALID/i.test(lastError) ? "That key isn't valid. Copy it again from aistudio.google.com/apikey." : /429|RESOURCE_EXHAUSTED/.test(lastError) ? "The key works, but today's free quota is used up on every model." : lastError.slice(0, 200) });
 });
 
 setupRouter.post("/api/setup/hello", async (req, res) => {
