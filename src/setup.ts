@@ -86,11 +86,14 @@ setupRouter.post("/api/setup/hello", async (req, res) => {
   if (!/^\+?[\d\s().-]{7,}$|^\S+@\S+$/.test(phone)) return res.json({ ok: false, error: "Enter a phone number like +1 206 555 0123 (or your iMessage email)." });
   const handle = phone.includes("@") ? phone : `+${phone.replace(/\D/g, "").replace(/^(\d{10})$/, "1$1")}`;
   try {
+    console.log(`[photon] Text me -> ${handle}`);
     const r = await sayHello(handle);
+    console.log(`[photon] sent to ${handle}${r.line ? ` from ${r.line}` : ""}`);
     if (r.line && !process.env.COURT_NUMBER) writeEnv({ COURT_NUMBER: r.line });
     res.json({ ok: true, handle, line: r.line });
   } catch (err) {
     const msg = String((err as Error).message ?? err);
+    console.error(`[photon] Text me to ${handle} failed:`, msg);
     res.json({
       ok: false,
       handle,
