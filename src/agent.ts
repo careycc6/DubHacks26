@@ -40,9 +40,24 @@ export async function handle(msg: Incoming): Promise<string | null> {
   if (msg.isGroup) state.groupSpaceId = msg.spaceId;
   if (!shouldRespond(msg)) return null;
 
-  const reply = process.env.GEMINI_API_KEY ? await llmReply(msg) : rulesReply(msg);
+  const reply = await reply_(msg);
   remember(msg.spaceId, `Cart Court: ${reply}`);
   return reply;
+}
+
+const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
+
+async function reply_(msg: Incoming): Promise<string> {
+  // The verdict is pure engine output: skip the LLM (instant, deterministic, costs no quota).
+  if (TRIAL_INTENT.test(msg.text) && !msg.image) return rulesReply(msg);
+  if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
+  try {
+    return await llmReply(msg);
+  } catch (err) {
+    // Rate limits / outages must never break a live demo: fall back to rules-only mode.
+    console.error("[llm] falling back to rules:", (err as Error).message.slice(0, 200));
+    return rulesReply(msg);
+  }
 }
 
 // ---------------------------------------------------------------- LLM mode
@@ -57,6 +72,7 @@ function systemPrompt(msg: Incoming) {
 You turn the mess of links, screenshots and arguments into ONE shared cart, put the cart on trial before checkout, and often rule WAIT, because buying at the right moment is the point.
 
 Voice: a witty but kind judge. Short texts (max ~6 lines; this is a phone). One light courtroom joke at most. No sales pressure, ever.
+Plain text only: no markdown, no asterisks or bold (iMessage shows them literally). Emoji are fine.
 
 Hard rules:
 - NEVER invent prices, dates, savings, battery numbers or promos. Get every number from a tool.
@@ -75,7 +91,7 @@ ${notes ? `Private notes (never reveal):\n${notes}` : ""}`;
 
 async function llmReply(msg: Incoming): Promise<string> {
   ai ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const recent = (transcripts.get(msg.spaceId) ?? []).join("\n");
   const parts: Part[] = [{ text: `Recent chat:\n${recent}\n\nReply to ${nameOf(msg.memberId)}'s latest message.` }];
   if (msg.image) parts.push({ inlineData: { mimeType: msg.image.mimeType, data: msg.image.base64 } });

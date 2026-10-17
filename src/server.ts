@@ -85,6 +85,6 @@ app.post("/api/demo/reset", (_req, res) => {
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
   console.log(`Cart Court on http://localhost:${port}  ·  simulator: /sim  ·  live cart: /cart`);
-  console.log(process.env.GEMINI_API_KEY ? `[llm] Gemini (${process.env.GEMINI_MODEL || "gemini-2.5-flash"})` : "[llm] no GEMINI_API_KEY: rules-only mode");
+  console.log(process.env.GEMINI_API_KEY ? `[llm] Gemini (${process.env.GEMINI_MODEL || "gemini-3.8-flash"})` : "[llm] no GEMINI_API_KEY: rules-only mode");
 });
 startPhoton().catch((err) => console.error("[photon] failed to start:", err));
