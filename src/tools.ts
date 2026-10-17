@@ -2,7 +2,7 @@
 import {
   findPhone, leavingNest, member, phone, promosFor, recommend, runTrial, usd,
 } from "./engine.ts";
-import { changed, newId, refreshTrial, state, world } from "./store.ts";
+import { changed, newId, refreshTrial, state, trialOpts, world } from "./store.ts";
 import type { Ruling, Stamp, Trial } from "./types.ts";
 
 const caseFileUrl = () => `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
@@ -110,7 +110,7 @@ export const tools = {
     description: "Put the cart on trial before checkout. Returns rulings (KEEP/SWAP/WAIT/CUT) with exact numbers plus a ready-to-send verdict text. Use whenever someone wants to check out, asks 'should we buy', or asks the court to rule.",
     params: {},
     run: () => {
-      state.trial = runTrial(world, state.cart, state.day);
+      state.trial = runTrial(world, state.cart, state.day, trialOpts());
       changed();
       return { verdictText: formatVerdict(state.trial), trial: state.trial };
     },

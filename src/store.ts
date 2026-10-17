@@ -1,7 +1,7 @@
 // In-memory app state + a tiny pub/sub so the live cart page and simulator update instantly.
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
-import { runTrial } from "./engine.ts";
+import { runTrial, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
 export interface ChatLine {
@@ -42,6 +42,7 @@ export function publicState() {
   return {
     day: state.day,
     household: world.household.name,
+    courtNumber: process.env.COURT_NUMBER ?? "", // shown on the case file so judges can text in
     members: world.household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, device: m.device.model })),
     cart: state.cart.map((i) => {
       const p = world.catalog.phones.find((x) => x.id === i.phoneId);
@@ -61,8 +62,15 @@ export function addChat(line: Omit<ChatLine, "id" | "at">) {
   return full;
 }
 
+const BUDGET_WORDS = /\b(tight|budget|afford|broke|expensive|money|bills?)\b/i;
+
+/** Private DMs can shape rulings (never revealed): e.g. "money is tight" -> budget mode. */
+export function trialOpts(): TrialOptions {
+  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)) };
+}
+
 export function refreshTrial() {
-  if (state.trial) state.trial = runTrial(world, state.cart, state.day);
+  if (state.trial) state.trial = runTrial(world, state.cart, state.day, trialOpts());
 }
 
 export function reset() {

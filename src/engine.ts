@@ -55,7 +55,18 @@ function overkill(p: Phone, m: Member) {
   return p.tier === "flagship" && m.usage.camera <= 3 && m.usage.gaming <= 2;
 }
 
-function reviewDevice(world: World, item: CartItem, day: number): Ruling {
+export interface TrialOptions {
+  /** Someone privately told the court money is tight. Shapes rulings; never revealed. */
+  tightBudget?: boolean;
+}
+
+function witnessStatement(m: Member): string {
+  const free = Math.round(100 - (m.device.storageUsedGB / m.device.storageGB) * 100);
+  const monthsLeft = Math.max(6, Math.round((m.device.batteryHealth - 70) * 1.2));
+  return `I am ${m.name}'s ${m.device.model}. I am ${m.device.ageMonths} months old. My battery is at ${m.device.batteryHealth}% and ${free}% of my storage is still free. I have about ${monthsLeft} good months left. I'd like to be heard before I'm replaced.`;
+}
+
+function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOptions = {}): Ruling {
   const m = member(world, item.memberId);
   const picked = phone(world, item.phoneId!);
   const pickedGB = item.storageGB ?? storageOptions(picked)[0];
@@ -69,6 +80,16 @@ function reviewDevice(world: World, item: CartItem, day: number): Ruling {
     if (mid) {
       target = mid;
       reasons.push(`Pro features ${m.name} won't use (camera ${m.usage.camera}/5, gaming ${m.usage.gaming}/5), so the ${mid.name} is the better fit`);
+    }
+  }
+
+  // 1b. Budget pressure (from a private DM): if this phone is being bought now anyway, go one tier down
+  //     when it still covers how they use a phone. The reason never says who asked.
+  if (opts.tightBudget && target === picked && picked.tier === "flagship" && m.device.batteryHealth < LOW_BATTERY) {
+    const mid = world.catalog.phones.find((p) => p.brand === picked.brand && p.tier === "mid");
+    if (mid && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
+      target = mid;
+      reasons.push(`Keeping this month's total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`);
     }
   }
 
@@ -128,6 +149,7 @@ function reviewDevice(world: World, item: CartItem, day: number): Ruling {
     savings: originalCost - price + waitSavings,
     holdUntilDay,
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
+    witness: stamp === "WAIT" ? witnessStatement(m) : undefined,
   };
 }
 
@@ -151,8 +173,8 @@ function reviewAddon(world: World, item: CartItem): Ruling {
 }
 
 /** Put the whole cart (plus the account's dead weight) on trial. */
-export function runTrial(world: World, cart: CartItem[], day: number): Trial {
-  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day) : reviewAddon(world, item)));
+export function runTrial(world: World, cart: CartItem[], day: number, opts: TrialOptions = {}): Trial {
+  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day, opts) : reviewAddon(world, item)));
   for (const a of world.household.accountAddons) {
     if (a.usedInLast12Months) continue;
     const yearly = a.monthly * 12;
@@ -174,12 +196,14 @@ export function runTrial(world: World, cart: CartItem[], day: number): Trial {
 }
 
 /** Move the clock: rulings already acted on stay locked; only held (WAIT) items get re-judged. */
-export function advanceTrial(world: World, cart: CartItem[], old: Trial | undefined, day: number): Trial | undefined {
+export function advanceTrial(world: World, cart: CartItem[], old: Trial | undefined, day: number, opts: TrialOptions = {}): Trial | undefined {
   if (!old) return undefined;
-  const fresh = runTrial(world, cart, day);
+  const fresh = runTrial(world, cart, day, opts);
   const rulings = fresh.rulings.map((r) => {
     const prev = old.rulings.find((p) => p.itemId === r.itemId);
-    return prev && prev.stamp !== "WAIT" ? prev : r;
+    // Bought items stay bought; held items keep their promise until their day comes.
+    const stillHeld = prev?.stamp === "WAIT" && (prev.holdUntilDay ?? 0) > day;
+    return prev && (prev.stamp !== "WAIT" || stillHeld) ? prev : r;
   });
   const sum = (f: (r: Ruling) => number) => rulings.reduce((t, r) => t + f(r), 0);
   return { day, rulings, before: sum((r) => r.originalCost), now: sum((r) => r.nowCost), held: sum((r) => r.heldCost), savings: sum((r) => r.savings) };

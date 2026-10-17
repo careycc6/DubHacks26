@@ -19,7 +19,7 @@ const SHOPPING_INPUT = /https?:\/\//i;
 
 const nameOf = (id?: string) => world.household.members.find((m) => m.id === id)?.name ?? "Unknown";
 
-function remember(spaceId: string, line: string) {
+export function remember(spaceId: string, line: string) {
   const t = transcripts.get(spaceId) ?? [];
   t.push(line);
   if (t.length > 30) t.shift();

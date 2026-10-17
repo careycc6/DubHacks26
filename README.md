@@ -48,16 +48,9 @@ Web simulator (/sim) ────┘      │
 
 ## The 3-minute demo
 
-1. **The argument (group chat).** Maya: "just get me the pro max pleaseee". The court stays silent (taste).
-   Family adds phones ("court, add…") or hit **Seed argued cart**. The case file fills live on the projector.
-2. **Approach the bench (DM).** Elena privately: "money is tight this month, don't tell the kids."
-3. **Trial.** Marco: "court, rule." Verdict: Mom KEEP (dying battery), Dad WAIT 41 days (trade-in promo),
-   Maya's Pro Max 512 swapped to iPhone 17 256GB and held until her payments end, unused add-ons CUT.
-   **$4,149 → $909 today.**
-4. **+41 days.** "Marco, it's time. Ready at $407 instead of $1,099."
-5. **+2 years.** "court, maya is leaving for college" → STAY on the family line, saves $240/yr.
-   "court, what phone for grandma?" → the grown-up kid is now the one shopping for someone else.
-6. **Checkout** → mock store with today's items and held items.
+Full script with lines, clicks, numbers, judge Q&A and fallbacks: **[DEMO.md](DEMO.md)**.
+Short version: **▶ Play the argument**, Mom privately DMs "money is tight", then "court, rule" (**$3,933 → $709 today**),
+**+41 days** (Dad's phone is ready, $692 cheaper), **+2 years** (Maya leaves for college, STAY saves $240/yr, then a phone for Grandma).
 
 ## Build plan (4 people)
 

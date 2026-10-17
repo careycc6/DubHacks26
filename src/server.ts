@@ -1,11 +1,11 @@
 import "dotenv/config";
 import express from "express";
 import { fileURLToPath } from "node:url";
-import { handle } from "./agent.ts";
+import { handle, remember } from "./agent.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
 import { startPhoton } from "./channels/photon.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
-import { addChat, bus, changed, publicState, reset, state, world } from "./store.ts";
+import { addChat, bus, changed, publicState, reset, state, trialOpts, world } from "./store.ts";
 import { callTool } from "./tools.ts";
 
 const app = express();
@@ -58,7 +58,7 @@ app.post("/api/demo/advance", async (req, res) => {
   const newDay = state.day + days;
   const due = readyHolds(state.trial, newDay);
   state.day = newDay;
-  state.trial = advanceTrial(world, state.cart, state.trial, newDay);
+  state.trial = advanceTrial(world, state.cart, state.trial, newDay, trialOpts());
   changed();
   const target = state.groupSpaceId ?? "sim:group";
   for (const r of due) {
@@ -68,13 +68,45 @@ app.post("/api/demo/advance", async (req, res) => {
   res.json({ day: state.day, announced: due.length });
 });
 
-app.post("/api/demo/seed", (_req, res) => {
-  // The "family argued all evening" cart for the demo.
+// The "family argued all evening" cart for the demo.
+function seedCart() {
+  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17-pro-max", storageGB: 512, addedBy: "maya" });
   callTool("add_phone_to_cart", { member: "marco", phone: "iphone-17-pro", storageGB: 256, addedBy: "marco" });
   callTool("add_phone_to_cart", { member: "elena", phone: "pixel-10-pro", storageGB: 256, addedBy: "elena" });
-  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17-pro-max", storageGB: 512, addedBy: "maya" });
-  callTool("add_addon_to_cart", { member: "maya", addon: "protection-360" });
+}
+
+app.post("/api/demo/seed", (_req, res) => {
+  seedCart();
   res.json(publicState());
+});
+
+// Plays the family argument into the group chat line by line (no LLM calls: free, instant, repeatable).
+const ARGUMENT: [string, string][] = [
+  ["maya", "my phone is SO slow 😭 literally everyone at school has the 17 Pro Max"],
+  ["maya", "https://store.example.com/iphone-17-pro-max?storage=512"],
+  ["marco", "honestly mine's getting old too. if we're doing this I want the 17 Pro"],
+  ["elena", "my Pixel dies by 2pm every single day. Pixel 10 Pro for me"],
+  ["maya", "so we're ALL upgrading?? 🙏🙏"],
+  ["marco", "let's just order everything tonight"],
+];
+let arguing = false;
+app.post("/api/demo/argue", async (_req, res) => {
+  if (arguing) return res.json({ ok: false, busy: true });
+  arguing = true;
+  res.json({ ok: true });
+  const spaceId = state.groupSpaceId ?? "sim:group";
+  try {
+    for (const [from, text] of ARGUMENT) {
+      addChat({ spaceId, from, text, private: false });
+      remember(spaceId, `${world.household.members.find((m) => m.id === from)?.name}: ${text}`);
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+    seedCart();
+    const sticker = state.cart.reduce((s, i) => s + (world.catalog.phones.find((p) => p.id === i.phoneId)?.prices[String(i.storageGB)] ?? 0), 0);
+    await sendTo(spaceId, `📥 Entered into the family cart: 17 Pro Max 512GB (Maya), 17 Pro 256GB (Marco), Pixel 10 Pro 256GB (Elena). Sticker total ${usd(sticker)}. Nobody checks out until the court rules. Say "court, rule".`);
+  } finally {
+    arguing = false;
+  }
 });
 
 app.post("/api/demo/reset", (_req, res) => {

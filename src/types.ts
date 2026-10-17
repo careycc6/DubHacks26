@@ -91,6 +91,7 @@ export interface Ruling {
   savings: number;
   holdUntilDay?: number;
   proposed?: { phoneId: string; storageGB: number; label: string };
+  witness?: string; // the old phone's statement, for WAIT rulings
 }
 
 export interface Trial {

@@ -74,3 +74,25 @@ test("a held phone's payoff date doesn't drift as days pass", async () => {
   assert.equal(t41.rulings.find((r) => r.itemId === "3")!.holdUntilDay, 120);
   assert.equal(advanceTrial(world, demoCart, t41, 120)!.rulings.find((r) => r.itemId === "3")!.stamp, "SWAP");
 });
+
+test("a private 'money is tight' DM trims Mom's buy-now flagship without touching Dad's WAIT", () => {
+  const t = runTrial(world, demoCart, 0, { tightBudget: true });
+  const mom = t.rulings.find((r) => r.memberId === "elena")!;
+  assert.equal(mom.stamp, "SWAP");
+  assert.equal(mom.proposed?.phoneId, "pixel-10");
+  assert.ok(!mom.reasons.join(" ").toLowerCase().includes("private"));
+  assert.equal(t.rulings.find((r) => r.memberId === "marco")!.stamp, "WAIT");
+  assert.ok(t.now < runTrial(world, demoCart, 0).now);
+});
+
+test("held phones get a witness statement", () => {
+  const dad = runTrial(world, demoCart, 0).rulings.find((r) => r.memberId === "marco")!;
+  assert.match(dad.witness ?? "", /iPhone 15 Pro.*89%/);
+});
+
+test("a held ruling keeps its promised numbers until its day", async () => {
+  const { advanceTrial } = await import("../src/engine.ts");
+  const t0 = runTrial(world, demoCart, 0);
+  const t41 = advanceTrial(world, demoCart, t0, 41)!;
+  assert.deepEqual(t41.rulings.find((r) => r.itemId === "3"), t0.rulings.find((r) => r.itemId === "3"));
+});
