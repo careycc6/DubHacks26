@@ -28,14 +28,19 @@ You'll see ✓ Works. Now the court chats naturally and reads photos.
 > Make sure the credits land on **that same project** at [ai.studio/projects](https://ai.studio/projects).
 > Otherwise every call fails with "prepayment credits are depleted", and the setup page will tell you.
 
-## 3. Text it from a real iPhone (optional, 2 min)
+## 3. Put it on your family's phones (optional, 3 min)
 
 On the same **/setup** page:
 1. **Step 2:** paste your Photon **Project ID** and **Project Secret** from [app.photon.codes](https://app.photon.codes), then click **Connect**.
-2. **Step 3:** in the Photon dashboard, open **Users** and add your phone number. Then enter it on the setup page and click **Text me**.
-   The court texts you first. Reply with your name (e.g. "Maya") and you're in.
-3. **Step 4 (so the links it texts open on your phone):** in a second terminal run `npm run tunnel` and open
+2. **In the Photon dashboard**, open **Users** and add every family member's phone number.
+3. **Step 3, "Your household":** type each person's name and phone number, then click **Text everyone**.
+   Each person gets a personal welcome ("Welcome to the court, Maya!") from the court's number, already knowing who they are.
+   Save that number as a contact called "Cart Court".
+4. **Step 4 (so the links it texts open on phones):** in a second terminal run `npm run tunnel` and open
    the `https://…trycloudflare.com` address it prints once.
+
+Skipped step 3? That's fine. If an unknown number texts the court, it asks "Who's texting?", and a reply like "I'm Maya"
+links that number for good.
 
 **Good to know about Photon's free plan:**
 - Each person chats with the court one-on-one. All of those chats share one family cart.

@@ -21,6 +21,11 @@
     .msg.ok { color: var(--keep); } .msg.err { color: var(--cut); }
     code { font-family: var(--mono); background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
     .optional { font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; }
+    table.members { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+    table.members th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 4px 6px; }
+    table.members td { padding: 4px 6px; }
+    table.members input { width: 100%; font: 14px var(--mono); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
+    @media (max-width: 640px) { table.members td.muted { display: none; } }
     ol.sub { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: #3d362d; }
   </style>
 </head>
@@ -30,7 +35,7 @@
       <div>
         <div class="caseno">Cart Court · setup</div>
         <h1>Swear in the court</h1>
-        <div class="subtitle">Four steps. The first one is the only one you need to try it.</div>
+        <div class="subtitle">Four steps. Step 1 is all you need to try it; steps 2–3 put it on real phones.</div>
       </div>
       <div class="header-side"><a class="btn ghost" href="/sim">Open the demo →</a></div>
     </header>
@@ -54,15 +59,17 @@
       </section>
 
       <section class="step">
-        <h2><span class="n">3</span> Text your phone <span class="optional">needs step 2</span></h2>
+        <h2><span class="n">3</span> Your household <span class="optional">needs step 2 to text</span></h2>
+        <p>Enter each person's name and the phone number (or iMessage email) they'll text from. When they text the court it already knows who they are,
+          and <b>Text everyone</b> sends each person a personal welcome so they get the court's number.</p>
         <ol class="sub">
-          <li>On Photon's free plan, the court can only text numbers you've approved. In the Photon dashboard open <b>Users</b> and add your phone number.</li>
-          <li>Not sure which number or email your iPhone sends iMessages from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on your iPhone and it will tell you.</li>
-          <li>Enter it below. The court texts you first, so you get its number. Reply with your name to join the household.</li>
+          <li>On Photon's free plan, every number must also be added under <b>Users</b> in the <a href="https://app.photon.codes" target="_blank" rel="noopener">Photon dashboard</a>.</li>
+          <li>Not sure which handle an iPhone sends from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on that phone.</li>
         </ol>
-        <div class="row"><input id="phone" placeholder="+1 206 555 0123" autocomplete="tel" />
-          <button class="btn" id="hello">Text me</button></div>
-        <div class="msg" id="hMsg"></div>
+        <table class="members" id="members"></table>
+        <div class="row"><button class="btn ghost" id="hhSave">Save household</button><button class="btn" id="hhHello">Text everyone</button></div>
+        <div class="msg" id="hhMsg"></div>
+        <p class="fine" style="margin-top:6px">Names and numbers are saved only on this computer (<code>data/household.local.json</code>, gitignored). Phones, prices and promos stay synthetic.</p>
       </section>
 
       <section class="step">
@@ -110,12 +117,38 @@ $("pSave").onclick = async () => {
   await refresh();
   if ($("pChip").classList.contains("ok")) say("pMsg", "ok", "✓ Connected. Now do step 3.");
 };
-$("hello").onclick = async () => {
-  say("hMsg", "", "Texting…");
-  const r = await post("/api/setup/hello", { phone: $("phone").value });
-  r.ok ? say("hMsg", "ok", `✓ Sent to ${r.handle}.${r.line ? ` The court's number is ${r.line}. Save it as "Cart Court".` : " Check your Messages app."} Reply with your name.`) : say("hMsg", "err", r.error);
+async function loadHousehold() {
+  const h = await fetch("/api/setup/household").then((r) => r.json());
+  $("members").innerHTML = `<tr><th>Name</th><th>Role · current phone</th><th>Texts from</th></tr>` + h.members.map((m) => `
+    <tr data-id="${m.id}">
+      <td><input class="m-name" value="${m.name.replace(/"/g, "&quot;")}" /></td>
+      <td class="muted">${m.role} · ${m.device}</td>
+      <td><input class="m-phone" placeholder="+1 206 555 0123" value="${(m.handles[0] ?? "").replace(/"/g, "&quot;")}" /></td>
+    </tr>`).join("");
+}
+async function saveHousehold() {
+  const members = [...document.querySelectorAll("#members tr[data-id]")].map((tr) => ({
+    id: tr.dataset.id, name: tr.querySelector(".m-name").value, phone: tr.querySelector(".m-phone").value,
+  }));
+  const r = await post("/api/setup/household", { members });
+  await loadHousehold();
+  return r;
+}
+$("hhSave").onclick = async () => {
+  const r = await saveHousehold();
+  r.ok ? say("hhMsg", "ok", "✓ Saved. The court will recognize these numbers.") : say("hhMsg", "err", r.problems.join(" · "));
+};
+$("hhHello").onclick = async () => {
+  const saved = await saveHousehold();
+  if (!saved.ok) return say("hhMsg", "err", saved.problems.join(" · "));
+  say("hhMsg", "", "Texting everyone…");
+  const r = await post("/api/setup/hello-all");
+  if (!r.results.length) return say("hhMsg", "err", "Add at least one phone number first.");
+  const lines = r.results.map((x) => (x.ok ? `✓ ${x.name}` : `✗ ${x.name}: ${x.error}`)).join("  ·  ");
+  say("hhMsg", r.ok ? "ok" : "err", lines + (r.line ? `  ·  The court's number: ${r.line}` : ""));
   refresh();
 };
+loadHousehold();
 $("uSave").onclick = async () => {
   await post("/api/setup", { PUBLIC_URL: $("url").value });
   say("uMsg", "ok", "✓ Saved");

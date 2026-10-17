@@ -7,6 +7,8 @@ import { world } from "./store.ts";
 
 const file = fileURLToPath(new URL("../data/claims.local.json", import.meta.url));
 const claims: Record<string, string> = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+/** The simulator's "new phone": claims stay in memory and never show up as a real contact. */
+export const SIM_HANDLE = "+15555550199";
 const asked = new Set<string>(); // handles we've already asked "who are you?" in a group
 
 const digits = (s: string) => s.replace(/\D/g, "").slice(-10);
@@ -23,7 +25,7 @@ export function memberForHandle(handle?: string): string | undefined {
 
 export function claim(handle: string, memberId: string) {
   claims[handle] = memberId;
-  writeFileSync(file, JSON.stringify(claims, null, 2));
+  writeFileSync(file, JSON.stringify(Object.fromEntries(Object.entries(claims).filter(([h]) => h !== SIM_HANDLE)), null, 2));
 }
 
 export function forgetClaims() {
@@ -62,4 +64,9 @@ export function welcomeQuestion() {
 export function welcome(memberId: string) {
   const m = world.household.members.find((x) => x.id === memberId)!;
   return `Welcome to the court, ${m.name}! 👋 I have you on your ${m.device.model}.\nTry: paste a phone link, send a photo of your battery health, ask "court, what phone should I get?", or "court, rule" when the family's ready to check out.`;
+}
+
+/** Numbers that introduced themselves in chat as this member (shown pre-filled on /setup). */
+export function claimedHandles(memberId: string): string[] {
+  return Object.entries(claims).filter(([h, id]) => id === memberId && h !== SIM_HANDLE).map(([h]) => h);
 }

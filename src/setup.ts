@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { GoogleGenAI } from "@google/genai";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
+import { loadHouseholdLocal, saveHouseholdLocal } from "./data.ts";
+import { changed, world } from "./store.ts";
+import { claimedHandles } from "./claims.ts";
 
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
 const exampleFile = fileURLToPath(new URL("../.env.example", import.meta.url));
@@ -102,4 +105,62 @@ setupRouter.post("/api/setup/hello", async (req, res) => {
         : msg.slice(0, 240),
     });
   }
+});
+
+// ---- Household: real names + phone numbers, entered before anyone texts.
+
+/** "+1 (206) 555-0123" / "2065550123" -> "+12065550123"; emails pass through. */
+function normalizeHandle(raw: string): string | undefined {
+  const v = raw.trim();
+  if (!v) return undefined;
+  if (v.includes("@")) return /^\S+@\S+\.\S+$/.test(v) ? v.toLowerCase() : undefined;
+  const d = v.replace(/\D/g, "");
+  if (d.length < 7) return undefined;
+  return `+${d.length === 10 ? `1${d}` : d}`;
+}
+
+setupRouter.get("/api/setup/household", (_req, res) => {
+  res.json({
+    name: world.household.name,
+    members: world.household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, age: m.age, device: m.device.model, handles: [...new Set([...m.handles, ...claimedHandles(m.id)])] })),
+  });
+});
+
+setupRouter.post("/api/setup/household", (req, res) => {
+  const input = (req.body?.members ?? []) as { id: string; name?: string; phone?: string }[];
+  const local = loadHouseholdLocal();
+  const problems: string[] = [];
+  for (const row of input) {
+    const m = world.household.members.find((x) => x.id === row.id);
+    if (!m) continue;
+    const name = (row.name ?? "").trim();
+    const phone = (row.phone ?? "").trim();
+    const handle = phone ? normalizeHandle(phone) : undefined;
+    if (phone && !handle) problems.push(`${name || m.name}: "${phone}" isn't a phone number or email`);
+    const entry = (local.members[m.id] ??= {});
+    if (name) entry.name = m.name = name;
+    entry.handles = m.handles = handle ? [handle] : phone ? m.handles : [];
+  }
+  saveHouseholdLocal(local);
+  changed();
+  res.json({ ok: problems.length === 0, problems, members: world.household.members.map((m) => ({ id: m.id, name: m.name, handles: m.handles })) });
+});
+
+setupRouter.post("/api/setup/hello-all", async (_req, res) => {
+  const results: { name: string; handle: string; ok: boolean; error?: string }[] = [];
+  for (const m of world.household.members) {
+    for (const handle of m.handles) {
+      try {
+        const r = await sayHello(handle);
+        if (r.line && !process.env.COURT_NUMBER) writeEnv({ COURT_NUMBER: r.line });
+        console.log(`[photon] welcomed ${m.name} at ${handle}`);
+        results.push({ name: m.name, handle, ok: true });
+      } catch (err) {
+        const msg = String((err as Error).message ?? err);
+        console.error(`[photon] welcome to ${m.name} (${handle}) failed:`, msg);
+        results.push({ name: m.name, handle, ok: false, error: /not allowed|allowlist/i.test(msg) ? "Add this number under Users in the Photon dashboard first" : msg.slice(0, 160) });
+      }
+    }
+  }
+  res.json({ ok: results.length > 0 && results.every((r) => r.ok), results, line: photonStatus.line });
 });

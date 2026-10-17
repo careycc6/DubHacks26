@@ -1,25 +1,25 @@
 {
-  "_note": "Synthetic household. No real customer data. 'handles' map real phone numbers/emails (from Photon) to members; edit for your demo phones.",
+  "_note": "Synthetic household. No real customer data. Real names and phone numbers go in on /setup (saved to household.local.json, which is gitignored).",
   "name": "The Rivera household",
   "plan": "Family Unlimited",
   "members": [
     {
-      "id": "marco", "name": "Marco", "role": "parent", "age": 47, "handles": ["+15550000001"],
+      "id": "marco", "name": "Marco", "role": "parent", "age": 47, "handles": [],
       "usage": { "camera": 4, "gaming": 1, "dataGBPerMonth": 18 },
       "device": { "model": "iPhone 15 Pro", "ageMonths": 26, "storageGB": 256, "storageUsedGB": 96, "batteryHealth": 89, "installmentsLeft": 0, "monthlyInstallment": 0, "tradeInValue": 380 }
     },
     {
-      "id": "elena", "name": "Elena", "role": "parent", "age": 45, "handles": ["+15550000002"],
+      "id": "elena", "name": "Elena", "role": "parent", "age": 45, "handles": [],
       "usage": { "camera": 4, "gaming": 1, "dataGBPerMonth": 12 },
       "device": { "model": "Pixel 7", "ageMonths": 40, "storageGB": 128, "storageUsedGB": 74, "batteryHealth": 71, "installmentsLeft": 0, "monthlyInstallment": 0, "tradeInValue": 90 }
     },
     {
-      "id": "maya", "name": "Maya", "role": "teen", "age": 16, "handles": ["+15550000003"],
+      "id": "maya", "name": "Maya", "role": "teen", "age": 16, "handles": [],
       "usage": { "camera": 3, "gaming": 2, "dataGBPerMonth": 25 },
       "device": { "model": "iPhone 14", "ageMonths": 20, "storageGB": 128, "storageUsedGB": 61, "batteryHealth": 88, "installmentsLeft": 4, "monthlyInstallment": 25, "tradeInValue": 260 }
     },
     {
-      "id": "rosa", "name": "Rosa", "role": "grandparent", "age": 78, "handles": ["+15550000004"],
+      "id": "rosa", "name": "Rosa", "role": "grandparent", "age": 78, "handles": [],
       "usage": { "camera": 1, "gaming": 1, "dataGBPerMonth": 1 },
       "device": { "model": "Old flip phone", "ageMonths": 70, "storageGB": 4, "storageUsedGB": 1, "batteryHealth": 52, "installmentsLeft": 0, "monthlyInstallment": 0, "tradeInValue": 0 }
     }
