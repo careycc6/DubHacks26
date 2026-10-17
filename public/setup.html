@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cart Court · Setup</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;600&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .steps { display: grid; gap: 14px; margin-top: 24px; }
+    .step { background: #fffdf8; border: 1px solid var(--rule); border-radius: 12px; padding: 18px 20px; }
+    .step h2 { font-family: var(--serif); font-size: 20px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .step h2 .n { width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font-size: 14px; font-family: var(--mono); }
+    .step p { margin: 6px 0; color: #3d362d; line-height: 1.55; font-size: 14.5px; }
+    .chip { font-family: var(--mono); font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1.5px solid currentColor; }
+    .chip.ok { color: var(--keep); } .chip.no { color: var(--muted); } .chip.err { color: var(--cut); } .chip.wait { color: var(--wait); }
+    .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .row input { flex: 1; min-width: 200px; font: 14px var(--mono); padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
+    .row .btn { padding: 10px 16px; font-size: 14px; }
+    .msg { font-size: 13.5px; margin-top: 8px; min-height: 18px; }
+    .msg.ok { color: var(--keep); } .msg.err { color: var(--cut); }
+    code { font-family: var(--mono); background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+    .optional { font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; }
+    ol.sub { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: #3d362d; }
+  </style>
+</head>
+<body>
+  <main class="file">
+    <header>
+      <div>
+        <div class="caseno">Cart Court · setup</div>
+        <h1>Swear in the court</h1>
+        <div class="subtitle">Four steps. The first one is the only one you need to try it.</div>
+      </div>
+      <div class="header-side"><a class="btn ghost" href="/sim">Open the demo →</a></div>
+    </header>
+
+    <div class="steps">
+      <section class="step">
+        <h2><span class="n">1</span> Gemini (the court's voice) <span class="chip no" id="gChip">checking…</span></h2>
+        <p>Sign in with your Google account at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>, click <b>Create API key</b>, and paste it here. It's free.
+          No key? The court still works in rules mode: the verdicts, prices and demo buttons need no AI.</p>
+        <div class="row"><input id="gemini" type="password" placeholder="Paste your Gemini API key" autocomplete="off" />
+          <button class="btn" id="gSave">Save &amp; test</button></div>
+        <div class="msg" id="gMsg"></div>
+      </section>
+
+      <section class="step">
+        <h2><span class="n">2</span> Photon (a real iMessage number) <span class="optional">optional</span> <span class="chip no" id="pChip">checking…</span></h2>
+        <p>At <a href="https://app.photon.codes" target="_blank" rel="noopener">app.photon.codes</a>, create a project and copy its <b>Project ID</b> and <b>Project Secret</b>.</p>
+        <div class="row"><input id="pid" placeholder="Project ID" autocomplete="off" /><input id="psecret" type="password" placeholder="Project Secret" autocomplete="off" />
+          <button class="btn" id="pSave">Connect</button></div>
+        <div class="msg" id="pMsg"></div>
+      </section>
+
+      <section class="step">
+        <h2><span class="n">3</span> Text your phone <span class="optional">needs step 2</span></h2>
+        <ol class="sub">
+          <li>On Photon's free plan, the court can only text numbers you've approved. In the Photon dashboard open <b>Users</b> and add your phone number.</li>
+          <li>Not sure which number or email your iPhone sends iMessages from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on your iPhone and it will tell you.</li>
+          <li>Enter it below. The court texts you first, so you get its number. Reply with your name to join the household.</li>
+        </ol>
+        <div class="row"><input id="phone" placeholder="+1 206 555 0123" autocomplete="tel" />
+          <button class="btn" id="hello">Text me</button></div>
+        <div class="msg" id="hMsg"></div>
+      </section>
+
+      <section class="step">
+        <h2><span class="n">4</span> Make links open on phones <span class="optional">optional</span> <span class="chip no" id="uChip"></span></h2>
+        <p>The court texts a link to the live case file. For that link to open on a phone, give this computer a public URL. In a second terminal run
+          <code>npm run tunnel</code>, then open the <code>https://…trycloudflare.com</code> address it prints <b>once</b> in your browser. The court picks it up automatically.</p>
+        <div class="row"><input id="url" placeholder="or paste a public URL here" autocomplete="off" /><button class="btn ghost" id="uSave">Save</button></div>
+        <div class="msg" id="uMsg"></div>
+      </section>
+    </div>
+    <p class="fine">Keys are saved only to <code>.env</code> on this computer (it's in .gitignore). This page only works on <code>localhost</code>.</p>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
+const chip = (id, cls, text) => { $(id).className = `chip ${cls}`; $(id).textContent = text; };
+const say = (id, cls, text) => { $(id).className = `msg ${cls}`; $(id).textContent = text; };
+
+async function refresh() {
+  const s = await fetch("/api/setup").then((r) => r.json());
+  s.gemini.configured ? chip("gChip", "ok", `key saved ${s.gemini.hint}`) : chip("gChip", "no", "rules mode");
+  const p = s.photon;
+  if (!p.configured) chip("pChip", "no", "not connected");
+  else if (p.state === "connected") chip("pChip", "ok", p.line ? `connected · ${p.line}` : "connected");
+  else if (p.state === "error") chip("pChip", "err", "error");
+  else chip("pChip", "wait", p.state);
+  if (p.state === "error" && p.error) say("pMsg", "err", p.error);
+  s.publicUrl && !s.publicUrl.includes("localhost") ? chip("uChip", "ok", s.publicUrl) : chip("uChip", "no", "localhost only");
+}
+
+$("gSave").onclick = async () => {
+  const key = $("gemini").value.trim();
+  if (key) await post("/api/setup", { GEMINI_API_KEY: key });
+  $("gemini").value = "";
+  say("gMsg", "", "Testing…");
+  const r = await post("/api/setup/test-gemini");
+  r.ok ? say("gMsg", "ok", `✓ Works (${r.model}): "${r.reply}"`) : say("gMsg", "err", r.error);
+  refresh();
+};
+$("pSave").onclick = async () => {
+  say("pMsg", "", "Connecting…");
+  await post("/api/setup", { PHOTON_PROJECT_ID: $("pid").value, PHOTON_PROJECT_SECRET: $("psecret").value });
+  $("psecret").value = "";
+  await refresh();
+  if ($("pChip").classList.contains("ok")) say("pMsg", "ok", "✓ Connected. Now do step 3.");
+};
+$("hello").onclick = async () => {
+  say("hMsg", "", "Texting…");
+  const r = await post("/api/setup/hello", { phone: $("phone").value });
+  r.ok ? say("hMsg", "ok", `✓ Sent to ${r.handle}.${r.line ? ` The court's number is ${r.line}. Save it as "Cart Court".` : " Check your Messages app."} Reply with your name.`) : say("hMsg", "err", r.error);
+  refresh();
+};
+$("uSave").onclick = async () => {
+  await post("/api/setup", { PUBLIC_URL: $("url").value });
+  say("uMsg", "ok", "✓ Saved");
+  refresh();
+};
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -6,7 +6,8 @@
     "dev": "node --use-system-ca --watch-path=src --watch-path=data --import tsx src/server.ts",
     "start": "node --use-system-ca --import tsx src/server.ts",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "tunnel": "npx -y cloudflared@0.7.1 tunnel --url http://localhost:3000"
   },
   "type": "module",
   "dependencies": {

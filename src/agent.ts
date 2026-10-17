@@ -4,11 +4,13 @@ import { GoogleGenAI, type Content, type Part } from "@google/genai";
 import { usd } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
+import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
 
 export interface Incoming {
   spaceId: string;
   isGroup: boolean;
   memberId?: string; // undefined = unknown sender
+  handle?: string; // the sender's real phone number / Apple ID (Photon only)
   text: string;
   image?: { mimeType: string; base64: string };
 }
@@ -32,6 +34,16 @@ export function shouldRespond(msg: Incoming) {
 }
 
 export async function handle(msg: Incoming): Promise<string | null> {
+  // Onboarding: a number the court doesn't know yet introduces itself ("I'm Maya").
+  if (!msg.memberId && msg.handle) {
+    const intro = introducedAs(msg.text);
+    const looksLikeIntro = /^(hi|hey|hello)?[\s,!]*(i'?m|im|i am|this is|it'?s)\b/i.test(msg.text.trim()) || msg.text.trim().split(/\s+/).length <= 3;
+    if (intro && looksLikeIntro) {
+      claim(msg.handle, intro);
+      return welcome(intro);
+    }
+    if (shouldAsk(msg.handle, msg.isGroup)) return welcomeQuestion();
+  }
   const who = nameOf(msg.memberId);
   remember(msg.spaceId, `${who}: ${msg.text}${msg.image ? " [sent a photo]" : ""}`);
   if (!msg.isGroup && msg.memberId) {

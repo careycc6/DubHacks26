@@ -10,6 +10,9 @@ DubHacks '26 · Title track: **Chef's Choice** · Side tracks: **T-Mobile** (pho
 
 ## Run it
 
+**New here? Follow [ONBOARDING.md](ONBOARDING.md): clone, `npm run dev`, then paste your keys at `localhost:3000/setup`.**
+
+
 ```bash
 npm install
 cp .env.example .env   # all keys optional

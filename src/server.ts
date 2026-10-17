@@ -2,14 +2,30 @@ import "dotenv/config";
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { handle } from "./agent.ts";
+import { forgetClaims, memberForHandle } from "./claims.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
-import { startPhoton } from "./channels/photon.ts";
+import { photonSpaceIds, startPhoton } from "./channels/photon.ts";
+import { setupRouter } from "./setup.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
 import { addChat, bus, changed, publicState, reset, state, trialOpts, world } from "./store.ts";
 import { callTool } from "./tools.ts";
 
 const app = express();
 app.use(express.json({ limit: "12mb" }));
+app.use(setupRouter); // before static files, so /setup stays local-only
+
+// Opening the app once through a tunnel (cloudflared/ngrok/localtunnel) teaches the court its public URL,
+// so the case-file links it texts open on phones.
+app.use((req, _res, next) => {
+  const host = req.headers.host ?? "";
+  const tunnel = /\.(trycloudflare\.com|ngrok-free\.app|ngrok\.io|loca\.lt)$/i.test(host.split(":")[0]);
+  const current = process.env.PUBLIC_URL ?? "";
+  if (tunnel && (!current || current.includes("localhost"))) {
+    process.env.PUBLIC_URL = `https://${host}`;
+    console.log(`[url] case-file links now use ${process.env.PUBLIC_URL}`);
+  }
+  next();
+});
 app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { extensions: ["html"] }));
 app.get("/", (_req, res) => res.redirect("/sim"));
 
@@ -37,12 +53,16 @@ app.get("/api/state", (_req, res) => res.json(publicState()));
 registerChannel("sim", async () => {}); // messages already land in the store via sendTo -> addChat
 
 app.post("/api/sim/message", async (req, res) => {
-  const { memberId, text = "", dm = false, image } = req.body as { memberId: string; text?: string; dm?: boolean; image?: string };
-  const spaceId = dm ? `sim:dm:${memberId}` : "sim:group";
-  addChat({ spaceId, from: memberId, text, private: dm, image });
+  const body = req.body as { memberId: string; text?: string; dm?: boolean; image?: string };
+  const { text = "", dm = false, image } = body;
+  // "new:<phone>" simulates a phone the court has never seen (tests in-chat onboarding)
+  const phone = body.memberId.startsWith("new:") ? body.memberId.slice(4) : undefined;
+  const memberId = phone ? memberForHandle(phone) : body.memberId;
+  const spaceId = dm ? `sim:dm:${body.memberId}` : "sim:group";
+  addChat({ spaceId, from: memberId ?? "unknown", text, private: dm, image });
   const img = image?.match(/^data:(.+?);base64,(.+)$/);
   try {
-    const reply = await handle({ spaceId, isGroup: !dm, memberId, text, image: img ? { mimeType: img[1], base64: img[2] } : undefined });
+    const reply = await handle({ spaceId, isGroup: !dm, memberId, handle: phone, text, image: img ? { mimeType: img[1], base64: img[2] } : undefined });
     if (reply) await sendTo(spaceId, reply, dm);
     res.json({ ok: true, replied: !!reply });
   } catch (err) {
@@ -60,10 +80,11 @@ app.post("/api/demo/advance", async (req, res) => {
   state.day = newDay;
   state.trial = advanceTrial(world, state.cart, state.trial, newDay, trialOpts());
   changed();
-  const target = state.groupSpaceId ?? "sim:group";
+  // Shared Photon lines are 1:1 only, so tell everyone: the group (or simulator) plus every iMessage chat.
+  const targets = new Set([state.groupSpaceId ?? "sim:group", ...photonSpaceIds()]);
   for (const r of due) {
     const who = world.household.members.find((m) => m.id === r.memberId)?.name ?? "";
-    await sendTo(target, `⏳➡️✅ ${who}, it's time. Your held item (${r.proposed?.label}) is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. You saved ${usd(r.savings)} by waiting. Cart: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`);
+    for (const target of targets) await sendTo(target, `⏳➡️✅ ${who}, it's time. Your held item (${r.proposed?.label}) is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. You saved ${usd(r.savings)} by waiting. Cart: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`);
   }
   res.json({ day: state.day, announced: due.length });
 });
@@ -113,12 +134,13 @@ app.post("/api/demo/argue", async (_req, res) => {
 
 app.post("/api/demo/reset", (_req, res) => {
   reset();
+  forgetClaims(); // the simulated "new phone" has to introduce itself again
   res.json({ ok: true });
 });
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
-  console.log(`Cart Court on http://localhost:${port}  ·  simulator: /sim  ·  live cart: /cart`);
+  console.log(`Cart Court on http://localhost:${port}  ·  setup: /setup  ·  simulator: /sim  ·  live cart: /cart`);
   console.log(process.env.GEMINI_API_KEY ? `[llm] Gemini (${process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || "gemini-3.8-flash + fallbacks"})` : "[llm] no GEMINI_API_KEY: rules-only mode");
 });
 startPhoton().catch((err) => console.error("[photon] failed to start:", err));

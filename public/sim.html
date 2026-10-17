@@ -39,9 +39,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 let members = [], lines = [], tab = "sim:group", pendingImage = null;
 
 function renderTabs() {
-  $("tabs").innerHTML = [["sim:group", "👨‍👩‍👧‍👦 Family group"], ...members.map((m) => [`sim:dm:${m.id}`, `🔒 ${m.name} ↔ Court`])]
+  $("tabs").innerHTML = [["sim:group", "👨‍👩‍👧‍👦 Family group"], ...members.map((m) => [`sim:dm:${m.id}`, `🔒 ${m.name} ↔ Court`]), ["sim:dm:new:+15555550199", "📱 New phone ↔ Court"]]
     .map(([id, label]) => `<button class="tab ${id === tab ? "on" : ""}" data-tab="${id}">${label}</button>`).join("");
-  if (tab.startsWith("sim:dm:")) $("who").value = tab.split(":")[2];
+  if (tab.startsWith("sim:dm:")) $("who").value = tab.slice("sim:dm:".length);
 }
 
 function renderThread() {
@@ -82,7 +82,7 @@ es.addEventListener("state", (e) => {
   const s = JSON.parse(e.data);
   if (!members.length) {
     members = s.members;
-    $("who").innerHTML = members.map((m) => `<option value="${m.id}">${esc(m.name)} (${esc(m.role)})</option>`).join("");
+    $("who").innerHTML = members.map((m) => `<option value="${m.id}">${esc(m.name)} (${esc(m.role)})</option>`).join("") + `<option value="new:+15555550199">📱 New phone (unknown)</option>`;
     renderTabs();
   }
 });
