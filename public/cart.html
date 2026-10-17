@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cart Court · Case File</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="file">
+    <header>
+      <div>
+        <div class="caseno" id="caseno">Case file</div>
+        <h1>The People v. The Family Cart</h1>
+      </div>
+      <div class="day" id="day">Day 0</div>
+    </header>
+
+    <section class="totals" id="totals"></section>
+    <section class="rulings" id="rulings"></section>
+
+    <div id="nestWrap"></div>
+    <div id="timelineWrap"></div>
+
+    <div class="actions">
+      <a class="btn" id="checkout" href="/checkout">Proceed to checkout →</a>
+      <span class="muted" style="align-self:center;font-size:13px">Synthetic data only. No real customer, account, or transaction data.</span>
+    </div>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const usd = (n) => "$" + Math.round(n).toLocaleString("en-US");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let catalog = null;
+
+function render(s) {
+  $("caseno").textContent = `Case No. 26-${s.household.split(" ")[1]?.slice(0, 3).toUpperCase() ?? "FAM"} · ${s.household}`;
+  $("day").textContent = `Day ${s.day}`;
+  const t = s.trial;
+  const names = Object.fromEntries(s.members.map((m) => [m.id, m.name]));
+
+  if (!t) {
+    const before = s.cart.reduce((sum, i) => sum + (i.price ?? 0), 0);
+    $("totals").innerHTML = "";
+    $("rulings").innerHTML = s.cart.length
+      ? s.cart.map((i) => `<article class="ruling"><span class="stamp PENDING">PENDING<small>awaiting trial</small></span>
+          <h3>${esc(names[i.memberId])} · ${esc(i.label)}</h3>
+          <div class="money">${usd(i.price)}${i.kind === "addon" ? "/yr" : ""} · added by ${esc(names[i.addedBy] ?? "the family")}</div></article>`).join("")
+      : `<div class="empty">The cart is empty. Paste links or say "court, add …" in the group chat.</div>`;
+    $("timelineWrap").innerHTML = "";
+  } else {
+    $("totals").innerHTML = `
+      <div class="total"><div class="label">Spend today</div><div class="value"><s>${usd(t.before)}</s>${usd(t.now)}</div></div>
+      <div class="total"><div class="label">Held for the right moment</div><div class="value">${usd(t.held)}</div></div>
+      <div class="total savings"><div class="label">Saved by the court</div><div class="value">${usd(t.savings)}</div></div>`;
+    $("rulings").innerHTML = t.rulings.map((r) => `
+      <article class="ruling">
+        <span class="stamp ${r.stamp}">${r.stamp}${r.stamp === "WAIT" ? `<small>until day ${r.holdUntilDay}</small>` : ""}</span>
+        <h3>${esc(r.label)}</h3>
+        ${r.proposed && !r.label.endsWith(r.proposed.label) ? `<div class="to">→ ${esc(r.proposed.label)}</div>` : ""}
+        <ul>${r.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        <div class="money">${usd(r.originalCost)} → ${r.stamp === "WAIT" ? usd(r.heldCost) + " later" : usd(r.nowCost)}${r.savings > 0 ? ` · <b>saves ${usd(r.savings)}</b>` : ""}</div>
+      </article>`).join("");
+
+    const holds = t.rulings.filter((r) => r.stamp === "WAIT");
+    if (holds.length) {
+      const end = Math.max(...holds.map((h) => h.holdUntilDay)) + 10;
+      const x = (d) => ((d - t.day) / (end - t.day)) * 100;
+      $("timelineWrap").innerHTML = `<h2 class="section-title">When to buy</h2><div class="timeline"><div class="line"></div>
+        <div class="tick" style="left:0%;transform:none"><div class="dot" style="background:var(--keep)"></div>Today: buy ${t.rulings.filter((r) => r.stamp === "KEEP" || r.stamp === "SWAP").length}</div>
+        ${holds.map((h) => `<div class="tick" style="left:${x(h.holdUntilDay)}%"><div class="dot" style="background:var(--wait)"></div>Day ${h.holdUntilDay}: ${esc(names[h.memberId])}</div>`).join("")}
+      </div>`;
+    } else $("timelineWrap").innerHTML = "";
+  }
+
+  $("nestWrap").innerHTML = s.nest ? `<h2 class="section-title">Leaving the nest</h2>
+    <article class="ruling"><span class="stamp ${s.nest.stamp}">${s.nest.stamp}</span>
+      <h3>${esc(names[s.nest.memberId])} · family line ${usd(s.nest.familyLineMonthly)}/mo vs ${esc(s.nest.soloPlan.name)} ${usd(s.nest.soloPlan.monthly)}/mo</h3>
+      <ul>${s.nest.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></article>` : "";
+}
+
+const es = new EventSource("/api/events");
+es.addEventListener("state", (e) => render(JSON.parse(e.data)));
+</script>
+</body>
+</html>

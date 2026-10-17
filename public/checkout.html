@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cart Court · Checkout</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="file">
+    <header><div><div class="caseno">Mock store · synthetic data</div><h1>Checkout</h1></div><a class="btn ghost" href="/cart">← Case file</a></header>
+    <h2 class="section-title">Buying today</h2>
+    <div class="rulings" id="now"></div>
+    <h2 class="section-title">Held: we'll text the group when it's time</h2>
+    <div class="rulings" id="held"></div>
+    <div class="totals" id="totals"></div>
+    <div class="actions"><button class="btn" id="place">Place mock order</button></div>
+  </main>
+<script>
+const usd = (n) => "$" + Math.round(n).toLocaleString("en-US");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+fetch("/api/state").then((r) => r.json()).then((s) => {
+  const t = s.trial;
+  if (!t) { document.querySelector("main").insertAdjacentHTML("beforeend", `<div class="empty">Put the cart on trial first: text "court, rule" in the group.</div>`); return; }
+  const row = (r, price) => `<article class="ruling"><span class="stamp ${r.stamp}">${r.stamp}</span><h3>${esc(r.proposed?.label ?? r.label)}</h3><div class="money">${esc(r.label.split(" · ")[0])} · ${price}</div></article>`;
+  const now = t.rulings.filter((r) => r.stamp === "KEEP" || r.stamp === "SWAP");
+  const held = t.rulings.filter((r) => r.stamp === "WAIT");
+  document.getElementById("now").innerHTML = now.map((r) => row(r, usd(r.nowCost))).join("") || `<div class="empty">Nothing to buy today. The court says wait.</div>`;
+  document.getElementById("held").innerHTML = held.map((r) => row(r, `${usd(r.heldCost)} on day ${r.holdUntilDay}`)).join("") || `<div class="empty">Nothing held.</div>`;
+  document.getElementById("totals").innerHTML = `<div class="total"><div class="label">Due today</div><div class="value">${usd(t.now)}</div></div>
+    <div class="total savings"><div class="label">Saved vs. original cart</div><div class="value">${usd(t.savings)}</div></div>`;
+});
+document.getElementById("place").onclick = (e) => { e.target.textContent = "✓ Mock order placed"; e.target.disabled = true; };
+</script>
+</body>
+</html>

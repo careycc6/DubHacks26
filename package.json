@@ -1,0 +1,24 @@
+{
+  "name": "cart-court",
+  "version": "1.0.0",
+  "description": "Cart Court: an honest phone-shopping agent for your group chat (DubHacks 26)",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc"
+  },
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^2.30.0",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "spectrum-ts": "^12.11.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

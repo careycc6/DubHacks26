@@ -1,0 +1,22 @@
+{
+  "_note": "Synthetic catalog for the hackathon. Prices are mock data, not real offers.",
+  "phones": [
+    { "id": "iphone-17-pro-max", "name": "iPhone 17 Pro Max", "brand": "Apple", "tier": "flagship", "prices": { "256": 1199, "512": 1399, "1024": 1599 }, "camera": 5, "gaming": 5, "batteryHours": 33, "screenIn": 6.9 },
+    { "id": "iphone-17-pro", "name": "iPhone 17 Pro", "brand": "Apple", "tier": "flagship", "prices": { "256": 1099, "512": 1299, "1024": 1499 }, "camera": 5, "gaming": 5, "batteryHours": 30, "screenIn": 6.3 },
+    { "id": "iphone-17", "name": "iPhone 17", "brand": "Apple", "tier": "mid", "prices": { "256": 829, "512": 1029 }, "camera": 4, "gaming": 4, "batteryHours": 30, "screenIn": 6.3 },
+    { "id": "iphone-17e", "name": "iPhone 17e", "brand": "Apple", "tier": "budget", "prices": { "128": 599, "256": 699 }, "camera": 3, "gaming": 3, "batteryHours": 26, "screenIn": 6.1 },
+    { "id": "pixel-10-pro", "name": "Pixel 10 Pro", "brand": "Google", "tier": "flagship", "prices": { "128": 999, "256": 1099, "512": 1219 }, "camera": 5, "gaming": 4, "batteryHours": 30, "screenIn": 6.3 },
+    { "id": "pixel-10", "name": "Pixel 10", "brand": "Google", "tier": "mid", "prices": { "128": 799, "256": 899 }, "camera": 4, "gaming": 3, "batteryHours": 29, "screenIn": 6.3 },
+    { "id": "pixel-10a", "name": "Pixel 10a", "brand": "Google", "tier": "budget", "prices": { "128": 499 }, "camera": 3, "gaming": 2, "batteryHours": 30, "screenIn": 6.1 },
+    { "id": "galaxy-s26-ultra", "name": "Galaxy S26 Ultra", "brand": "Samsung", "tier": "flagship", "prices": { "256": 1299, "512": 1419 }, "camera": 5, "gaming": 5, "batteryHours": 31, "screenIn": 6.9 },
+    { "id": "galaxy-s26", "name": "Galaxy S26", "brand": "Samsung", "tier": "mid", "prices": { "128": 799, "256": 859 }, "camera": 4, "gaming": 4, "batteryHours": 28, "screenIn": 6.2 },
+    { "id": "galaxy-a37", "name": "Galaxy A37", "brand": "Samsung", "tier": "budget", "prices": { "128": 399 }, "camera": 2, "gaming": 2, "batteryHours": 32, "screenIn": 6.6 },
+    { "id": "easy-flip-5", "name": "Easy Flip 5 (big buttons, SOS key)", "brand": "Generic", "tier": "budget", "prices": { "32": 149 }, "camera": 1, "gaming": 1, "batteryHours": 60, "screenIn": 2.8, "simple": true },
+    { "id": "galaxy-a17-easy", "name": "Galaxy A17 (Easy Mode)", "brand": "Samsung", "tier": "budget", "prices": { "128": 199 }, "camera": 2, "gaming": 1, "batteryHours": 34, "screenIn": 6.7, "simple": true }
+  ],
+  "addons": [
+    { "id": "protection-360", "name": "Device Protection", "monthly": 18 },
+    { "id": "hotspot-plus", "name": "Hotspot Plus", "monthly": 10 },
+    { "id": "intl-pass", "name": "International Pass", "monthly": 15 }
+  ]
+}

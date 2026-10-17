@@ -1,0 +1,14 @@
+{
+  "_note": "Synthetic promos and plan pricing. Days are relative to demo day 0.",
+  "promos": [
+    { "id": "fall-tradein", "name": "Fall Trade-In Event", "startsOnDay": 41, "endsOnDay": 90, "phones": ["iphone-17-pro", "iphone-17-pro-max"], "requiresTradeIn": true, "credit": 312 },
+    { "id": "pixel-launch", "name": "Pixel launch credit", "startsOnDay": 0, "endsOnDay": 30, "phones": ["pixel-10", "pixel-10-pro"], "requiresTradeIn": false, "credit": 100 },
+    { "id": "holiday-galaxy", "name": "Holiday Galaxy deal", "startsOnDay": 60, "endsOnDay": 100, "phones": ["galaxy-s26", "galaxy-s26-ultra"], "requiresTradeIn": false, "credit": 200 }
+  ],
+  "familyPlan": { "name": "Family Unlimited", "totalMonthlyByLines": { "1": 75, "2": 130, "3": 160, "4": 180, "5": 200, "6": 220 } },
+  "soloPlans": [
+    { "name": "Solo Essentials", "monthly": 60, "dataGB": 50 },
+    { "name": "Prepaid 30GB", "monthly": 40, "dataGB": 30 },
+    { "name": "Prepaid 10GB", "monthly": 25, "dataGB": 10 }
+  ]
+}

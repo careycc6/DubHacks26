@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cart Court · Simulator</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="sim">
+  <section class="phone">
+    <div class="tabs" id="tabs"></div>
+    <div class="thread" id="thread"></div>
+    <div class="typing" id="typing"></div>
+    <form class="compose" id="compose">
+      <select id="who" title="Send as"></select>
+      <input type="text" id="text" placeholder="iMessage" autocomplete="off" />
+      <label title="Attach photo">📎<input type="file" id="file" accept="image/*" hidden /></label>
+      <button>↑</button>
+    </form>
+  </section>
+  <section class="right">
+    <div class="controls">
+      <strong style="align-self:center;margin-right:6px">Demo</strong>
+      <button data-act="seed">Seed argued cart</button>
+      <button data-act="advance" data-days="41">+41 days</button>
+      <button data-act="advance" data-days="120">+120 days</button>
+      <button data-act="advance" data-days="730">+2 years</button>
+      <button data-act="reset">Reset</button>
+    </div>
+    <iframe src="/cart" title="Live case file"></iframe>
+  </section>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let members = [], lines = [], tab = "sim:group", pendingImage = null;
+
+function renderTabs() {
+  $("tabs").innerHTML = [["sim:group", "👨‍👩‍👧‍👦 Family group"], ...members.map((m) => [`sim:dm:${m.id}`, `🔒 ${m.name} ↔ Court`])]
+    .map(([id, label]) => `<button class="tab ${id === tab ? "on" : ""}" data-tab="${id}">${label}</button>`).join("");
+  if (tab.startsWith("sim:dm:")) $("who").value = tab.split(":")[2];
+}
+
+function renderThread() {
+  const me = $("who").value;
+  $("thread").innerHTML = lines.filter((l) => l.spaceId === tab).map((l) => {
+    const cls = l.from === "court" ? "court" : l.from === me ? "me" : "them";
+    const name = l.from === "court" ? "⚖️ Cart Court" : members.find((m) => m.id === l.from)?.name ?? l.from;
+    return `<div class="who ${cls === "me" ? "right" : ""}">${esc(name)}</div><div class="bubble ${cls}">${l.image ? `<img src="${l.image}">` : ""}${esc(l.text)}</div>`;
+  }).join("");
+  $("thread").scrollTop = 1e9;
+}
+
+$("tabs").onclick = (e) => { const t = e.target.closest("[data-tab]"); if (t) { tab = t.dataset.tab; renderTabs(); renderThread(); } };
+$("who").onchange = renderThread;
+$("file").onchange = () => {
+  const f = $("file").files[0]; if (!f) return;
+  const r = new FileReader(); r.onload = () => { pendingImage = r.result; $("text").placeholder = "📷 photo attached, add a message"; }; r.readAsDataURL(f);
+};
+$("compose").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("text").value.trim();
+  if (!text && !pendingImage) return;
+  const body = { memberId: $("who").value, text, dm: tab !== "sim:group", image: pendingImage };
+  $("text").value = ""; pendingImage = null; $("file").value = ""; $("text").placeholder = "iMessage";
+  $("typing").textContent = "Cart Court is typing…";
+  await fetch("/api/sim/message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  $("typing").textContent = "";
+};
+document.querySelector(".controls").onclick = async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.act === "reset") lines = [];
+  await fetch(`/api/demo/${b.dataset.act}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ days: Number(b.dataset.days) }) });
+  renderThread();
+};
+
+const es = new EventSource("/api/events?chat=1");
+es.addEventListener("state", (e) => {
+  const s = JSON.parse(e.data);
+  if (!members.length) {
+    members = s.members;
+    $("who").innerHTML = members.map((m) => `<option value="${m.id}">${esc(m.name)} (${esc(m.role)})</option>`).join("");
+    renderTabs();
+  }
+});
+es.addEventListener("chat", (e) => { lines.push(JSON.parse(e.data)); renderThread(); });
+</script>
+</body>
+</html>
