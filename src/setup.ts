@@ -212,8 +212,9 @@ setupRouter.get("/api/setup/household", (_req, res) => {
   res.json({
     roles: ROLES,
     phones: [...new Set([...example.members.map((m) => m.device.model), ...world.catalog.phones.map((p) => p.name)])],
-    members: world.household.members.map((m) => {
-      const ex = example.members.find((x) => x.id === m.id)!;
+    // Every example slot, so a blank one (someone not in the family) can be filled in again later.
+    members: example.members.map((m) => {
+      const ex = m;
       const s = saved[m.id];
       return {
         id: m.id,
@@ -232,13 +233,14 @@ setupRouter.get("/api/setup/household", (_req, res) => {
 setupRouter.post("/api/setup/household", (req, res) => {
   const input = (req.body?.members ?? []) as { id: string; name?: string; phone?: string; role?: string; phoneModel?: string; batteryHealth?: number | string }[];
   const local = loadHouseholdLocal();
+  const slots = new Set(loadWorld({ local: false }).household.members.map((m) => m.id));
   const problems: string[] = [];
   for (const row of input) {
-    if (!world.household.members.some((x) => x.id === row.id)) continue;
+    if (!slots.has(row.id)) continue;
     const name = (row.name ?? "").trim();
     const phone = (row.phone ?? "").trim();
     if (!name && !phone) {
-      delete local.members[row.id]; // left blank: stays an example
+      delete local.members[row.id]; // left blank: not in the family
       continue;
     }
     if (!name) {
@@ -259,16 +261,18 @@ setupRouter.post("/api/setup/household", (req, res) => {
     };
   }
   saveHouseholdLocal(local);
-  // Re-apply names/roles/phones from disk onto the live household (example rows go back to example values).
+  // Re-apply the family from disk: who's in it (a slot left blank drops out) and their names, roles and phones.
   const fresh = loadWorld().household.members;
-  for (const m of world.household.members) {
-    const f = fresh.find((x) => x.id === m.id)!;
-    m.name = f.name;
-    m.role = f.role;
-    m.handles = f.handles;
-    m.device.model = f.device.model;
-    m.device.batteryHealth = f.device.batteryHealth;
-  }
+  world.household.members = fresh.map((f) => {
+    const m = world.household.members.find((x) => x.id === f.id);
+    if (!m) return f;
+    Object.assign(m, { name: f.name, role: f.role, handles: f.handles });
+    Object.assign(m.device, { model: f.device.model, batteryHealth: f.device.batteryHealth });
+    return m;
+  });
+  // Anything waiting in the cart for someone no longer in the family goes with them.
+  state.cart = state.cart.filter((i) => fresh.some((f) => f.id === i.memberId));
+  if (state.requests) state.requests = state.requests.filter((q) => fresh.some((f) => f.id === q.item.memberId));
   changed();
   res.json({ ok: problems.length === 0, problems, saved: Object.keys(local.members).length });
 });

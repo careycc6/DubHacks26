@@ -715,6 +715,10 @@ function rulesReply(msg: Incoming): string {
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
   // Any message that says what they care about gets fresh picks ("actually I also want a bigger screen").
   if (asking.test(text) || hasPrefs(said)) {
+    // Asking for Grandma when she isn't in the family: say so, don't quietly pick for the sender instead.
+    if (/\b(grandma|grandmother|abuela)\b/i.test(text) && !memberByTitle(world, text)) {
+      return "Grandma isn't in your family on Cart Court. A parent can add her on the setup page (her name, Grandparent, and her current phone), and the court will pick for how she uses a phone.";
+    }
     const r = callTool("recommend_phones", { member: target, model: modelAsked(text) }) as PhonePicks;
     const you = target === msg.memberId;
     return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId));
@@ -732,7 +736,7 @@ function rulesReply(msg: Incoming): string {
     "• Ask \"what phone should I get?\" (say what matters: battery, big screen, camera, budget), or \"what laptop should Maya get?\"",
     "• Add anything with its price: \"add a $90 air purifier for us\"",
     "• Ask for a case, charger, screen protector or earbuds",
-    "• Say \"remove my phone\", \"cart clear\" (parents), or \"bought it for $899\"",
+    "• Say \"bought it for $899\" when you buy something, or (parents) \"remove my phone\", \"cart clear\", \"approve\"",
     "• Ask \"what's in the cart?\" to see where everything stands",
     "• Say \"court, rule\" when the family is ready to check out",
   ].join("\n");

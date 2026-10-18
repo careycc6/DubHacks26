@@ -1140,6 +1140,7 @@ function loadWorld(opts = {}) {
     offers: load("offers.json")
   };
   const local = opts.local === false ? { members: {} } : loadHouseholdLocal();
+  if (Object.keys(local.members).length) world2.household.members = world2.household.members.filter((m) => local.members[m.id]);
   for (const m of world2.household.members) {
     const o = local.members[m.id];
     if (o?.name) m.name = o.name;
@@ -2004,8 +2005,9 @@ setupRouter.get("/api/setup/household", (_req, res) => {
   res.json({
     roles: ROLES,
     phones: [.../* @__PURE__ */ new Set([...example.members.map((m) => m.device.model), ...world.catalog.phones.map((p) => p.name)])],
-    members: world.household.members.map((m) => {
-      const ex = example.members.find((x) => x.id === m.id);
+    // Every example slot, so a blank one (someone not in the family) can be filled in again later.
+    members: example.members.map((m) => {
+      const ex = m;
       const s = saved[m.id];
       return {
         id: m.id,
@@ -2023,9 +2025,10 @@ setupRouter.get("/api/setup/household", (_req, res) => {
 setupRouter.post("/api/setup/household", (req, res) => {
   const input = req.body?.members ?? [];
   const local = loadHouseholdLocal();
+  const slots = new Set(loadWorld({ local: false }).household.members.map((m) => m.id));
   const problems = [];
   for (const row of input) {
-    if (!world.household.members.some((x) => x.id === row.id)) continue;
+    if (!slots.has(row.id)) continue;
     const name = (row.name ?? "").trim();
     const phone2 = (row.phone ?? "").trim();
     if (!name && !phone2) {
@@ -2051,14 +2054,15 @@ setupRouter.post("/api/setup/household", (req, res) => {
   }
   saveHouseholdLocal(local);
   const fresh2 = loadWorld().household.members;
-  for (const m of world.household.members) {
-    const f = fresh2.find((x) => x.id === m.id);
-    m.name = f.name;
-    m.role = f.role;
-    m.handles = f.handles;
-    m.device.model = f.device.model;
-    m.device.batteryHealth = f.device.batteryHealth;
-  }
+  world.household.members = fresh2.map((f) => {
+    const m = world.household.members.find((x) => x.id === f.id);
+    if (!m) return f;
+    Object.assign(m, { name: f.name, role: f.role, handles: f.handles });
+    Object.assign(m.device, { model: f.device.model, batteryHealth: f.device.batteryHealth });
+    return m;
+  });
+  state.cart = state.cart.filter((i) => fresh2.some((f) => f.id === i.memberId));
+  if (state.requests) state.requests = state.requests.filter((q) => fresh2.some((f) => f.id === q.item.memberId));
   changed();
   res.json({ ok: problems.length === 0, problems, saved: Object.keys(local.members).length });
 });
@@ -3730,6 +3734,9 @@ Say "add the first one" to put it in the family cart.`;
   const said = parsePrefs(text.replace(URLS, " "));
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
   if (asking.test(text) || hasPrefs(said)) {
+    if (/\b(grandma|grandmother|abuela)\b/i.test(text) && !memberByTitle(world, text)) {
+      return "Grandma isn't in your family on Cart Court. A parent can add her on the setup page (her name, Grandparent, and her current phone), and the court will pick for how she uses a phone.";
+    }
     const r = callTool("recommend_phones", { member: target, model: modelAsked(text) });
     const you = target === msg.memberId;
     return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId));
@@ -3745,7 +3752,7 @@ Say "add the first one" to put it in the family cart.`;
     '\u2022 Ask "what phone should I get?" (say what matters: battery, big screen, camera, budget), or "what laptop should Maya get?"',
     '\u2022 Add anything with its price: "add a $90 air purifier for us"',
     "\u2022 Ask for a case, charger, screen protector or earbuds",
-    '\u2022 Say "remove my phone", "cart clear" (parents), or "bought it for $899"',
+    '\u2022 Say "bought it for $899" when you buy something, or (parents) "remove my phone", "cart clear", "approve"',
     `\u2022 Ask "what's in the cart?" to see where everything stands`,
     '\u2022 Say "court, rule" when the family is ready to check out'
   ].join("\n");

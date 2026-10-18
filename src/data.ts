@@ -28,6 +28,8 @@ export function loadWorld(opts: { local?: boolean } = {}): World {
     offers: load("offers.json"),
   };
   const local = opts.local === false ? { members: {} } as HouseholdLocal : loadHouseholdLocal();
+  // Once a family is set up, it's just the people saved on /setup: an example slot left blank (say, grandma) isn't in it.
+  if (Object.keys(local.members).length) world.household.members = world.household.members.filter((m) => local.members[m.id]);
   for (const m of world.household.members) {
     const o = local.members[m.id];
     if (o?.name) m.name = o.name;

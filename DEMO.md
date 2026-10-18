@@ -93,9 +93,9 @@ Every phone gets: *"⏳➡️✅ Carey, it's time. Your iPhone 17 Pro 256GB is r
 ### 2:10, the kid grows up (Driver: **+2 years**)
 - **Kairui** texts: **`court, Jaret is leaving for college in August`**
   → **STAY** on the family plan: $20/mo vs $40 solo, **saves $240/yr**, same number. The other phones get the ruling too.
-- **Jaret** texts: **`court, what phone should grandma get? she keeps butt-dialing me`**
-  → Easy Flip 5, $149, with big buttons and an SOS key.
-> "When the kid grows up the chat doesn't end, the roles flip. The kid who got told to wait is now shopping for Grandma."
+- **Jaret** texts: **`court, what laptop should I get under $700?`**
+  → laptop picks under $700 (the IdeaPad 5 drops to $519 in 41 days). **`add the first one`** goes to Carey and Kairui as a request to approve.
+> "When the kid grows up the chat doesn't end. The kid who got told to wait is now shopping for college, and the parents still sign off."
 
 ### 2:40, close (Presenter)
 > "Every number you saw came from a tested pricing engine. The AI talks, the engine does the math, so it never makes up
