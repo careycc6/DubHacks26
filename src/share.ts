@@ -1,9 +1,13 @@
-// Getting judges in: QR codes for the case file and for texting the court.
-// Only two fixed targets can be encoded, so this can't be used to make arbitrary QR codes.
+// Getting judges in: QR codes for the case file and for texting the court, and a rich iMessage
+// preview when the court texts the case-file link. Only two fixed targets can be encoded as QR codes.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Router, type Request } from "express";
 import QRCode from "qrcode";
 import { photonStatus } from "./channels/photon.ts";
+import { usd } from "./engine.ts";
 import { isAdmin } from "./setup.ts";
+import { state } from "./store.ts";
 
 export const shareRouter = Router();
 
@@ -31,4 +35,33 @@ shareRouter.get("/api/qr", async (req, res) => {
   if (!data) return res.status(404).send("Nothing to encode (texting the court needs COURT_NUMBER and the admin view).");
   const svg = await QRCode.toString(data, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#1d1a16", light: "#fffdf8" } });
   res.type("image/svg+xml").set("Cache-Control", "no-store").send(svg);
+});
+
+// ---- /cart with link-preview tags, so the link the court texts unfurls with the verdict in iMessage
+const cartFile = fileURLToPath(new URL("../public/cart.html", import.meta.url));
+const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+shareRouter.get(["/cart", "/cart.html"], (req, res) => {
+  const t = state.trial;
+  const title = "The People v. The Family Cart";
+  const description = t
+    ? `Spend today ${usd(t.before)} → ${usd(t.now)} · saved ${usd(t.savings)}`
+    : state.cart.length
+      ? `${state.cart.length} phone${state.cart.length > 1 ? "s" : ""} filed · awaiting the court's ruling`
+      : "Awaiting the court's ruling";
+  const base = publicUrl(req);
+  const tags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Cart Court" />`,
+    `<meta property="og:title" content="${attr(title)}" />`,
+    `<meta property="og:description" content="${attr(description)}" />`,
+    `<meta property="og:url" content="${attr(`${base}/cart`)}" />`,
+    `<meta property="og:image" content="${attr(`${base}/og.png`)}" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="description" content="${attr(description)}" />`,
+  ].join("\n  ");
+  const html = readFileSync(cartFile, "utf8").replace("</title>", `</title>\n  ${tags}`);
+  res.type("html").set("Cache-Control", "no-cache").send(html);
 });
