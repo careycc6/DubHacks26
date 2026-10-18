@@ -4,3 +4,5 @@ node_modules
 data/claims.local.json
 data/household.local.json
 data/welcomed.local.json
+data/state.local.json
+data/*.local.json.tmp

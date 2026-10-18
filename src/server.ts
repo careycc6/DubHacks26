@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import { handle } from "./agent.ts";
 import { forgetClaims, memberForHandle } from "./claims.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
-import { photonSpaceIds, startPhoton } from "./channels/photon.ts";
-import { isLocal, setupRouter } from "./setup.ts";
+import { photonSpaceIds, photonStatus, startPhoton } from "./channels/photon.ts";
+import { isAdmin, setupRouter } from "./setup.ts";
+import { backend } from "./db.ts";
 import { dashboardRouter } from "./dashboard.ts";
 import { deliver } from "./feed.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
@@ -16,11 +17,12 @@ const app = express();
 app.use(express.json({ limit: "12mb" }));
 app.use(setupRouter); // before static files, so /setup stays local-only
 
-// Opening the app once through a tunnel (cloudflared/ngrok/localtunnel) teaches the court its public URL,
-// so the case-file links it texts open on phones.
+// Opening the app once through a tunnel (cloudflared/ngrok/localtunnel) or a host's default address teaches
+// the court its public URL, so the case-file links it texts open on phones. Set PUBLIC_URL to pin it instead.
+app.set("trust proxy", true); // hosted: req.secure / protocol come from the host's proxy
 app.use((req, _res, next) => {
   const host = req.headers.host ?? "";
-  const tunnel = /\.(trycloudflare\.com|ngrok-free\.app|ngrok\.io|loca\.lt)$/i.test(host.split(":")[0]);
+  const tunnel = /\.(trycloudflare\.com|ngrok-free\.app|ngrok\.io|loca\.lt|run\.app|onrender\.com|fly\.dev|up\.railway\.app|herokuapp\.com)$/i.test(host.split(":")[0]);
   const current = process.env.PUBLIC_URL ?? "";
   if (tunnel && (!current || current.includes("localhost"))) {
     process.env.PUBLIC_URL = `https://${host}`;
@@ -28,8 +30,11 @@ app.use((req, _res, next) => {
   }
   next();
 });
-// Home: the dashboard on this computer; anyone else (a phone via the tunnel) gets the family's case file.
-app.get("/", (req, res) => (isLocal(req) ? res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url))) : res.redirect("/cart")));
+// Health check for hosts (and a quick "is it saving to MongoDB?" from the terminal).
+app.get("/healthz", (_req, res) => res.json({ ok: true, db: backend, photon: photonStatus.state, day: state.day, cart: state.cart.length }));
+
+// Home: the dashboard for whoever runs the court; anyone else (a phone via the tunnel) gets the family's case file.
+app.get("/", (req, res) => (isAdmin(req) ? res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url))) : res.redirect("/cart")));
 app.use(dashboardRouter);
 app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { extensions: ["html"] }));
 
@@ -38,7 +43,7 @@ app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { 
 app.get("/api/events", (req, res) => {
   res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
   res.flushHeaders();
-  const withChat = req.query.chat === "1"; // only the simulator gets chat (it includes DMs)
+  const withChat = req.query.chat === "1" && isAdmin(req); // only the simulator gets chat (it includes DMs)
   const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   send("state", publicState());
   if (withChat) state.chat.forEach((c) => send("chat", c));

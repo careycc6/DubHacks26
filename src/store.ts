@@ -1,6 +1,8 @@
-// In-memory app state + a tiny pub/sub so the live cart page and simulator update instantly.
+// App state + a tiny pub/sub so the live cart page and simulator update instantly.
+// The state is saved through db.ts on every change, so a restart or redeploy picks up where the court left off.
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
+import { get, onShutdown, put } from "./db.ts";
 import { runTrial, type Prefs, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
@@ -43,12 +45,45 @@ export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
 const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, trialRuns: 0 });
-export let state: State = fresh();
+
+// What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone.
+type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }> };
+
+function restore(): State {
+  const saved = get<Saved | undefined>("state", undefined);
+  if (!saved) return fresh();
+  const { evidence = {}, ...rest } = saved;
+  for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
+  return { ...fresh(), ...rest };
+}
+export let state: State = restore();
+
+let lastSaved = "";
+function persist() {
+  const { pendingImage: _p, ...rest } = state;
+  const saved: Saved = {
+    ...rest,
+    chat: rest.chat.map(({ image: _i, ...line }) => line), // simulator photos are big and only matter live
+    evidence: Object.fromEntries(world.household.members.map((m) => [m.id, { batteryHealth: m.device.batteryHealth, screenCracked: m.device.screenCracked }])),
+  };
+  let json = JSON.stringify(saved);
+  if (json.length > 12_000_000) {
+    saved.exhibits = saved.exhibits.map(({ image: _i, ...e }) => e); // stay well under MongoDB's 16 MB document limit
+    json = JSON.stringify(saved);
+  }
+  if (json === lastSaved) return;
+  lastSaved = json;
+  put("state", saved);
+}
+// Most changes go through changed()/addChat(); this catches the rest (prefs, private notes).
+setInterval(persist, 2000).unref();
+onShutdown(persist);
 
 let seq = 0;
 export const newId = (prefix: string) => `${prefix}${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 export function changed() {
+  persist();
   bus.emit("state", publicState());
 }
 
@@ -76,6 +111,7 @@ export function addChat(line: Omit<ChatLine, "id" | "at">) {
   state.chat.push(full);
   if (state.chat.length > 500) state.chat.shift();
   bus.emit("chat", full);
+  persist();
   return full;
 }
 

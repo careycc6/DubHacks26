@@ -1,23 +1,23 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { get, put } from "./db.ts";
 import type { World } from "./types.ts";
 
 const dataDir = fileURLToPath(new URL("../data/", import.meta.url));
 const load = (file: string) => JSON.parse(readFileSync(dataDir + file, "utf8"));
 
-// Real names and phone numbers entered on /setup live here, never in git.
-const localFile = dataDir + "household.local.json";
+// Real names and phone numbers entered on /setup are saved by db.ts (MongoDB or data/household.local.json), never in git.
 export interface HouseholdLocal {
   /** Only people actually entered on /setup are here; the rest of household.json is example data. */
   members: Record<string, { name?: string; handles?: string[]; role?: string; phoneModel?: string }>;
 }
 
 export function loadHouseholdLocal(): HouseholdLocal {
-  return existsSync(localFile) ? JSON.parse(readFileSync(localFile, "utf8")) : { members: {} };
+  return get<HouseholdLocal>("household", { members: {} });
 }
 
 export function saveHouseholdLocal(local: HouseholdLocal) {
-  writeFileSync(localFile, JSON.stringify(local, null, 2));
+  put("household", local);
 }
 
 /** `local: false` gives the pristine example household (tests use this). */

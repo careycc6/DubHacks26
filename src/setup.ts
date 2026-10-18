@@ -1,5 +1,6 @@
 // /setup: paste keys, check what's connected, and have the court text your phone.
-// Only reachable from this computer: never through a tunnel or public URL.
+// Only reachable from this computer, or (on a hosted server) by someone who opened the ADMIN_TOKEN link once.
+import { createHash, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI } from "@google/genai";
@@ -7,6 +8,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
 import { addPhotonUser, dashboardToken } from "./photonUsers.ts";
 import { loadHouseholdLocal, loadWorld, savedMemberIds, saveHouseholdLocal } from "./data.ts";
+import { get, put } from "./db.ts";
 import { changed, world } from "./store.ts";
 import { claimedHandles } from "./claims.ts";
 
@@ -38,16 +40,45 @@ export function isLocal(req: Request) {
   return loopback && (host === "localhost" || host === "127.0.0.1") && !forwarded;
 }
 
+const ADMIN_COOKIE = "cc_admin";
+const sameSecret = (a: string, b: string) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
+const adminCookie = (req: Request) =>
+  (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${ADMIN_COOKIE}=`))?.slice(ADMIN_COOKIE.length + 1);
+
+/** The computer running the court, or (hosted) a browser that opened /?key=ADMIN_TOKEN once. */
+export function isAdmin(req: Request) {
+  if (isLocal(req)) return true;
+  const token = process.env.ADMIN_TOKEN;
+  const cookie = adminCookie(req);
+  return !!token && !!cookie && sameSecret(decodeURIComponent(cookie), token);
+}
+
+/** `?key=ADMIN_TOKEN` on any page: remember this browser for 30 days, then drop the key from the address bar. */
+export function adminLogin(req: Request, res: Response, next: NextFunction) {
+  const token = process.env.ADMIN_TOKEN;
+  const key = typeof req.query.key === "string" ? req.query.key : undefined;
+  if (!token || !key || req.method !== "GET") return next();
+  if (!sameSecret(key, token)) return res.status(403).send("That admin key isn't right.");
+  const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
+  res.setHeader("Set-Cookie", `${ADMIN_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}${secure ? "; Secure" : ""}`);
+  const url = new URL(req.originalUrl, "http://x");
+  url.searchParams.delete("key");
+  res.redirect(url.pathname + url.search);
+}
+
 export function localOnly(req: Request, res: Response, next: NextFunction) {
-  if (isLocal(req)) return next();
-  res.status(403).send("This page only works on the computer running Cart Court (http://localhost:3000). The family's case file is at /cart.");
+  if (isAdmin(req)) return next();
+  res
+    .status(403)
+    .send("This page only works on the computer running Cart Court (http://localhost:3000), or on a hosted court after opening its admin link (/?key=…). The family's case file is at /cart.");
 }
 
 const mask = (v?: string) => (v ? `••••${v.slice(-4)}` : "");
 
 export const setupRouter = Router();
-// The dashboard, setup and demo controls are for the computer running the court. Phones only get /cart.
-setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo"], localOnly);
+// The dashboard, setup and demo controls are for whoever runs the court. Phones only get /cart.
+setupRouter.use(adminLogin);
+setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo"], localOnly);
 
 setupRouter.get("/api/setup", (_req, res) => {
   res.json({
@@ -198,8 +229,7 @@ setupRouter.post("/api/setup/household", (req, res) => {
 });
 
 // Remembers who already got a welcome, so "Text everyone" after adding one person only texts that person.
-const welcomedFile = fileURLToPath(new URL("../data/welcomed.local.json", import.meta.url));
-const welcomed: string[] = existsSync(welcomedFile) ? JSON.parse(readFileSync(welcomedFile, "utf8")) : [];
+const welcomed = get<string[]>("welcomed", []);
 export const wasWelcomed = (handle: string) => welcomed.includes(handle);
 
 setupRouter.post("/api/setup/hello-all", async (req, res) => {
@@ -238,6 +268,6 @@ setupRouter.post("/api/setup/hello-all", async (req, res) => {
       }
     }),
   );
-  writeFileSync(welcomedFile, JSON.stringify(welcomed, null, 2));
+  put("welcomed", welcomed);
   res.json({ ok: results.every((r) => r.ok), results, skipped, total: targets.length, line: photonStatus.line, canRegister });
 });

@@ -26,6 +26,24 @@ npm test               # pricing engine tests
 - **`PHOTON_PROJECT_ID` + `PHOTON_PROJECT_SECRET`:** a real iMessage number via Photon 2.0 (Spectrum SDK).
   Put your teammates' numbers in `data/household.json → handles` so the agent knows who's talking.
   Set `PUBLIC_URL` to a tunnel (`npx cloudflared tunnel --url http://localhost:3000`) so the case-file link opens on phones.
+- **`MONGODB_URI`:** saves the cart, rulings, chat and household to MongoDB (a free Atlas M0 cluster is enough).
+  Without it, everything is saved to `data/*.local.json` on this computer. Either way, restarts no longer wipe the cart.
+
+## Host it
+
+The server is one long-running Node process (the Photon stream stays connected), so host it as a container with
+**exactly one instance, always on** (Cloud Run with min and max instances 1 and CPU always allocated, Render, Fly or Railway).
+
+```bash
+docker build -t cart-court .
+docker run -p 8080:8080 --env-file .env cart-court   # try the image locally first
+```
+
+Set these on the host: `MONGODB_URI`, `ADMIN_TOKEN` (`openssl rand -hex 24`), `PUBLIC_URL` (the host's https address),
+plus the Gemini and Photon keys. Then open `https://<host>/?key=<ADMIN_TOKEN>` once to unlock the dashboard and `/setup`
+in that browser. Everyone else only gets the case file. Check `https://<host>/healthz`: it should say `"db":"mongodb"`.
+On first connect, an empty database copies in whatever `data/*.local.json` the server finds, so you can move a
+household you set up on a laptop by running it once locally with `MONGODB_URI` set.
 
 ## How it works
 
@@ -36,6 +54,7 @@ Dashboard + /sim (backup) ┘     │
                                 ├─► Gemini + tools (tools.ts)   ← talks, reads photos, picks tools
                                 │        └─► engine.ts           ← ALL numbers: fit, storage, trade-in, promos, WAIT dates, plans
                                 └─► store.ts ──SSE──► /cart (live case file) · /checkout (mock store)
+                                       └─► db.ts ──► MongoDB (MONGODB_URI) or data/*.local.json
 ```
 
 **Rule that wins the T-Mobile judges: the LLM never does math.** Every price, date, and saving comes from `engine.ts`.
@@ -46,6 +65,7 @@ Dashboard + /sim (backup) ┘     │
 | `src/engine.ts` | `runTrial` (rulings), `advanceTrial` (clock moves, held items re-judged), `leavingNest`, `recommend` |
 | `src/tools.ts` | Tool layer + verdict text formatter |
 | `src/agent.ts` | Persona/system prompt, when to speak, private "approach the bench" notes, Gemini tool loop, rules fallback |
+| `src/db.ts` | Saves state: MongoDB when `MONGODB_URI` is set, otherwise `data/*.local.json`. Loaded once at startup, written in the background |
 | `src/channels/photon.ts` | Photon 2.0: inbound stream, group vs DM, image attachments, replies |
 | `public/` | `sim.html` (fake iMessage + demo controls), `cart.html` (case file), `checkout.html` (mock store) |
 

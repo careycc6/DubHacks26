@@ -1,13 +1,11 @@
 // Who is texting? Maps real phone numbers / Apple IDs to household members.
 // Numbers in data/household.json are matched first; anyone else introduces themselves in chat
-// ("I'm Maya") and the claim is saved to data/claims.local.json (gitignored) so it survives restarts.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// ("I'm Maya") and the claim is saved (db.ts: MongoDB or data/claims.local.json) so it survives restarts.
 import { savedMemberIds } from "./data.ts";
+import { get, put } from "./db.ts";
 import { world } from "./store.ts";
 
-const file = fileURLToPath(new URL("../data/claims.local.json", import.meta.url));
-const claims: Record<string, string> = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+const claims = get<Record<string, string>>("claims", {});
 /** The simulator's "new phone": claims stay in memory and never show up as a real contact. */
 export const SIM_HANDLE = "+15555550199";
 const asked = new Set<string>(); // handles we've already asked "who are you?" in a group
@@ -26,7 +24,7 @@ export function memberForHandle(handle?: string): string | undefined {
 
 export function claim(handle: string, memberId: string) {
   claims[handle] = memberId;
-  writeFileSync(file, JSON.stringify(Object.fromEntries(Object.entries(claims).filter(([h]) => h !== SIM_HANDLE)), null, 2));
+  put("claims", Object.fromEntries(Object.entries(claims).filter(([h]) => h !== SIM_HANDLE)));
 }
 
 /** Demo reset: forget the simulator's fake phone only. Real people stay linked. */
