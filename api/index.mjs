@@ -1009,6 +1009,7 @@ function cartLabel(world2, i) {
   const many = (name) => (i.quantity ?? 1) > 1 ? `${i.quantity} \xD7 ${name}` : name;
   if (i.kind === "device") return `${phone(world2, i.phoneId).name} ${i.storageGB}GB`;
   if (i.kind === "product") return many(i.custom?.name ?? productLabel(product(world2, i.productId), i.variant ?? variants(product(world2, i.productId))[0]));
+  if (i.kind === "accessory") return many(world2.catalog.accessories?.find((a) => a.id === i.accessoryId)?.name ?? "an accessory");
   return world2.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "an add-on";
 }
 function cartPrice(world2, i) {
@@ -1017,6 +1018,7 @@ function cartPrice(world2, i) {
     const p = i.productId ? product(world2, i.productId) : void 0;
     return (p ? p.prices[i.variant ?? variants(p)[0]] : i.custom.price) * (i.quantity ?? 1);
   }
+  if (i.kind === "accessory") return (world2.catalog.accessories?.find((a) => a.id === i.accessoryId)?.price ?? 0) * (i.quantity ?? 1);
   return (world2.catalog.addons.find((a) => a.id === i.addonId)?.monthly ?? 0) * 12;
 }
 
@@ -3373,7 +3375,7 @@ async function reply_(msg) {
   const usage = usageStep(msg);
   if (usage) return usage;
   const cartEdit = CLEAR_CART.test(msg.text) || REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || BOUGHT.test(msg.text) && priceIn(msg.text) !== void 0;
-  if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== void 0 || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
+  if ((TRIAL_INTENT.test(msg.text) || isBundle(msg) || familyBudget(msg.text) !== void 0 || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
   const applied = [];
   try {
@@ -3563,7 +3565,7 @@ Hard rules:
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
-- Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
+- Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. "Add the iPhone 17 Pro with a screen protector and accessories" means add the phone AND every accessory named; "accessories" alone means the essentials (case, screen protector, charger) that fit that phone. When recommending a phone, you may suggest one matching accessory.
 - Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove or change cart items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly (a kid who bought something says "bought it for $X" and it comes off the cart).
 - Kids' adds become requests (the add tools return requested: true): tell them a parent has to OK it. A parent says "approve" / "approve Jaret's" / "deny" -> approve_request / deny_request.
 - Never add a phone that isn't exactly what they named ("iphone 18" when there's an 18 Pro and an 18 Pro Max): call recommend_phones with model and let them pick.
@@ -3695,6 +3697,8 @@ function rulesReply(msg) {
     if (r.error) return r.waiting ? `${r.error} Say whose: ${r.waiting.join(" \xB7 ")} (e.g. "approve Jaret's", or "approve all").` : r.error;
     return yes ? `\u2705 Approved: ${r.approved.join(", ")}. It's in the family cart. Say "court, rule" when everyone's in.` : `\u{1F6AB} Not this time: ${r.denied.join(", ")}.`;
   }
+  const bundle = msg.image ? null : bundleAdd(msg, target);
+  if (bundle) return bundle;
   const bare = text.match(/\b(?:add|buy|get me)\s+(?:me\s+)?(?:the\s+|a\s+|an\s+)?(.+?)(?:\s+(?:to|in)\s+(?:the\s+|our\s+|my\s+)?(?:family\s+)?cart)?\s*[.!]*$/i);
   const bareItem = bare?.[1].replace(/\s+for\s+.*$/i, "").trim();
   const bareAdd = bare && !/\sfor\s/i.test(bare[1]) && !PROTECTION_ASK.test(text) && !accessoryType(bareItem) && !/\?/.test(text) && !/^(?:#|number )?(first|second|third|1st|2nd|3rd|[123])\b/i.test(bareItem) && (bestMatch(world.catalog.phones, bareItem) || bestMatch(world.catalog.products ?? [], bareItem)) ? [bare[0], bareItem, "me", void 0] : void 0;
@@ -3883,6 +3887,71 @@ Say "add the first one" to put it in the family cart.`;
   ].join("\n");
 }
 var ONLY_PARENTS = (what) => `Only a parent can ${what}.`;
+var ESSENTIALS = /^(?:(?:the|some|all the|all|its|their|his|her|my|matching|basic|essential)\s+)*(accessor(?:y|ies)|essentials|the works)$/i;
+function bundleParts(text) {
+  if (/\?/.test(text) || /\bin case\b/i.test(text)) return null;
+  const m = text.match(/^\s*(?:court[,:]?\s*)?(?:please\s+)?(?:add|buy|get me|get)\s+(?:me\s+)?(.+?)\s*[.!]*$/i);
+  if (!m) return null;
+  const body = m[1].replace(/\s+(?:to|in)\s+(?:the\s+|our\s+|my\s+)?(?:family\s+)?cart\b/i, "").replace(/\s+for\s+\S.*$/i, "");
+  const parts = body.split(/\s*(?:,|&|\+|\balong with\b|\bwith\b|\bplus\b|\band\b)\s*/i).map((s) => s.replace(/^(?:(?:a|an|the|one|some|matching)\s+)+/i, "").trim()).filter(Boolean);
+  if (parts.length < 2 && !(parts.length === 1 && ESSENTIALS.test(parts[0])) || !parts.some((p) => accessoryType(p) || ESSENTIALS.test(p))) return null;
+  const known = (p) => ESSENTIALS.test(p) || (accessoryType(p) ? true : !!bestMatch(world.catalog.phones, p.replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim()));
+  if (!parts.every(known) || parts.filter((p) => !accessoryType(p) && !ESSENTIALS.test(p)).length > 1) return null;
+  return parts;
+}
+var isBundle = (msg) => !msg.image && !!bundleParts(msg.text);
+function bundleAdd(msg, target) {
+  const parts = bundleParts(msg.text);
+  if (!parts) return null;
+  const lines = [];
+  let asked2 = false;
+  const run = (r) => {
+    if (r.error) return lines.push(`Objection: ${r.error}`);
+    asked2 ||= !!r.requested;
+    lines.push(`\u2022 ${r.added.replace(/ for [^,]+$/, "")}${r.price ? `, ${usd(r.price)}` : ""}`);
+  };
+  const phonePart = parts.find((p) => !accessoryType(p) && !ESSENTIALS.test(p));
+  if (phonePart) {
+    const gb = phonePart.match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
+    const name = phonePart.replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
+    const hit = bestMatch(world.catalog.phones, name);
+    if (missingWords(hit.item, name).length) {
+      const r = callTool("recommend_phones", { member: target, model: modelAsked(name) ?? name });
+      if (r.error) return `Objection: ${r.error}`;
+      const you = target === msg.memberId;
+      return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId)) + `
+
+Pick one, then say "add accessories" and the court will match them to it.`;
+    }
+    run(callTool("add_phone_to_cart", { member: target, phone: name, storageGB: gb ? Number(gb) : void 0, addedBy: msg.memberId }));
+  }
+  const cart = [...state.cart, ...(state.requests ?? []).map((r) => r.item)];
+  const has = new Set(cart.filter((i) => i.kind === "accessory" && i.memberId === target).map((i) => world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.type));
+  const ids = [];
+  for (const p of parts.filter((x) => x !== phonePart)) {
+    const type = accessoryType(p);
+    if (!type) continue;
+    const specific = p.replace(/\b(cases?|screen protectors?|protectors?|glass|chargers?|charging|power ?bank|battery pack|earbuds|buds|headphones|earphones)\b/gi, "").trim();
+    const named = specific.split(/\s+/).some((w) => w.length > 2) ? findAccessory(world, p) : void 0;
+    const id = named?.type === type ? named.id : recommendAccessories(world, target, { type, cart })[0]?.accessoryId;
+    if (id) ids.push(id);
+  }
+  const chosen = new Set(ids.map((id) => world.catalog.accessories?.find((a) => a.id === id)?.type));
+  if (parts.some((p) => ESSENTIALS.test(p))) {
+    for (const a of recommendAccessories(world, target, { cart })) if (!chosen.has(a.type) && !has.has(a.type)) ids.push(a.accessoryId);
+  }
+  for (const id of [...new Set(ids)]) run(callTool("add_accessory_to_cart", { member: target, accessory: id }));
+  const who = nameOf3(target).split(/\s+/)[0];
+  if (asked2) {
+    const parents = world.household.members.filter((m) => canManage(m.id)).map((m) => m.name.split(/\s+/)[0]);
+    return `\u{1F4E8} Asked ${parents.join(" and ") || "a parent"} to OK these for ${who}:
+${lines.join("\n")}
+A parent texts "approve all" to put them in the family cart.`;
+  }
+  return `\u{1F4E5} Added to the family cart for ${who}:
+${lines.join("\n")}
+Nobody checks out until the court rules.`;
+}
 function addedText(r, extra = "", tail = " Nobody checks out until the court rules.") {
   if (r.error) return `Objection: ${r.error}`;
   if (r.requested) {

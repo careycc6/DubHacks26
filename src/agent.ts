@@ -209,7 +209,7 @@ async function reply_(msg: Incoming): Promise<string> {
   const usage = usageStep(msg);
   if (usage) return usage;
   const cartEdit = CLEAR_CART.test(msg.text) || (REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text)) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || (BOUGHT.test(msg.text) && priceIn(msg.text) !== undefined);
-  if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
+  if ((TRIAL_INTENT.test(msg.text) || isBundle(msg) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
   const applied: ToolRun[] = [];
   try {
@@ -435,7 +435,7 @@ Hard rules:
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
-- Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
+- Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. "Add the iPhone 17 Pro with a screen protector and accessories" means add the phone AND every accessory named; "accessories" alone means the essentials (case, screen protector, charger) that fit that phone. When recommending a phone, you may suggest one matching accessory.
 - Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove or change cart items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly (a kid who bought something says "bought it for $X" and it comes off the cart).
 - Kids' adds become requests (the add tools return requested: true): tell them a parent has to OK it. A parent says "approve" / "approve Jaret's" / "deny" -> approve_request / deny_request.
 - Never add a phone that isn't exactly what they named ("iphone 18" when there's an 18 Pro and an 18 Pro Max): call recommend_phones with model and let them pick.
@@ -591,6 +591,8 @@ function rulesReply(msg: Incoming): string {
     if (r.error) return r.waiting ? `${r.error} Say whose: ${r.waiting.join(" · ")} (e.g. "approve Jaret's", or "approve all").` : r.error;
     return yes ? `✅ Approved: ${r.approved!.join(", ")}. It's in the family cart. Say "court, rule" when everyone's in.` : `🚫 Not this time: ${r.denied!.join(", ")}.`;
   }
+  const bundle = msg.image ? null : bundleAdd(msg, target);
+  if (bundle) return bundle;
   // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
   // "add an iPhone 18" / "buy me the pixel 10 256gb": no "for", so it's for whoever's named, else the sender.
   // Only when it names a phone or product; "add the first one", "add protection" and "add a case" are handled below.
@@ -824,6 +826,76 @@ function rulesReply(msg: Incoming): string {
 const ONLY_PARENTS = (what: string) => `Only a parent can ${what}.`;
 
 export { canManage };
+
+// "add the iPhone 17 Pro with a screen protector and accessories" / "add a case, a charger and airpods for Maya":
+// several things in one text, each added on its own. "accessories" means the essentials (case, screen protector,
+// charger) that fit the phone being added. Only when every piece is something the court knows; otherwise null.
+const ESSENTIALS = /^(?:(?:the|some|all the|all|its|their|his|her|my|matching|basic|essential)\s+)*(accessor(?:y|ies)|essentials|the works)$/i;
+function bundleParts(text: string): string[] | null {
+  if (/\?/.test(text) || /\bin case\b/i.test(text)) return null;
+  const m = text.match(/^\s*(?:court[,:]?\s*)?(?:please\s+)?(?:add|buy|get me|get)\s+(?:me\s+)?(.+?)\s*[.!]*$/i);
+  if (!m) return null;
+  const body = m[1].replace(/\s+(?:to|in)\s+(?:the\s+|our\s+|my\s+)?(?:family\s+)?cart\b/i, "").replace(/\s+for\s+\S.*$/i, "");
+  const parts = body.split(/\s*(?:,|&|\+|\balong with\b|\bwith\b|\bplus\b|\band\b)\s*/i)
+    .map((s) => s.replace(/^(?:(?:a|an|the|one|some|matching)\s+)+/i, "").trim()).filter(Boolean);
+  if ((parts.length < 2 && !(parts.length === 1 && ESSENTIALS.test(parts[0]))) || !parts.some((p) => accessoryType(p) || ESSENTIALS.test(p))) return null;
+  const known = (p: string) => ESSENTIALS.test(p) || (accessoryType(p) ? true : !!bestMatch(world.catalog.phones, p.replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim()));
+  if (!parts.every(known) || parts.filter((p) => !accessoryType(p) && !ESSENTIALS.test(p)).length > 1) return null;
+  return parts;
+}
+const isBundle = (msg: Incoming) => !msg.image && !!bundleParts(msg.text);
+
+function bundleAdd(msg: Incoming, target: string): string | null {
+  const parts = bundleParts(msg.text);
+  if (!parts) return null;
+  const lines: string[] = [];
+  let asked = false;
+  const run = (r: { added?: string; requested?: boolean; price?: number; error?: string }) => {
+    if (r.error) return lines.push(`Objection: ${r.error}`);
+    asked ||= !!r.requested;
+    lines.push(`• ${r.added!.replace(/ for [^,]+$/, "")}${r.price ? `, ${usd(r.price)}` : ""}`);
+  };
+  // The phone first, so the accessories fit it (a Pixel gets a Pixel case).
+  const phonePart = parts.find((p) => !accessoryType(p) && !ESSENTIALS.test(p));
+  if (phonePart) {
+    const gb = phonePart.match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
+    const name = phonePart.replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
+    const hit = bestMatch(world.catalog.phones, name)!;
+    if (missingWords(hit.item, name).length) {
+      // "iphone 18": which one? Show the options, never a guess. The accessories wait until they pick.
+      const r = callTool("recommend_phones", { member: target, model: modelAsked(name) ?? name }) as PhonePicks & { error?: string };
+      if (r.error) return `Objection: ${r.error}`;
+      const you = target === msg.memberId;
+      return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId)) +
+        `\n\nPick one, then say "add accessories" and the court will match them to it.`;
+    }
+    run(callTool("add_phone_to_cart", { member: target, phone: name, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId }) as never);
+  }
+  // Fit accessories to the phone they're getting (in the cart, or waiting on a parent's OK).
+  const cart = [...state.cart, ...(state.requests ?? []).map((r) => r.item)];
+  const has = new Set(cart.filter((i) => i.kind === "accessory" && i.memberId === target).map((i) => world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.type));
+  const ids: string[] = [];
+  for (const p of parts.filter((x) => x !== phonePart)) {
+    const type = accessoryType(p);
+    if (!type) continue;
+    // "rugged case" names one; a plain "case" gets the best fit for their phone.
+    const specific = p.replace(/\b(cases?|screen protectors?|protectors?|glass|chargers?|charging|power ?bank|battery pack|earbuds|buds|headphones|earphones)\b/gi, "").trim();
+    const named = specific.split(/\s+/).some((w) => w.length > 2) ? findAccessory(world, p) : undefined;
+    const id = named?.type === type ? named.id : recommendAccessories(world, target, { type, cart })[0]?.accessoryId;
+    if (id) ids.push(id);
+  }
+  const chosen = new Set(ids.map((id) => world.catalog.accessories?.find((a) => a.id === id)?.type));
+  if (parts.some((p) => ESSENTIALS.test(p))) {
+    for (const a of recommendAccessories(world, target, { cart })) if (!chosen.has(a.type) && !has.has(a.type)) ids.push(a.accessoryId);
+  }
+  for (const id of [...new Set(ids)]) run(callTool("add_accessory_to_cart", { member: target, accessory: id }) as never);
+  const who = nameOf(target).split(/\s+/)[0];
+  if (asked) {
+    const parents = world.household.members.filter((m) => canManage(m.id)).map((m) => m.name.split(/\s+/)[0]);
+    return `📨 Asked ${parents.join(" and ") || "a parent"} to OK these for ${who}:\n${lines.join("\n")}\nA parent texts "approve all" to put them in the family cart.`;
+  }
+  return `📥 Added to the family cart for ${who}:\n${lines.join("\n")}\nNobody checks out until the court rules.`;
+}
 
 /** "Added to the family cart", or, for a kid, "sent to Mom and Dad for an OK". */
 function addedText(r: { added?: string; requested?: boolean; error?: string }, extra = "", tail = " Nobody checks out until the court rules.") {

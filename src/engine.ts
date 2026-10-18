@@ -1274,6 +1274,7 @@ export function cartLabel(world: World, i: CartItem): string {
   const many = (name: string) => ((i.quantity ?? 1) > 1 ? `${i.quantity} × ${name}` : name);
   if (i.kind === "device") return `${phone(world, i.phoneId!).name} ${i.storageGB}GB`;
   if (i.kind === "product") return many(i.custom?.name ?? productLabel(product(world, i.productId!), i.variant ?? variants(product(world, i.productId!))[0]));
+  if (i.kind === "accessory") return many(world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.name ?? "an accessory");
   return world.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "an add-on";
 }
 
@@ -1284,5 +1285,6 @@ export function cartPrice(world: World, i: CartItem): number {
     const p = i.productId ? product(world, i.productId) : undefined;
     return (p ? p.prices[i.variant ?? variants(p)[0]] : i.custom!.price) * (i.quantity ?? 1);
   }
+  if (i.kind === "accessory") return (world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.price ?? 0) * (i.quantity ?? 1);
   return (world.catalog.addons.find((a) => a.id === i.addonId)?.monthly ?? 0) * 12;
 }
