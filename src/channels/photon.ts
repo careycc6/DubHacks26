@@ -10,13 +10,14 @@
 //  - Vercel: Photon POSTs each message to /api/photon/webhook (see handleWebhook). No stream; the
 //    SDK client is created on demand just to verify webhooks and send replies.
 import { Spectrum } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers/imessage";
+import { effect as withEffect, imessage } from "spectrum-ts/providers/imessage";
 import type { Message, Space } from "spectrum-ts";
 import { handle as handleMessage } from "../agent.ts";
 import { memberForHandle, welcome, welcomeQuestion } from "../claims.ts";
 import { background, serverless } from "../runtime.ts";
 import { addChat, state } from "../store.ts";
 import { registerChannel, sendTo } from "./index.ts";
+import { tapbackLog, tapbackText } from "../tapback.ts";
 
 type SpectrumApp = Awaited<ReturnType<typeof Spectrum>>;
 
@@ -57,8 +58,14 @@ async function connect(): Promise<SpectrumApp | undefined> {
     console.error("[photon] failed to start:", photonStatus.error);
     return undefined;
   }
-  registerChannel("photon", async (spaceId, text) => {
-    await spaces.get(spaceId.slice("photon:".length))?.send(text);
+  registerChannel("photon", async (spaceId, text, effect) => {
+    const space = spaces.get(spaceId.slice("photon:".length));
+    if (!space) return;
+    if (effect) {
+      try { await space.send(withEffect(text, imessage.effect.message[effect])); return; }
+      catch (e) { console.warn(`[photon] ${effect} effect failed, sending plain:`, (e as Error).message); }
+    }
+    await space.send(text);
   });
   photonStatus.state = "connected";
   reconnectDelay = 2_000; // healthy again: next drop retries quickly
@@ -90,14 +97,15 @@ async function onInbound(space: Space, message: Message) {
   spaces.set(space.id, space);
   photonStatus.line ??= lineOf(space);
 
-  const content = message.content as { type: string; text?: string; mimeType?: string; read?: () => Promise<Buffer> };
+  const content = message.content as { type: string; text?: string; mimeType?: string; read?: () => Promise<Buffer>; emoji?: string; target?: Message };
+  if (content.type === "reaction") return onTapback(space, message, content.emoji ?? "", content.target);
   let text = content.type === "text" ? content.text ?? "" : "";
   let image: { mimeType: string; base64: string } | undefined;
   if (content.type === "attachment" && content.mimeType?.startsWith("image/") && content.read) {
     image = { mimeType: content.mimeType, base64: (await content.read()).toString("base64") };
     text ||= "[photo]";
   }
-  if (!text && !image) return; // reactions, typing, read receipts...
+  if (!text && !image) return; // typing, read receipts, polls...
 
   const isGroup = (space as unknown as { type?: string }).type === "group";
   const spaceId = `photon:${space.id}`;
@@ -112,6 +120,34 @@ async function onInbound(space: Space, message: Message) {
     if (reply) await sendTo(spaceId, reply, !isGroup);
   } catch (err) {
     console.error("[photon] handler failed", err);
+  }
+}
+
+/** The text of a message the court sent (plain, or wrapped in an iMessage effect). */
+function textOf(m?: Message): string | undefined {
+  const c = m?.content as { type: string; text?: string; content?: { type: string; text?: string } } | undefined;
+  return c?.type === "text" ? c.text : c?.type === "effect" && c.content?.type === "text" ? c.content.text : undefined;
+}
+
+/** A tapback: 👎 on a ruling appeals it, ❓ asks why (see tapback.ts). Others are logged only. */
+async function onTapback(space: Space, message: Message, emoji: string, target?: Message) {
+  const isGroup = (space as unknown as { type?: string }).type === "group";
+  const spaceId = `photon:${space.id}`;
+  const handle = message.sender?.id;
+  const memberId = memberForHandle(handle);
+  if (!memberId) return; // strangers get the welcome when they text, not when they tap
+  // Tapping 👎 twice (or off and on) is still one appeal.
+  if (target?.id && alreadySeen(`tap:${target.id}:${handle}:${emoji}`)) return;
+  const targetText = textOf(target);
+  addChat({ spaceId, from: memberId, text: tapbackLog(emoji, targetText), private: !isGroup });
+  const text = tapbackText(emoji, targetText, target?.direction !== "inbound"); // the court's own message
+  if (!text) return;
+  console.log(`[photon] ${handle} (${memberId}) tapped ${emoji}: "${text}"`);
+  try {
+    const reply = await space.responding(() => handleMessage({ spaceId, isGroup, memberId, handle, text, addressed: true }));
+    if (reply) await sendTo(spaceId, reply, !isGroup);
+  } catch (err) {
+    console.error("[photon] tapback handler failed", err);
   }
 }
 
@@ -218,3 +254,6 @@ export async function sendToHandle(handle: string, text: string): Promise<string
   await sendTo(`photon:${id}`, text, true);
   return id;
 }
+
+/** Tests: feed one message through the same path a real Photon delivery takes. */
+export const receive = onInbound;

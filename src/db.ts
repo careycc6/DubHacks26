@@ -1,13 +1,13 @@
 // What the court remembers between restarts: a tiny key-value store with one entry per thing
 // (the cart and rulings, who's in the household, who claimed which number, who got a welcome).
 // MONGODB_URI set → MongoDB (survives redeploys, any machine can run the court).
-// Otherwise → data/<key>.local.json files (gitignored). Reads come from an in-memory copy loaded at startup,
+// Otherwise → data/<key>.local.json files (gitignored). CART_COURT_DB=memory saves nothing (tests). Reads come from an in-memory copy loaded at startup,
 // so the rest of the app stays synchronous; writes are batched and flushed in the background.
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Collection } from "mongodb";
 
-const KEYS = ["household", "claims", "welcomed", "state"] as const;
+const KEYS = ["household", "claims", "welcomed", "state", "checkpoints", "accounts"] as const;
 export type Key = (typeof KEYS)[number];
 
 // CART_COURT_DATA_DIR lets tests use a throwaway folder instead of your real household.
@@ -38,8 +38,8 @@ async function connect(uri: string) {
 }
 
 const uri = process.env.MONGODB_URI;
-export let backend: "mongodb" | "files" = "files";
-if (uri) {
+export let backend: "mongodb" | "files" | "memory" = process.env.CART_COURT_DB === "memory" ? "memory" : "files";
+if (uri && backend !== "memory") {
   try {
     await connect(uri);
     backend = "mongodb";
@@ -51,7 +51,7 @@ if (backend === "files") for (const key of KEYS) {
   const v = readFile(key);
   if (v !== undefined) cache.set(key, v);
 }
-console.log(`[db] ${backend === "mongodb" ? `MongoDB (${process.env.MONGODB_DB || "cartcourt"})` : "local files in data/"}`);
+if (backend !== "memory") console.log(`[db] ${backend === "mongodb" ? `MongoDB (${process.env.MONGODB_DB || "cartcourt"})` : "local files in data/"}`);
 
 /** A copy of what's saved under `key`, or `fallback` if nothing is. */
 export function get<T>(key: Key, fallback: T): T {
@@ -65,6 +65,7 @@ let writing: Promise<void> = Promise.resolve();
 /** Save `value` under `key`. Written within a moment; call flush() to wait for it. */
 export function put(key: Key, value: unknown) {
   cache.set(key, structuredClone(value));
+  if (backend === "memory") return;
   dirty.add(key);
   timer ??= setTimeout(() => void flush(), 250);
 }

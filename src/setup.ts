@@ -9,8 +9,10 @@ import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
 import { addPhotonUser, dashboardToken } from "./photonUsers.ts";
 import { loadHouseholdLocal, loadWorld, savedMemberIds, saveHouseholdLocal } from "./data.ts";
 import { backend, flush, get, onReload, put } from "./db.ts";
-import { changed, world } from "./store.ts";
+import { changed, state, world } from "./store.ts";
 import { claimedHandles } from "./claims.ts";
+import { signedIn } from "./auth.ts";
+
 
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
 const exampleFile = fileURLToPath(new URL("../.env.example", import.meta.url));
@@ -50,9 +52,10 @@ const sameSecret = (a: string, b: string) => timingSafeEqual(createHash("sha256"
 const adminCookie = (req: Request) =>
   (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${ADMIN_COOKIE}=`))?.slice(ADMIN_COOKIE.length + 1);
 
-/** The computer running the court, or (hosted) a browser that opened /?key=ADMIN_TOKEN once. */
+/** The computer running the court, a parent signed in with Google/Apple, or a browser that opened /?key=ADMIN_TOKEN once. */
 export function isAdmin(req: Request) {
   if (isLocal(req)) return true;
+  if (signedIn(req)) return true;
   const token = process.env.ADMIN_TOKEN;
   const cookie = adminCookie(req);
   return !!token && !!cookie && sameSecret(decodeURIComponent(cookie), token);
@@ -73,6 +76,10 @@ export function adminLogin(req: Request, res: Response, next: NextFunction) {
 
 export function localOnly(req: Request, res: Response, next: NextFunction) {
   if (isAdmin(req)) return next();
+  // A parent opening a page: send them to sign in, then bring them back.
+  if (req.method === "GET" && !req.originalUrl.startsWith("/api/") && req.accepts("html")) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
   res
     .status(403)
     .send("This page only works on the computer running Cart Court (http://localhost:3000), or on a hosted court after opening its admin link (/?key=…). The family's case file is at /cart.");
@@ -83,7 +90,21 @@ const mask = (v?: string) => (v ? `••••${v.slice(-4)}` : "");
 export const setupRouter = Router();
 // The dashboard, setup and demo controls are for whoever runs the court. Phones only get /cart.
 setupRouter.use(adminLogin);
-setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo"], localOnly);
+setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo", "/welcome", "/welcome.html", "/api/guide"], localOnly);
+
+// The setup guide's checklist: what's done and what's left.
+setupRouter.get("/api/guide", (_req, res) => {
+  const saved = savedMemberIds();
+  const members = world.household.members.filter((m) => saved.includes(m.id));
+  res.json({
+    household: { saved: members.length, withNumbers: members.filter((m) => m.handles.length).length, names: members.map((m) => m.name) },
+    budget: state.budget ?? null,
+    gemini: !!process.env.GEMINI_API_KEY,
+    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonStatus.state, line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
+    welcomed: members.filter((m) => m.handles.some((h) => welcomed.includes(h))).length,
+    database: backend,
+  });
+});
 
 setupRouter.get("/api/setup", (_req, res) => {
   res.json({

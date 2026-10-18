@@ -90,6 +90,26 @@ Check it at `/healthz`: it should say `"db":"mongodb"`, and the server log print
 If it can't connect, it says why in the log and keeps saving to files. Common causes: a wrong password, an IP not
 allowed yet, or a mistyped address.
 
+## 5. Parent sign-in with Google or Apple (optional, 5 min)
+
+On a hosted court (Vercel), parents sign in at **`/login`** instead of using the `?key=ADMIN_TOKEN` link.
+The first parent to sign in to a **fresh** court (no family saved yet) becomes its owner and lands on the
+**setup guide** (`/welcome`): family, budget, iMessage, welcome texts, co-parent. After that, sign-in goes
+straight to the dashboard. Co-parents are added by email under **Settings → Who can sign in** (or in the guide).
+
+**Google** (needed for the button to show):
+1. [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → **Create credentials → OAuth client ID** → *Web application*.
+2. **Authorized JavaScript origins:** your court's URL (e.g. `https://dub-hacks26.vercel.app`) and `http://localhost:3000`.
+3. Copy the client ID into `GOOGLE_CLIENT_ID` (Vercel → Settings → Environment Variables, and `.env` locally).
+
+**Apple** (optional; needs an Apple Developer account):
+1. developer.apple.com → Identifiers → **Services IDs** → new ID (e.g. `com.yourname.cartcourt`), enable *Sign in with Apple*.
+2. Add your domain and the return URL `https://<your court>/login`.
+3. Put the Services ID in `APPLE_CLIENT_ID` (and `APPLE_REDIRECT_URI` if the return URL differs).
+
+Also set `SESSION_SECRET` (any long random string) so sign-ins survive redeploys. `OWNER_EMAILS` (comma-separated)
+pre-approves emails. Nothing is stored except who may sign in; Google/Apple tokens are checked against their published keys.
+
 ## Things to try
 
 | Say or do | What happens |

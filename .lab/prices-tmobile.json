@@ -1,0 +1,47 @@
+{
+  "_checked": "2026-10-18",
+  "_notes": "Read live on t-mobile.com (curl + browser pane). With-AutoPay = label price minus $5/line. Excludes $5.49/line fee, taxes, $35/line connection charge. Deals pay out over up to 36 monthly bill credits.",
+  "plans": [
+    {"name": "Experience Beyond 2.0", "autopay": {"1": 100, "2": 170, "3": 220, "4": 270}, "noAutopay": {"1": 105, "2": 180, "3": 230, "4": 280, "5": 330}, "url": "https://www.t-mobile.com/cell-phone-plans", "notes": "250GB hotspot, 5-yr price guarantee, Netflix+Hulu, T-Satellite, 30GB Canada/Mexico, 15GB in 215+ countries"},
+    {"name": "Experience More 2.0", "autopay": {"1": 85, "2": 140, "3": 170, "4": 200}, "noAutopay": {"1": 90, "2": 150, "3": 185, "4": 220, "5": 255}, "url": "https://www.t-mobile.com/cell-phone-plans", "notes": "60GB hotspot, Netflix with ads, 5-yr price guarantee"},
+    {"name": "Essentials 2.0", "autopay": {"1": 60, "2": 90, "3": 105, "4": 120}, "noAutopay": {"1": 65, "2": 100, "3": 120, "4": 140, "5": 160}, "url": "https://www.t-mobile.com/cell-phone-plans", "notes": "50GB premium data"}
+  ],
+  "addons": [
+    {"name": "Protection 360", "monthly": "7-26 per device by tier", "flagshipEstimate": 26, "verified": false, "url": "https://www.t-mobile.com/benefits/phone-protection-plans", "notes": "range verified; flagship tier price inferred"},
+    {"name": "International Pass 1 Day", "once": 10, "url": "https://www.t-mobile.com/cell-phone-plans/international-roaming-plans/unlimited-calling-data-pass"},
+    {"name": "International Pass 10 Day", "once": 50, "url": "https://www.t-mobile.com/cell-phone-plans/international-roaming-plans/unlimited-calling-data-pass"},
+    {"name": "International Pass 30 Day", "once": 75, "url": "https://www.t-mobile.com/cell-phone-plans/international-roaming-plans/unlimited-calling-data-pass"},
+    {"name": "Hotspot data plan (separate device)", "monthly": {"5GB": 5, "25GB": 25, "100GB": 50}, "url": "https://www.t-mobile.com/cell-phone-plans/affordable-data-plans/hotspots", "notes": "no phone-line hotspot add-on found; Beyond includes 250GB, More 60GB"},
+    {"name": "iPhone Handoff", "monthly": 5, "url": "https://www.t-mobile.com/offers/apple-iphone-deals"}
+  ],
+  "deals": [
+    {"device": "iPhone 17", "value": 830, "tradeIn": true, "plans": "More/Beyond", "url": "https://www.t-mobile.com/offers/apple-iphone-deals", "verified": true},
+    {"device": "iPhone 17 Pro", "value": 1000, "tradeIn": true, "plans": "Beyond", "url": "https://www.t-mobile.com/offers/apple-iphone-deals", "verified": true, "notes": "any condition"},
+    {"device": "iPhone 17 Pro Max", "value": 1000, "plans": "Beyond", "url": "https://www.t-mobile.com/cell-phone/apple-iphone-17-pro-max", "verified": false},
+    {"device": "iPhone 18 Pro", "value": 1000, "tradeIn": "trade-in or new line w/ port-in", "plans": "Beyond", "url": "https://www.t-mobile.com/offers/apple-iphone-deals", "verified": true},
+    {"device": "iPhone 18 Pro Max", "value": 1000, "tradeIn": "trade-in or new line w/ port-in", "plans": "Beyond", "url": "https://www.t-mobile.com/offers/apple-iphone-deals", "verified": true},
+    {"device": "iPhone Duo", "value": 1000, "tradeIn": "trade-in or new line w/ port-in", "plans": "Beyond", "url": "https://www.t-mobile.com/offers/apple-iphone-deals", "verified": true},
+    {"device": "Pixel 10", "value": 500, "plans": "Beyond", "url": "https://www.t-mobile.com/cell-phone/google-pixel-10", "verified": false},
+    {"device": "Pixel 10 Pro", "value": 500, "plans": "Beyond", "url": "https://www.t-mobile.com/cell-phone/google-pixel-10-pro", "verified": false},
+    {"device": "Pixel 11", "value": 900, "tradeIn": false, "plans": "Essentials/More/Beyond", "url": "https://www.t-mobile.com/offers/google-phone-deals", "verified": true},
+    {"device": "Pixel 11 Pro", "value": 1000, "tradeIn": false, "newLine": true, "plans": "More/Beyond", "url": "https://www.t-mobile.com/offers/google-phone-deals", "verified": true, "notes": "fine print conflicts ($1100 vs under $200)"},
+    {"device": "Pixel 11 Pro XL", "value": 1000, "tradeIn": "trade-in or new line", "plans": "More/Beyond", "url": "https://www.t-mobile.com/offers/google-phone-deals", "verified": true},
+    {"device": "Galaxy S26", "value": 1000, "tradeIn": false, "newLine": true, "plans": "Essentials/More/Beyond", "url": "https://www.t-mobile.com/offers/samsung-phone-deals", "verified": true},
+    {"device": "Galaxy S26 Ultra", "value": 1200, "tradeIn": false, "newLine": true, "plans": "More/Beyond", "url": "https://www.t-mobile.com/offers/samsung-phone-deals", "verified": true},
+    {"device": "Galaxy S26 FE", "value": 800, "tradeIn": "trade-in or new line", "plans": "More/Beyond for trade-in", "url": "https://www.t-mobile.com/offers/samsung-phone-deals", "verified": true}
+  ],
+  "tmobilePrices": {
+    "iphone-17": {"256": 929.99, "512": 1129.99},
+    "iphone-17-pro": {"256": 1099.99, "512": 1299.99, "1024": 1499.99},
+    "iphone-17-pro-max": {"256": 1199.99, "512": 1399.99, "1024": 1599.99},
+    "pixel-10": {"128": 699.99},
+    "pixel-10-pro": {"128": 999.99},
+    "galaxy-s26": {"256": 999.99},
+    "galaxy-s26-ultra": {"256": 1399.99, "512": 1599.99},
+    "iphone-18-pro": {"256": 1199.99, "512": 1399.99},
+    "iphone-18-pro-max": {"256": 1299.99},
+    "pixel-11": {"256": 899.99},
+    "pixel-11-pro": {"256": 1099.99}
+  },
+  "tradeIn": {"_notes": "T-Mobile publishes no fixed values (estimator only). Promo credit examples: iPhone 16 $1000/$830, iPhone 14 $730/$630, Pixel 10 $1000, Pixel 5 $500, Galaxy S24 $800, Galaxy A54 $600."}
+}

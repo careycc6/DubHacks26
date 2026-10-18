@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadWorld } from "../src/data.ts";
-import { findPhone, leavingNest, readyHolds, recommend, runTrial, shopLinks } from "../src/engine.ts";
+import { findPhone, leavingNest, readyHolds, recommend, runTrial } from "../src/engine.ts";
 import type { CartItem } from "../src/types.ts";
 
 const world = loadWorld({ local: false }); // the example family, never your real household
@@ -123,6 +123,10 @@ test("reads what people care about from a message", async () => {
   assert.deepEqual(parsePrefs("something small, under $600, I like Samsung"), { smallScreen: true, budget: 600, brand: "Samsung" });
   assert.deepEqual(parsePrefs("best camera for selfies"), { camera: true });
   assert.deepEqual(parsePrefs("ok sounds good"), {});
+  // Naming a model is a pick, not a preference: the demo's "everyone has the 17 Pro Max" must not change Maya's ruling.
+  assert.deepEqual(parsePrefs("literally everyone at school has the 17 Pro Max"), {});
+  assert.deepEqual(parsePrefs("why not the pro max"), {});
+  assert.deepEqual(parsePrefs("is the S25 Ultra or the 16 Plus better?"), {});
 });
 
 test("picks follow what they asked for", async () => {
@@ -130,7 +134,7 @@ test("picks follow what they asked for", async () => {
   const top = (msg: string, who = "maya") => recommend(world, who, { prefs: parsePrefs(msg) });
   assert.ok(top("long battery life").slice(0, 2).every((r) => world.catalog.phones.find((p) => p.id === r.phoneId)!.batteryHours >= 32));
   assert.equal(world.catalog.phones.find((p) => p.id === top("I need a bigger screen")[0].phoneId)!.screenIn, 6.9);
-  assert.ok(top("cheap phone under $500").every((r) => r.price <= 500));
+  assert.ok(top("cheap phone under $700").every((r) => r.price <= 700));
   assert.ok(top("best camera, I like iPhone").every((r) => r.name.startsWith("iPhone")));
 });
 
@@ -139,6 +143,29 @@ test("someone who asked for a great camera keeps their Pro phone", () => {
   const withPrefs = runTrial(world, demoCart, 0, { prefs: { maya: { camera: true } } }).rulings.find((r) => r.itemId === "3")!;
   assert.equal(plain.proposed?.phoneId, "iphone-17");
   assert.equal(withPrefs.proposed?.phoneId, "iphone-17-pro-max");
+});
+
+test("every ruling's math adds up to what the family pays", () => {
+  const cracked = loadWorld({ local: false });
+  cracked.household.members.find((m) => m.id === "maya")!.device.screenCracked = true;
+  const lowBattery = loadWorld({ local: false });
+  for (const m of lowBattery.household.members) m.device.batteryHealth = 70; // nobody waits: SWAP/KEEP paths
+  const trials = [
+    runTrial(world, demoCart, 0),
+    runTrial(world, demoCart, 0, { tightBudget: true }),
+    runTrial(world, demoCart, 41),
+    runTrial(world, demoCart, 120),
+    runTrial(cracked, demoCart, 0),
+    runTrial(lowBattery, demoCart, 0),
+  ];
+  for (const t of trials) {
+    for (const r of t.rulings) {
+      assert.ok(r.math?.length, `${r.label} has no math`);
+      const total = r.math!.reduce((s, l) => s + l.amount, 0);
+      assert.equal(total, r.stamp === "WAIT" ? r.heldCost : r.nowCost, `${r.label} (${r.stamp}, day ${t.day})`);
+      assert.equal(r.math![0].amount, r.originalCost, `${r.label} starts from what was argued`);
+    }
+  }
 });
 
 test("family budget covers the whole plan (now + later) and trims flagships to fit", async () => {
@@ -212,13 +239,6 @@ test("a worn battery on a newer phone suggests a battery replacement; a 6-year-o
   assert.ok(!t.rulings.find((x) => x.memberId === "rosa")!.reasons.some((x) => x.includes("battery replacement")));
 });
 
-test("shop links go to official stores, T-Mobile first", () => {
-  assert.deepEqual(shopLinks("Clear Case with MagSafe", ["Apple"]).map((l) => l.store), ["T-Mobile", "Apple"]);
-  assert.deepEqual(shopLinks("Pixel 10", ["Google"]).map((l) => l.store), ["T-Mobile", "Google Store"]);
-  assert.deepEqual(shopLinks("Power Bank", ["Apple", "Google", "Samsung"]).map((l) => l.store), ["T-Mobile"]);
-  assert.match(shopLinks("Clear Case", ["Apple"])[1].url, /apple\.com\/us\/search\/clear-case\?/);
-});
-
 test("moving the clock keeps the family-budget line", async () => {
   const { advanceTrial } = await import("../src/engine.ts");
   const t0 = runTrial(world, demoCart, 0, { budget: 1000 });
@@ -232,12 +252,12 @@ test("the price track skips deals the ruling would turn down", async () => {
   const { priceTrack } = await import("../src/engine.ts");
   const elena = world.household.members.find((m) => m.id === "elena")!;
   const sticker = world.catalog.phones.find((p) => p.id === "galaxy-s26-ultra")!.prices["256"];
-  const t = priceTrack(world, "galaxy-s26-ultra", 256, 0, 120, elena);
+  const t = priceTrack(world, "galaxy-s26-ultra", 256, 0, 120, undefined, elena);
   assert.equal(t.now, sticker); // premium-plan credit costs more in plan fees than it gives
   assert.deepEqual(t.lowest, { day: 60, price: sticker - 200 }); // the holiday deal is real
   // A trade-in deal doesn't show for someone with nothing to trade in.
   const rosa = world.household.members.find((m) => m.id === "rosa")!;
-  assert.equal(priceTrack(world, "iphone-17-pro", 256, 0, 120, rosa).lowest.price, 1099);
+  assert.equal(priceTrack(world, "iphone-17-pro", 256, 0, 120, undefined, rosa).lowest.price, 1099);
 });
 
 test("dad and mom come from the household, not hard-coded ids", async () => {

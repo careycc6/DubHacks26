@@ -1,0 +1,273 @@
+{
+  "_checked": "2026-10-18",
+  "_notes": "Vacuum/kitchen: brand pages mostly 403/timeouts; prices marked verified:false come from search snippets. Mattress/shoe second pass supersedes prices-mattress-misc.json where they differ.",
+  "items": [
+    {
+      "id": "dyson-v15",
+      "name": "Dyson V15 Detect",
+      "prices": {
+        "std": 850
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Dyson",
+          "url": "https://www.dyson.com/vacuum-cleaners/cordless/v15"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/dyson-v15-detect-cordless-vacuum-with-8-accessories-yellow-nickel/J3ZCSYCVPL"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0C2J8KJH9"
+        }
+      ],
+      "notes": "$849.99 on dyson.com, out of stock there right now"
+    },
+    {
+      "id": "shark-stratos",
+      "name": "Shark Stratos Cordless",
+      "prices": {
+        "std": 330
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/shark-stratos-multiflex-cordless-stick-vacuum-with-clean-sense-iq-and-odor-neutralizer-duoclean-powerfins-hairpro-ash-purple/6514613.p?skuId=6514613"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0B5JMNGNQ",
+          "price": 330
+        }
+      ],
+      "notes": "Shark's own site now sells the PowerDetect Speed (IA1241, $429.99) in its place; Amazon sells the Stratos at $329.99 (list $499.99)"
+    },
+    {
+      "id": "bissell-cleanview",
+      "name": "BISSELL CleanView Swivel Rewind Pet (3837)",
+      "prices": {
+        "std": 165
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "BISSELL",
+          "url": "https://www.bissell.com/en-us/product/cleanview-swivel-rewind-pet-vacuum-cleaner-3837.html"
+        }
+      ]
+    },
+    {
+      "id": "breville-barista",
+      "name": "Breville Barista Express",
+      "prices": {
+        "std": 700
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Breville",
+          "url": "https://www.breville.com/en-us/product/bes870"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/breville-the-barista-express-espresso-machine-with-integrated-grinder-stainless-steel/6291169.p?skuId=6291169",
+          "price": 700
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B00CH9QWOU",
+          "price": 660
+        }
+      ],
+      "notes": "out of stock on breville.com; retailer prices from snippets"
+    },
+    {
+      "id": "kitchenaid-artisan",
+      "name": "KitchenAid Artisan 5-Qt Stand Mixer",
+      "prices": {
+        "std": 500
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "KitchenAid",
+          "url": "https://www.kitchenaid.com/countertop-appliances/stand-mixers/tilt-head-stand-mixers/p.artisan-series-5-quart-tilt-head-stand-mixer.KSM150PSER.html"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/kitchenaid-ksm150pswh-artisan-series-tilt-head-stand-mixer-white/5224884.p?skuId=5224884"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B00005UP2K",
+          "price": 500
+        }
+      ],
+      "notes": "$499.99 list; kitchenaid.com wouldn't load, Amazon's live price is $499.95"
+    },
+    {
+      "id": "ninja-air-fryer",
+      "name": "Ninja Air Fryer AF101 (4 qt)",
+      "prices": {
+        "std": 120
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/ninja-ninja-air-fryer-black-gray/6269234.p"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B07FDJMC9Q",
+          "price": 120
+        }
+      ],
+      "notes": "Ninja's own site no longer lists the AF101; Amazon sells it at $119.99"
+    },
+    {
+      "id": "purple-mattress",
+      "name": "Purple Plus Mattress",
+      "prices": {
+        "Twin": 1599,
+        "Queen": 2099
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Purple",
+          "url": "https://purple.com/mattresses/plus"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B09GXG53YS",
+          "price": 2099
+        }
+      ]
+    },
+    {
+      "id": "casper-original",
+      "name": "Casper Original Mattress",
+      "prices": {
+        "Twin": 895,
+        "Queen": 1295
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Casper",
+          "url": "https://casper.com/products/original-foam-v1"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B085HGGMHG",
+          "price": 1295
+        }
+      ],
+      "notes": "still sold; site now leads with Casper One ($874/$1149, sale $699/$899)"
+    },
+    {
+      "id": "zinus-foam",
+      "name": "Zinus Green Tea Memory Foam Mattress",
+      "prices": {
+        "Twin": 499,
+        "Queen": 718
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Zinus",
+          "url": "https://www.zinus.com/products/original-green-tea-memory-foam-mattress"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0CKYZC93L",
+          "price": 300
+        }
+      ],
+      "notes": "zinus.com version is 10in on clearance; 12in only on Amazon (Queen $299.99)"
+    },
+    {
+      "id": "nike-pegasus-41",
+      "name": "Nike Pegasus 42",
+      "prices": {
+        "std": 145
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Nike",
+          "url": "https://www.nike.com/t/pegasus-42-mens-road-running-shoes-S1bYkOza/IB1873-001"
+        }
+      ],
+      "notes": "Pegasus 41 men's gone; Amazon only third-party"
+    },
+    {
+      "id": "hoka-clifton-10",
+      "name": "HOKA Clifton 10",
+      "prices": {
+        "std": 155
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "HOKA",
+          "url": "https://www.hoka.com/en/us/mens-everyday-running-gear/clifton-10/1162030.html"
+        }
+      ],
+      "notes": "Clifton 11 also offered; Amazon only third-party"
+    },
+    {
+      "id": "asics-gel-contend",
+      "name": "ASICS GEL-CONTEND 10",
+      "prices": {
+        "std": 80
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "ASICS",
+          "url": "https://www.asics.com/us/en-us/gel-contend-10/p/ANA_1011C249-001.html"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0GYZ6JR5P",
+          "price": 70
+        }
+      ],
+      "notes": "on sale $69.95 on asics.com; Amazon sold by Zappos"
+    },
+    {
+      "id": "patagonia-down-sweater",
+      "name": "Patagonia Down Sweater",
+      "prices": {
+        "std": 289
+      },
+      "verified": true,
+      "buy": [
+        {
+          "store": "Patagonia",
+          "url": "https://www.patagonia.com/product/mens-down-sweater-insulated-jacket/84675.html"
+        }
+      ]
+    },
+    {
+      "id": "uniqlo-ultra-light-down",
+      "name": "UNIQLO PUFFTECH Jacket",
+      "prices": {
+        "std": 80
+      },
+      "verified": true,
+      "replaces": "Uniqlo Ultra Light Down (out of season)",
+      "buy": [
+        {
+          "store": "Uniqlo",
+          "url": "https://www.uniqlo.com/us/en/products/E486171-000/00"
+        }
+      ]
+    }
+  ]
+}

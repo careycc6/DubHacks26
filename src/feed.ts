@@ -1,7 +1,8 @@
 // Family feed: on Photon's free plan everyone talks to the court in their own 1:1 chat, so when one
 // person changes the shared cart (or the court rules), everyone else gets a one-line update.
 // It feels like a group chat without needing one. Private things (DM notes, budget talk) never go out.
-import { usd, VERDICT } from "./engine.ts";
+import { cartLabel as engineCartLabel, usd, VERDICT } from "./engine.ts";
+import { caseFileUrl } from "./share.ts";
 import { sendTo } from "./channels/index.ts";
 import { hasSpace, photonReady, sendToHandle } from "./channels/photon.ts";
 import { logActivity, state, world } from "./store.ts";
@@ -14,6 +15,7 @@ export interface Snapshot {
   cartLabels: Record<string, string>;
   purchases: number;
   owners: Record<string, string>; // purchase id -> member (to notice "this is for Maya")
+  appeals: number;
 }
 
 const nameOf = (id?: string) => world.household.members.find((m) => m.id === id)?.name ?? "Someone";
@@ -22,10 +24,7 @@ const first = (name: string) => name.split(/\s+/)[0];
 function cartLabel(itemId: string): string {
   const i = state.cart.find((x) => x.id === itemId);
   if (!i) return "an item";
-  const p = world.catalog.phones.find((x) => x.id === i.phoneId);
-  const a = world.catalog.addons.find((x) => x.id === i.addonId);
-  const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
-  return p ? `${p.name} ${i.storageGB}GB` : acc?.name ?? a?.name ?? "an add-on";
+  return engineCartLabel(world, i);
 }
 
 export function snapshot(): Snapshot {
@@ -37,6 +36,7 @@ export function snapshot(): Snapshot {
     cartLabels: Object.fromEntries(state.cart.map((i) => [i.id, cartLabel(i.id)])),
     purchases: state.purchases.length,
     owners: Object.fromEntries(state.purchases.map((p) => [p.id, p.memberId])),
+    appeals: state.appeals?.length ?? 0,
   };
 }
 
@@ -77,7 +77,7 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
 
   if (state.exhibits.length > before.exhibits) {
     for (const e of state.exhibits.slice(before.exhibits)) {
-      if (!e.private) lines.push(`🗂️ ${actor} filed evidence about ${first(nameOf(e.memberId))}'s phone: ${e.finding}.`);
+      if (!e.private) lines.push(`🗂️ ${actor} filed evidence for ${first(nameOf(e.memberId))}: ${e.finding}.`);
     }
   }
 
@@ -87,8 +87,15 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
       .filter((r) => r.memberId && !r.label.includes("Protection"))
       .map((r) => `${first(nameOf(r.memberId))}: ${VERDICT[r.stamp]?.word ?? r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`)
       .join(", ");
-    const url = process.env.PUBLIC_URL ?? "http://localhost:3000";
-    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== undefined ? ` Phone budget: ${t.overBudget ? "over" : `${usd(t.budget - (t.planned ?? t.now))} left`} after this plan.` : ""} Case file: ${url}/cart`);
+    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== undefined ? ` Phone budget: ${t.overBudget ? "over" : `${usd(t.budget - (t.planned ?? t.now))} left`} after this plan.` : ""} Case file: ${caseFileUrl()}`);
+  }
+
+  for (const a of (state.appeals ?? []).slice(before.appeals ?? 0)) {
+    const who = first(nameOf(a.memberId));
+    lines.push(
+      a.outcome === "OVERRULED" || a.outcome === "REINSTATED" ? `🔨 ${a.summary}.`
+      : `⚖️ ${who} appealed: ${a.outcome}. ${a.summary}.`,
+    );
   }
 
   if (state.nest && state.nest !== before.nest) {

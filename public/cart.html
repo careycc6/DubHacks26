@@ -19,9 +19,11 @@
       <div class="header-side">
         <div class="day" id="day">Day 0</div>
         <div class="textline" id="textline"></div>
+        <a class="btn ghost acct" id="acct" href="/login" hidden>Parent sign-in</a>
       </div>
     </header>
 
+    <aside class="join-qr" id="joinQr" hidden></aside>
     <section class="totals" id="totals"></section>
     <div id="exhibitsWrap"></div>
     <div id="sections"></div>
@@ -36,13 +38,27 @@
       </div>
       <a class="btn" href="/checkout">Proceed to checkout →</a>
     </footer>
-    <p class="fine">Synthetic data only. No real customer, account, or transaction data. Every number comes from the pricing engine, never the AI.</p>
+    <p class="fine">Synthetic data only. No real customer, account, or transaction data. Every number comes from the pricing engine, never the AI. · <a href="/login">Parent sign-in</a></p>
   </main>
 
 <script src="/casefile.js"></script>
 <script src="/live.js"></script>
 <script>
 live({ onState: render });
+// On a big screen (projector, laptop), invite people in. Phones already have the case file open.
+fetch("/api/share").then((r) => r.json()).then((sh) => {
+  $("joinQr").innerHTML = `<figure><img src="/api/qr?for=cart" alt="QR code: case file"><figcaption>Scan for the case file</figcaption></figure>` +
+    (sh.textUrl ? `<figure><img src="/api/qr?for=text" alt="QR code: text the court"><figcaption>Scan to text the court</figcaption></figure>` : "");
+  $("joinQr").hidden = false;
+});
+// Parents: set up the family the first time, sign in after that, and get back to setup once signed in.
+fetch("/api/auth/me").then((r) => r.json()).then((me) => {
+  const a = $("acct");
+  if (me.user || me.admin) [a.textContent, a.href] = ["Family setup →", me.next];
+  else if (me.claimable) [a.textContent, a.href] = ["Set up your family →", "/login?next=%2Fwelcome"];
+  else [a.textContent, a.href] = ["Parent sign-in", "/login"];
+  a.hidden = false;
+}).catch(() => { $("acct").hidden = false; });
 </script>
 </body>
 </html>

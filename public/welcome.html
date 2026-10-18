@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cart Court · Getting started</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;600&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .guide { max-width: 760px; margin: 0 auto; padding: 36px 16px 64px; }
+    .bar { height: 8px; background: var(--paper-2); border-radius: 999px; overflow: hidden; margin: 18px 0 4px; }
+    .bar i { display: block; height: 100%; background: var(--keep); width: 0; transition: width .4s; }
+    .count { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .steps { display: grid; gap: 12px; margin-top: 18px; }
+    .step { background: #fffdf8; border: 1px solid var(--rule); border-radius: 12px; padding: 16px 18px; display: grid; grid-template-columns: 34px 1fr; gap: 12px; }
+    .step .tick { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--rule); display: grid; place-items: center; font: 700 14px var(--mono); color: var(--muted); }
+    .step.done .tick { background: var(--keep); border-color: var(--keep); color: #fff; }
+    .step.done { background: #f4f8f1; }
+    .step h2 { font-family: var(--serif); font-size: 18px; margin: 2px 0 4px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    .step h2 small { font: 400 12px var(--sans); color: var(--muted); }
+    .step p { margin: 4px 0; font-size: 14.5px; line-height: 1.55; color: #3d362d; }
+    .status { font-size: 13.5px; font-family: var(--mono); color: var(--muted); margin-top: 6px; }
+    .step.done .status { color: var(--keep); }
+    .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+    .row input { flex: 1; min-width: 180px; font: 14px var(--mono); padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: #fff; }
+    .row .btn { padding: 10px 16px; font-size: 14px; }
+    .msg { font-size: 13.5px; min-height: 16px; margin-top: 6px; }
+    .msg.ok { color: var(--keep); } .msg.err { color: var(--cut); }
+    .try { background: var(--ink); color: var(--paper); border-radius: 12px; padding: 18px 20px; margin-top: 18px; }
+    .try h2 { font-family: var(--serif); margin: 0 0 8px; font-size: 19px; }
+    .try ul { margin: 0; padding-left: 18px; line-height: 1.8; font-size: 14.5px; }
+    .try code { font-family: var(--mono); background: rgba(255,255,255,.12); padding: 1px 6px; border-radius: 4px; }
+    .end { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+    .who { font-size: 13px; color: var(--muted); }
+    .linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+  </style>
+</head>
+<body>
+  <main class="guide">
+    <div class="caseno">Cart Court · getting started</div>
+    <h1 style="font-family:var(--serif);font-size:clamp(28px,5vw,42px);margin:6px 0 0;line-height:1.1" id="hello">Welcome to the court ⚖️</h1>
+    <div class="subtitle">Five quick steps and your family can start texting the court. You can come back to this page any time.</div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="count" id="count"></div>
+
+    <div class="steps">
+      <section class="step" id="s-family">
+        <div class="tick">1</div>
+        <div>
+          <h2>Who's in the family</h2>
+          <p>Add everyone's name, role (parent, teen, grandparent…), the phone they use now, and the number they text from. Battery health is optional.</p>
+          <div class="status" id="familyStatus"></div>
+          <div class="row"><a class="btn" href="/setup#household">Add your family →</a></div>
+        </div>
+      </section>
+
+      <section class="step" id="s-budget">
+        <div class="tick">2</div>
+        <div>
+          <h2>Phone budget <small>optional</small></h2>
+          <p>How much the family can spend on phones over the whole plan, now and later. The court trims picks to fit and says what's left.</p>
+          <div class="status" id="budgetStatus"></div>
+          <div class="row"><input id="budget" inputmode="numeric" placeholder="e.g. 2500" /><button class="btn" id="budgetSave">Save budget</button></div>
+          <div class="msg" id="budgetMsg"></div>
+        </div>
+      </section>
+
+      <section class="step" id="s-texting">
+        <div class="tick">3</div>
+        <div>
+          <h2>Connect iMessage</h2>
+          <p>Cart Court lives in iMessage: each person texts the court's number, and it keeps everyone posted. This connects the court's number (via Photon).</p>
+          <div class="status" id="textingStatus"></div>
+          <div class="row"><a class="btn ghost" href="/setup#photon">Connect texting →</a></div>
+        </div>
+      </section>
+
+      <section class="step" id="s-invite">
+        <div class="tick">4</div>
+        <div>
+          <h2>Say hello to everyone</h2>
+          <p>The court texts each person a one-line welcome so they have its number saved. Nobody needs to install anything.</p>
+          <div class="status" id="inviteStatus"></div>
+          <div class="row"><button class="btn" id="hello-all">Text everyone a welcome</button></div>
+          <div class="msg" id="inviteMsg"></div>
+        </div>
+      </section>
+
+      <section class="step" id="s-parent">
+        <div class="tick">5</div>
+        <div>
+          <h2>Add a co-parent <small>optional</small></h2>
+          <p>Let another parent sign in with their Google or Apple email. Only parents can clear the cart, set the budget or fix who a purchase was for.</p>
+          <div class="status" id="parentStatus"></div>
+          <div class="row"><input id="email" type="email" placeholder="their email, e.g. elena@gmail.com" /><button class="btn ghost" id="invite">Allow sign-in</button></div>
+          <div class="msg" id="parentMsg"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="try">
+      <h2>Then try it from your phone</h2>
+      <ul>
+        <li id="numberLine">Text the court's number:</li>
+        <li><code>court, what phone should I get?</code> for picks that fit you</li>
+        <li>Paste a store link to put a phone in the family cart</li>
+        <li><code>court, rule</code> when the family is ready: BUY, WAIT or SKIP, with the savings</li>
+      </ul>
+    </div>
+
+    <div class="end">
+      <span class="who" id="who"></span>
+      <a class="btn" href="/dashboard">Go to the dashboard →</a>
+    </div>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
+const usd = (n) => "$" + Math.round(n).toLocaleString();
+const say = (id, cls, t) => { $(id).className = `msg ${cls}`; $(id).textContent = t; };
+const mark = (id, done, status) => { $(id).classList.toggle("done", !!done); $(id).querySelector(".tick").textContent = done ? "✓" : $(id).querySelector(".tick").dataset.n; $(id).querySelector(".status").textContent = status; };
+document.querySelectorAll(".step .tick").forEach((t) => (t.dataset.n = t.textContent));
+
+async function refresh() {
+  const [g, me, acc] = await Promise.all([
+    fetch("/api/guide").then((r) => r.json()),
+    fetch("/api/auth/me").then((r) => r.json()),
+    fetch("/api/auth/accounts").then((r) => (r.ok ? r.json() : { accounts: [], invited: [] })),
+  ]);
+  if (me.user?.name) $("hello").textContent = `Welcome to the court, ${me.user.name.split(" ")[0]}! ⚖️`;
+  $("who").innerHTML = me.user ? `Signed in as ${me.user.email ?? me.user.name} · <button class="linkish" id="out">Sign out</button>` : "";
+  if ($("out")) $("out").onclick = async () => { await post("/api/auth/logout"); location.href = "/login"; };
+
+  const h = g.household;
+  mark("s-family", h.saved > 0, h.saved ? `✓ ${h.names.join(", ")}${h.withNumbers < h.saved ? ` · ${h.saved - h.withNumbers} still need a number` : ""}` : "Nobody added yet (the dashboard shows an example family until you do)");
+  mark("s-budget", g.budget != null, g.budget != null ? `✓ ${usd(g.budget)} for phones` : "No budget set");
+  const p = g.photon;
+  mark("s-texting", p.state === "connected", p.state === "connected" ? `✓ Connected${p.line ? ` · ${p.line}` : ""}` : p.configured ? `Saved, ${p.state}` : "Not connected yet (you can still try everything in the dashboard)");
+  mark("s-invite", h.saved > 0 && g.welcomed >= h.withNumbers && h.withNumbers > 0, h.withNumbers ? `${g.welcomed} of ${h.withNumbers} welcomed` : "Add numbers in step 1 first");
+  $("hello-all").disabled = !(p.state === "connected" && h.withNumbers);
+  const others = acc.accounts.filter((a) => !a.you);
+  mark("s-parent", others.length > 0 || acc.invited.length > 0,
+    [others.length ? `✓ ${others.map((a) => a.name || a.email).join(", ")} can sign in` : "", acc.invited.length ? `Invited: ${acc.invited.join(", ")}` : ""].filter(Boolean).join(" · ") || "Just you so far");
+  $("numberLine").textContent = `Text the court's number${p.line ? `: ${p.line}` : " (shown here once texting is connected)"}`;
+
+  const done = document.querySelectorAll(".step.done").length;
+  $("bar").style.width = `${(done / 5) * 100}%`;
+  $("count").textContent = `${done} of 5 done`;
+}
+
+$("budgetSave").onclick = async () => {
+  const n = Number($("budget").value.replace(/[^\d.]/g, ""));
+  if (!n) return say("budgetMsg", "err", "Enter an amount, like 2500.");
+  const r = await post("/api/dashboard/budget", { amount: n });
+  say("budgetMsg", "ok", `✓ Budget set to ${usd(r.budget ?? n)}.`);
+  $("budget").value = "";
+  refresh();
+};
+$("hello-all").onclick = async () => {
+  say("inviteMsg", "", "Texting everyone…");
+  const r = await post("/api/setup/hello-all");
+  const bad = (r.results ?? []).filter((x) => !x.ok);
+  say("inviteMsg", bad.length ? "err" : "ok", bad.length ? bad.map((x) => `${x.name}: ${x.error}`).join(" · ") : `✓ Welcomed ${(r.results ?? []).length} ${r.skipped ? `(${r.skipped} already had it)` : ""}`);
+  refresh();
+};
+$("invite").onclick = async () => {
+  const r = await post("/api/auth/invite", { email: $("email").value });
+  r.ok ? (say("parentMsg", "ok", "✓ They can sign in now with that Google or Apple email."), ($("email").value = "")) : say("parentMsg", "err", r.error);
+  refresh();
+};
+refresh();
+</script>
+</body>
+</html>

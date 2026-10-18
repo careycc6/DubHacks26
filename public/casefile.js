@@ -33,6 +33,30 @@ const stampHtml = (r) => {
   return `<span class="stamp ${r.stamp} ${fresh ? "fresh" : ""}">${word}${small ? `<small>${small}</small>` : ""}</span>`;
 };
 
+// "Show the math": the engine's receipt for a ruling. Open receipts stay open across live re-renders.
+const openMath = new Set();
+document.addEventListener("toggle", (e) => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.classList.contains("math")) return;
+  d.open ? openMath.add(d.dataset.item) : openMath.delete(d.dataset.item);
+}, true);
+const signed = (n) => (n < 0 ? `−${usd(-n)}` : usd(n));
+function mathHtml(r) {
+  if (!r.math?.length) return "";
+  const total = r.math.reduce((s, l) => s + l.amount, 0);
+  const yearly = r.math[0].label.includes("12 ×");
+  const totalLabel = r.stamp === "WAIT" ? `On day ${r.holdUntilDay}` : yearly ? "Per year" : "Today";
+  return `<details class="math" data-item="${esc(r.itemId)}" ${openMath.has(r.itemId) ? "open" : ""}>
+    <summary>Show the math</summary>
+    <table>
+      ${r.math.map((l, i) => `<tr><td>${esc(l.label)}</td><td>${i === 0 ? usd(l.amount) : signed(l.amount)}</td></tr>`).join("")}
+      <tr class="sum"><td>${totalLabel}</td><td>${usd(total)}</td></tr>
+      ${r.stamp === "WAIT" && r.nowCost > 0 ? `<tr class="note"><td>Today: screen repair</td><td>${usd(r.nowCost)}</td></tr>` : ""}
+    </table>
+    <div class="by">Computed by engine.ts · not the AI</div>
+  </details>`;
+}
+
 /** Tiny price chart for the price tracker: where the price is now and when it bottoms out. */
 function sparkline(track, holdDay) {
   if (!track || track.points.length < 2) return "";
@@ -58,6 +82,8 @@ function sparkline(track, holdDay) {
 /** "$1,099 now → $787 on day 41 (lowest)" or "Lowest price is today: goes up to $899 on day 30". */
 function trackerText(track) {
   const pts = track.points, low = track.lowest;
+  // A BUY from an earlier day stays as ruled (engine.ts advanceTrial), so its prices are from that day.
+  if (pts[0].day < today) return `priced on day ${pts[0].day} at <b>${usd(track.now)}</b>, when the court ruled`;
   if (low.price < track.now) return `${usd(track.now)} now → <b>${usd(low.price)}</b> on day ${low.day}, the lowest coming up`;
   const up = pts.find((p) => p.price > track.now);
   return up ? `<b>${usd(track.now)}</b> today is the lowest. It goes up to ${usd(up.price)} on day ${up.day}` : `${usd(track.now)}, no price changes coming up`;
@@ -69,9 +95,42 @@ function shieldHtml(p) {
   return `<div class="shield ${p.verdict}"><b>${label}.</b> ${esc(p.reason)}</div>`;
 }
 
-// itemId -> store link for accessories, so people can buy it themselves
+// itemId -> where to buy it yourself (maker first, then T-Mobile, Best Buy, Amazon) and when prices were checked
 let shopLinks = {};
-const shopHtml = (id) => (shopLinks[id] ?? []).map((l) => `<a class="shop-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.store)} ↗</a>`).join(" ");
+let checked = {};
+let today = 0;
+// itemId -> the latest appeal / overrule on it
+let appeals = {};
+const APPEAL_TEXT = { GRANTED: "⚖️ Appeal granted", "PARTLY GRANTED": "⚖️ Appeal partly granted", DENIED: "⚖️ Appeal denied", OVERRULED: "🔨 Overruled", REINSTATED: "⚖️ Ruling reinstated" };
+function appealHtml(r, names) {
+  const a = appeals[r.itemId];
+  if (!a) return "";
+  const by = a.by && names[a.by] ? ` by ${esc(names[a.by].split(/\s+/)[0])}` : "";
+  return `<div class="appeal-note ${a.outcome.split(" ")[0]}">${APPEAL_TEXT[a.outcome] ?? a.outcome}${a.outcome === "OVERRULED" || a.outcome === "REINSTATED" ? by : ""} · day ${a.day}</div>`;
+}
+const checkedText = (d) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const shopHtml = (id) => {
+  const links = shopLinks[id] ?? [];
+  if (!links.length) return "";
+  const a = links.map((l) => `<a class="shop-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.store)}${l.price ? ` ${usd(l.price)}` : ""} ↗</a>`).join(" ");
+  return `<div class="shop">${a}${checked[id] ? `<span class="checked">Prices checked ${checkedText(checked[id])}</span>` : ""}</div>`;
+};
+
+// The same price spread over 24 monthly payments, the way most families actually pay for a phone.
+function monthly(r) {
+  const n = r.stamp === "WAIT" ? r.heldCost : r.nowCost;
+  return r.memberId && r.proposed && n > 0 && r.stamp !== "CUT" ? `<em>or ≈${usd(Math.ceil(n / 24))}/mo × 24</em>` : "";
+}
+
+// "Can't she just take Dad's phone?": priced against trading that phone in (engine: priceHandMeDowns).
+function handMeDownHtml(r, names) {
+  const h = r.handMeDown;
+  if (!h) return "";
+  const giver = names[h.from], kid = names[r.memberId];
+  return h.saves > 0
+    ? `<div class="tradein">🎁 Hand-me-down option: ${esc(kid)} takes ${esc(giver)}'s ${esc(h.device)} (${h.batteryHealth}% battery) on day ${h.onDay}. Gives up ${usd(h.forgone)} in trade-in, skips a ${usd(h.instead)} phone: <b>${usd(h.saves)} less</b></div>`
+    : `<div class="tradein muted">🎁 Checked a hand-me-down from ${esc(giver)}: trading the ${esc(h.device)} in is worth ${usd(-h.saves)} more.</div>`;
+}
 
 function rulingCard(r, names) {
   const who = r.memberId ? names[r.memberId] : "Account";
@@ -84,14 +143,17 @@ function rulingCard(r, names) {
   return `<article class="ruling">
     ${stampHtml(r)}
     <div class="who-row"><span class="avatar">${initials(who)}</span><span class="who-name">${esc(who)}</span></div>
+    ${appealHtml(r, names)}
     <h3>${esc(item)}${changed ? ` <span class="arrow">→</span> <span class="to-inline">${esc(r.proposed.label)}</span>` : ""}</h3>
     <ul>${r.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(names[r.memberId])}'s current phone</div>“${esc(r.witness)}”</blockquote>` : ""}
+    ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(r.witnessOf ?? `${names[r.memberId]}'s current phone`)}</div>“${esc(r.witness)}”</blockquote>` : ""}
     ${r.memberId && r.track ? sparkline(r.track, r.stamp === "WAIT" ? r.holdUntilDay : undefined) : ""}
     ${shieldHtml(r.protection)}
+    ${handMeDownHtml(r, names)}
     ${r.tradeIn && r.stamp !== "CUT" ? `<div class="tradein">♻️ With trade-in of the ${esc(r.tradeIn.device)} (−${usd(r.tradeIn.value)}): <b>${usd(r.tradeIn.withTradeIn)}</b> · without: ${usd(r.tradeIn.withoutTradeIn)}</div>` : ""}
     ${r.stamp !== "CUT" && r.stamp !== "WAIT" ? shopHtml(r.itemId) : ""}
-    <div class="money">${money}${r.savings > 0 ? `<b>you save ${usd(r.savings)}</b>` : ""}</div>
+    <div class="money">${money}${monthly(r)}${r.savings > 0 ? `<b>you save ${usd(r.savings)}</b>` : ""}</div>
+    ${mathHtml(r)}
   </article>`;
 }
 
@@ -100,9 +162,21 @@ function section(title, hint, rulings, names) {
   return `<h2 class="section-title">${title}<span>${hint}</span></h2><div class="rulings">${rulings.map((r) => rulingCard(r, names)).join("")}</div>`;
 }
 
+let lastRendered;
+/** Animate the verdict again (stamps + totals) without re-running the trial or texting anyone. */
+function replayStamps() {
+  if (!lastRendered) return;
+  seenStamps.clear(); shown.clear();
+  render(lastRendered);
+}
+
 function render(s) {
+  lastRendered = s;
   const names = Object.fromEntries(s.members.map((m) => [m.id, m.name]));
+  today = s.day;
+  appeals = Object.fromEntries((s.appeals ?? []).map((a) => [a.itemId, a]));
   shopLinks = Object.fromEntries(s.cart.filter((i) => i.shopUrl).map((i) => [i.id, i.shopLinks ?? [{ store: "Shop", url: i.shopUrl }]]));
+  checked = Object.fromEntries(s.cart.filter((i) => i.checked).map((i) => [i.id, i.checked]));
   $("caseno").textContent = `Case No. 26-${(s.household.split(" ")[1] ?? "FAM").slice(0, 3).toUpperCase()} · ${s.household}`;
   $("day").textContent = `Day ${s.day}`;
   $("textline").innerHTML = s.courtNumber ? `Text the court<b>${esc(s.courtNumber)}</b>` : "";
@@ -121,7 +195,7 @@ function render(s) {
             <h3>${esc(i.label)}</h3>
             ${shopHtml(i.id)}
             <div class="money">${usd(i.price)}${i.kind === "addon" ? "/yr" : ""}</div></article>`).join("")}</div>`
-      : `<div class="empty"><div class="empty-gavel">⚖️</div>The docket is empty.<br>Text the court from your phone: paste a store link, send a photo, or ask <b>"court, what phone should I get?"</b></div>`;
+      : `<div class="empty"><div class="empty-gavel">⚖️</div>The docket is empty.<br>Text the court from your phone: paste a store link for anything, send a photo, or ask <b>"court, what laptop should I get?"</b></div>`;
     $("timelineWrap").innerHTML = "";
     $("ordered").hidden = true;
   } else {
@@ -144,8 +218,8 @@ function render(s) {
       const x = (d) => Math.min(100, ((d - t.day) / (end - t.day)) * 100);
       $("timelineWrap").innerHTML = `<h2 class="section-title">When to buy<span>the court's calendar</span></h2>
         <div class="timeline"><div class="line"></div>
-          <div class="tick first" style="left:0%"><div class="dot" style="background:var(--keep)"></div><b>Today</b><br>${buy.map((r) => esc(names[r.memberId])).join(", ") || "nothing"}</div>
-          ${held.map((h) => `<div class="tick" style="left:${x(h.holdUntilDay)}%"><div class="dot" style="background:var(--wait)"></div><b>Day ${h.holdUntilDay}</b><br>${esc(names[h.memberId])} · ${usd(h.heldCost)}</div>`).join("")}
+          <div class="tick first" style="left:0%"><div class="dot" style="background:var(--keep)"></div><b>Today</b><br>${[...new Set(buy.map((r) => esc(names[r.memberId])))].join(", ") || "nothing"}</div>
+          ${[...new Set(held.map((h) => h.holdUntilDay))].map((d) => `<div class="tick" style="left:${x(d)}%"><div class="dot" style="background:var(--wait)"></div><b>Day ${d}</b>${held.filter((h) => h.holdUntilDay === d).map((h) => `<br>${esc(names[h.memberId])} · ${usd(h.heldCost)}`).join("")}</div>`).join("")}
         </div>`;
     } else $("timelineWrap").innerHTML = "";
     $("ordered").hidden = false;

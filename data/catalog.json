@@ -1,5 +1,5 @@
 {
-  "_note": "Synthetic catalog for the hackathon. Prices are mock data, not real offers.",
+  "_note": "Prices and store links checked 2026-10-18 on the maker's site, T-Mobile, Best Buy and Amazon (scripts/build-catalog.mjs). Prices change; each item's 'checked' date says when it was read.",
   "phones": [
     {
       "id": "iphone-17-pro-max",
@@ -14,7 +14,24 @@
       "camera": 5,
       "gaming": 5,
       "batteryHours": 33,
-      "screenIn": 6.9
+      "screenIn": 6.9,
+      "buy": [
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-17-pro-max",
+          "price": 1200
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/searchpage.jsp?st=iPhone%2017%20Pro%20Max%20unlocked"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%2017%20Pro%20Max%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Apple no longer sells it (replaced by iPhone 18 Pro Max); T-Mobile still does."
     },
     {
       "id": "iphone-17-pro",
@@ -29,7 +46,24 @@
       "camera": 5,
       "gaming": 5,
       "batteryHours": 30,
-      "screenIn": 6.3
+      "screenIn": 6.3,
+      "buy": [
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-17-pro",
+          "price": 1100
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/searchpage.jsp?st=iPhone%2017%20Pro%20unlocked"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%2017%20Pro%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Apple no longer sells it (replaced by iPhone 18 Pro); T-Mobile still does."
     },
     {
       "id": "iphone-17",
@@ -37,13 +71,35 @@
       "brand": "Apple",
       "tier": "mid",
       "prices": {
-        "256": 829,
-        "512": 1029
+        "256": 929,
+        "512": 1129
       },
       "camera": 4,
       "gaming": 4,
       "batteryHours": 30,
-      "screenIn": 6.3
+      "screenIn": 6.3,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-iphone/iphone-17",
+          "price": 929
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-17",
+          "price": 930
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-iphone-17-256gb-black-verizon/JCQ6HHJ5RZ/sku/6487349"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%2017%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "unlocked; Apple shows $899 if activated with a carrier"
     },
     {
       "id": "iphone-17e",
@@ -51,13 +107,33 @@
       "brand": "Apple",
       "tier": "budget",
       "prices": {
-        "128": 599,
-        "256": 699
+        "256": 699,
+        "512": 899
       },
       "camera": 3,
       "gaming": 3,
       "batteryHours": 26,
-      "screenIn": 6.1
+      "screenIn": 6.1,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-iphone/iphone-17e",
+          "price": 699
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-17e"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-iphone-17e-256gb-black-verizon/JCQ6HQTW3G"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%2017e%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "pixel-10-pro",
@@ -72,7 +148,30 @@
       "camera": 5,
       "gaming": 4,
       "batteryHours": 30,
-      "screenIn": 6.3
+      "screenIn": 6.3,
+      "buy": [
+        {
+          "store": "Google Store",
+          "url": "https://store.google.com/us/config/pixel_10_pro?hl=en-US",
+          "price": 749
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/google-pixel-10-pro",
+          "price": 1000
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/google-pixel-10-pro-128gb-unlocked-obsidian/J39TC8J8GF/sku/6637725"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0FFTT2J6N",
+          "price": 699
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Google has it $250 off right now ($749)."
     },
     {
       "id": "pixel-10",
@@ -86,7 +185,29 @@
       "camera": 4,
       "gaming": 3,
       "batteryHours": 29,
-      "screenIn": 6.3
+      "screenIn": 6.3,
+      "buy": [
+        {
+          "store": "Google Store",
+          "url": "https://store.google.com/us/config/pixel_10?hl=en-US",
+          "price": 799
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/google-pixel-10",
+          "price": 700
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/google-pixel-10-128gb-unlocked-obsidian/J39TC8JGZK"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0FFTRPM4K",
+          "price": 799
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "pixel-10a",
@@ -94,12 +215,34 @@
       "brand": "Google",
       "tier": "budget",
       "prices": {
-        "128": 499
+        "128": 599,
+        "256": 699
       },
       "camera": 3,
       "gaming": 2,
       "batteryHours": 30,
-      "screenIn": 6.1
+      "screenIn": 6.1,
+      "buy": [
+        {
+          "store": "Google Store",
+          "url": "https://store.google.com/us/config/pixel_10a?hl=en-US",
+          "price": 599
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/google-pixel-10a"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/google-pixel-10a-128gb-unlocked-obsidian/J39TC8CKQW/sku/6668565"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0GHRD59RZ",
+          "price": 599
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "galaxy-s26-ultra",
@@ -107,13 +250,37 @@
       "brand": "Samsung",
       "tier": "flagship",
       "prices": {
-        "256": 1299,
-        "512": 1419
+        "256": 1400,
+        "512": 1600,
+        "1024": 2000
       },
       "camera": 5,
       "gaming": 5,
       "batteryHours": 31,
-      "screenIn": 6.9
+      "screenIn": 6.9,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/smartphones/galaxy-s26-ultra/buy/",
+          "price": 1200
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/samsung-galaxy-s26-ultra",
+          "price": 1400
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/samsung-galaxy-s26-ultra-256gb-unlocked-black/JJGRF36YGZ"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0G4SWDH8P",
+          "price": 1100
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Samsung has it on sale from $1,199.99 right now."
     },
     {
       "id": "galaxy-s26",
@@ -121,26 +288,71 @@
       "brand": "Samsung",
       "tier": "mid",
       "prices": {
-        "128": 799,
-        "256": 859
+        "256": 1000,
+        "512": 1100
       },
       "camera": 4,
       "gaming": 4,
       "batteryHours": 28,
-      "screenIn": 6.2
+      "screenIn": 6.2,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/smartphones/galaxy-s26/buy/galaxy-s26-256gb-unlocked-sku-sm-s942uzkexaa/",
+          "price": 900
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/samsung-galaxy-s26",
+          "price": 1000
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/samsung-galaxy-s26-256gb-unlocked-cobalt-violet/JJGRF36PHF"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0G4SW96R4",
+          "price": 900
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Samsung has it on sale from $899.99 right now."
     },
     {
       "id": "galaxy-a37",
-      "name": "Galaxy A37",
+      "name": "Galaxy A37 5G",
       "brand": "Samsung",
       "tier": "budget",
       "prices": {
-        "128": 399
+        "128": 490,
+        "256": 610
       },
       "camera": 2,
       "gaming": 2,
       "batteryHours": 32,
-      "screenIn": 6.6
+      "screenIn": 6.6,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/smartphones/galaxy-a37-5g/buy/",
+          "price": 490
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/samsung-galaxy-a37-5g"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/samsung-galaxy-a37-5g-128gb-unlocked-awesome-graygreen/JJGRF3H3ZP"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0GMKXW3XL",
+          "price": 490
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "easy-flip-5",
@@ -162,30 +374,75 @@
       "brand": "Samsung",
       "tier": "budget",
       "prices": {
-        "128": 199
+        "128": 270
       },
       "camera": 2,
       "gaming": 1,
       "batteryHours": 34,
       "screenIn": 6.7,
-      "simple": true
+      "simple": true,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/smartphones/galaxy-a17-5g/buy/",
+          "price": 270
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/samsung-galaxy-a17-5g"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/samsung-galaxy-a17-5g-128gb-unlocked-black/JJGRF3R2K5"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0FXY18C1J",
+          "price": 249
+        }
+      ],
+      "checked": "2026-10-18"
     }
   ],
   "addons": [
     {
       "id": "protection-360",
-      "name": "Device Protection",
-      "monthly": 18
+      "name": "Protection 360",
+      "monthly": 18,
+      "buy": [
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/benefits/phone-protection-plans"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "T-Mobile charges $7-$26/mo by device tier; $18 is a mid tier."
     },
     {
       "id": "hotspot-plus",
       "name": "Hotspot Plus",
-      "monthly": 10
+      "monthly": 10,
+      "buy": [
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone-plans/affordable-data-plans/hotspots"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Experience More includes 60GB hotspot and Beyond 250GB; this stands in for extra hotspot data."
     },
     {
       "id": "intl-pass",
       "name": "International Pass",
-      "monthly": 15
+      "monthly": 15,
+      "buy": [
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone-plans/international-roaming-plans/unlimited-calling-data-pass"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "T-Mobile's International Pass is $10/day, $50 for 10 days, $75 for 30 days."
     }
   ],
   "accessories": [
@@ -196,16 +453,48 @@
       "brands": [
         "Apple"
       ],
-      "price": 49
+      "price": 49,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/product/MGF24LL/A/iphone-17-clear-case-with-magsafe",
+          "price": 49
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Clear%20Case%20with%20MagSafe"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "pixel-case",
-      "name": "Pixel Protective Case",
+      "name": "Pixelsnap Case",
       "type": "case",
       "brands": [
         "Google"
       ],
-      "price": 39
+      "price": 50,
+      "buy": [
+        {
+          "store": "Google Store",
+          "url": "https://store.google.com/us/product/pixel_10_pro_phone_case?hl=en-US",
+          "price": 50
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Pixelsnap%20Case"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "galaxy-case",
@@ -214,7 +503,23 @@
       "brands": [
         "Samsung"
       ],
-      "price": 39
+      "price": 55,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/mobile-accessories/galaxy-s26-silicone-magnet-case-black-sku-ef-es942cbegus/",
+          "price": 55
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Galaxy%20Silicone%20Case"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "rugged-case",
@@ -245,8 +550,24 @@
       "brands": [
         "any"
       ],
-      "price": 25,
-      "note": "new phones ship without one"
+      "price": 12,
+      "note": "new phones ship without one",
+      "buy": [
+        {
+          "store": "Anker",
+          "url": "https://www.anker.com/products/a2656",
+          "price": 12
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=25W%20USB-C%20Charger"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "magsafe-charger",
@@ -255,7 +576,23 @@
       "brands": [
         "Apple"
       ],
-      "price": 39
+      "price": 39,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/product/MGD74LL/A/magsafe-charger-1-m",
+          "price": 39
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=MagSafe%20Charger"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "power-bank",
@@ -264,35 +601,104 @@
       "brands": [
         "any"
       ],
-      "price": 35,
-      "note": "two extra charges on the go"
+      "price": 26,
+      "note": "two extra charges on the go",
+      "buy": [
+        {
+          "store": "Anker",
+          "url": "https://www.anker.com/products/a1229",
+          "price": 26
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=10%2C000mAh%20Power%20Bank"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "airpods-4",
-      "name": "AirPods 4",
+      "name": "AirPods 5",
       "type": "earbuds",
       "brands": [
         "Apple"
       ],
-      "price": 129
+      "price": 129,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-airpods/airpods-5",
+          "price": 129
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-airpods-5-true-wireless-active-noise-cancelling-earbuds-with-wireless-charging-case-white/JJGCQP634G",
+          "price": 149
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=AirPods%205"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "pixel-buds",
-      "name": "Pixel Buds A-Series",
+      "name": "Pixel Buds 2a",
       "type": "earbuds",
       "brands": [
         "Google"
       ],
-      "price": 99
+      "price": 129,
+      "buy": [
+        {
+          "store": "Google Store",
+          "url": "https://store.google.com/product/pixel_buds_2a?hl=en-US",
+          "price": 129
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Pixel%20Buds%202a"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "galaxy-buds",
-      "name": "Galaxy Buds FE",
+      "name": "Galaxy Buds3 FE",
       "type": "earbuds",
       "brands": [
         "Samsung"
       ],
-      "price": 99
+      "price": 150,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/mobile-audio/galaxy-buds3-fe/buy/",
+          "price": 150
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Galaxy%20Buds3%20FE"
+        }
+      ],
+      "checked": "2026-10-18"
     },
     {
       "id": "budget-earbuds",
@@ -304,5 +710,1020 @@
       "price": 39,
       "note": "works with any phone"
     }
-  ]
+  ],
+  "products": [
+    {
+      "id": "macbook-air-13",
+      "name": "MacBook Air 13 (M5)",
+      "brand": "Apple",
+      "category": "laptop",
+      "tier": "mid",
+      "prices": {
+        "512GB": 1299,
+        "1TB": 1599
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-mac/macbook-air/13-inch-midnight-m5-chip-10-core-cpu-8-core-gpu-16gb-memory-512gb-storage",
+          "price": 1299
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-macbook-air-13-inch-laptop-m5-chip-with-10-core-cpu-and-8-core-gpu-16gb-memory-512gb-ssd-midnight/JJGCQLKXL7",
+          "price": 1299
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=MacBook%20Air%2013%20(M5)"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Replaces the M4 MacBook Air (no 256GB model anymore)."
+    },
+    {
+      "id": "macbook-pro-14",
+      "name": "MacBook Pro 14 (M5)",
+      "brand": "Apple",
+      "category": "laptop",
+      "tier": "flagship",
+      "prices": {
+        "1TB": 1999
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-mac/macbook-pro/14-inch-space-black-standard-display-apple-m5-chip-10-core-cpu-10-core-gpu-16gb-memory-1tb-storage",
+          "price": 1999
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-macbook-pro-14-inch-laptop-m5-chip-with-10-core-cpu-and-10-core-gpu-16gb-memory-1tb-ssd-space-black/JJGCQL8L2P",
+          "price": 1999
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=MacBook%20Pro%2014%20(M5)"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Base model is 1TB now; there's no 512GB."
+    },
+    {
+      "id": "dell-xps-13",
+      "name": "Dell XPS 13 (2026)",
+      "brand": "Dell",
+      "category": "laptop",
+      "tier": "mid",
+      "prices": {
+        "512GB": 1000
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Dell",
+          "url": "https://www.dell.com/en-us/shop/laptop-computers/spd/xps13dx13260",
+          "price": 1000
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/dell-xps-13-4-3k-touchscreen-laptop-intel-core-5-series-3-320-2026-16gb-memory-512gb-storage-sky/J3K4L6QKWP/sku/6683772",
+          "price": 1000
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Dell%20XPS%2013%20(2026)"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "16GB/512GB; an 8GB model is $799.99."
+    },
+    {
+      "id": "lenovo-ideapad-5",
+      "name": "Lenovo IdeaPad 5",
+      "brand": "Lenovo",
+      "category": "laptop",
+      "tier": "budget",
+      "prices": {
+        "512GB": 649
+      },
+      "rating": 4
+    },
+    {
+      "id": "chromebook-plus",
+      "name": "Acer Chromebook Plus 514",
+      "brand": "Acer",
+      "category": "laptop",
+      "tier": "budget",
+      "prices": {
+        "128GB": 400
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "Acer",
+          "url": "https://store.acer.com/en-us/acer-chromebook-plus-514-cb514-3ht-r8rb",
+          "price": 400
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Acer%20Chromebook%20Plus%20514"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Price from retailer listings; the brand site didn't load."
+    },
+    {
+      "id": "ipad-pro-11",
+      "name": "iPad Pro 11 (M5)",
+      "brand": "Apple",
+      "category": "tablet",
+      "tier": "flagship",
+      "prices": {
+        "256GB": 1199,
+        "512GB": 1399,
+        "1TB": 1799
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-ipad/ipad-pro",
+          "price": 1199
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/tablet/apple-ipad-pro-11-inch-m5"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-11-inch-ipad-pro-m5-chip-wi-fi-256gb-with-oled-space-black/JJGCQL7GHK",
+          "price": 1199
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPad%20Pro%2011%20(M5)"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "ipad-11",
+      "name": "iPad (A16)",
+      "brand": "Apple",
+      "category": "tablet",
+      "tier": "budget",
+      "prices": {
+        "128GB": 449,
+        "256GB": 549,
+        "512GB": 749
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-ipad/ipad",
+          "price": 449
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/tablet/apple-ipad-a16"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-11-inch-ipad-a16-chip-with-wi-fi-128gb-silver/JJGCQG39VG",
+          "price": 449
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPad%20(A16)"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "galaxy-tab-s10-fe",
+      "name": "Galaxy Tab S10 FE",
+      "brand": "Samsung",
+      "category": "tablet",
+      "tier": "budget",
+      "prices": {
+        "128GB": 550
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/tablets/galaxy-tab-s10-fe/buy/galaxy-tab-s10-fe-blue-128gb-sku-sm-x520nlbaxar/",
+          "price": 550
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/tablet/samsung-galaxy-tab-s10-fe-5g"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/samsung-galaxy-tab-s10-fe-10-9-128gb-wi-fi-with-s-pen-blue/J3ZYGXC9H3",
+          "price": 550
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Galaxy%20Tab%20S10%20FE"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "lg-oled-c5",
+      "name": "LG OLED C6",
+      "brand": "LG",
+      "category": "tv",
+      "tier": "flagship",
+      "prices": {
+        "55in": 2000,
+        "65in": 2700
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "LG",
+          "url": "https://www.lg.com/us/tvs/lg-oled65c6pua-oled-4k-tv",
+          "price": 1400
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/lg-55-class-c6-oled-evo-ai-4k-smart-webos-tv-with-perfect-black-perfect-color-and-brightness-booster-2026/JJ8VPZKKP3",
+          "price": 1400
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=LG%20OLED%20C6"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Replaces the LG C5 (2025). LG has it on sale from $1,399.99 (55in) right now."
+    },
+    {
+      "id": "samsung-qled-q70",
+      "name": "Samsung QLED Q7F",
+      "brand": "Samsung",
+      "category": "tv",
+      "tier": "mid",
+      "prices": {
+        "55in": 530,
+        "65in": 630
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Samsung",
+          "url": "https://www.samsung.com/us/tvs/qled-tv/55-class-qled-tv-q7f-sku-qn55q7faafxza/",
+          "price": 400
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Samsung%20QLED%20Q7F"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Samsung has it on sale from $399.99 (55in) right now; sold as Q70F outside the US."
+    },
+    {
+      "id": "tcl-qm7",
+      "name": "TCL QM7L",
+      "brand": "TCL",
+      "category": "tv",
+      "tier": "budget",
+      "prices": {
+        "55in": 1200,
+        "65in": 1500
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "TCL",
+          "url": "https://us.tcl.com/products/qm7l-series-sqd-mini-led-4k-uhd-hdr-smart-tv-with-google-tv",
+          "price": 700
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=TCL%20QM7L"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Replaces the TCL QM7K (2025). TCL sells it for $699.99 (55in) right now."
+    },
+    {
+      "id": "sony-wh-1000xm6",
+      "name": "Sony WH-1000XM6",
+      "brand": "Sony",
+      "category": "headphones",
+      "tier": "flagship",
+      "prices": {
+        "std": 460
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Sony",
+          "url": "https://electronics.sony.com/audio/headphones/headband/p/wh1000xm6-b",
+          "price": 460
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/sony-wh-1000xm6-best-wireless-noise-cancelling-headphones-black/J7XSRH5RCF",
+          "price": 458
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0F3PQHWTZ"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Price from retailer listings; the brand site didn't load. sony.com wouldn't load; $459.99 list."
+    },
+    {
+      "id": "airpods-pro-3",
+      "name": "AirPods Pro 3",
+      "brand": "Apple",
+      "category": "headphones",
+      "tier": "mid",
+      "prices": {
+        "std": 249
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/product/MFHP4LL/A/airpods-pro-3",
+          "price": 249
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/accessories"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-airpods-pro-3-wireless-active-noise-cancelling-earbuds-with-heart-rate-sensing-feature-white/JJGCQLYK5F",
+          "price": 200
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=AirPods%20Pro%203"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "soundcore-q30",
+      "name": "Soundcore Life Q30",
+      "brand": "Anker",
+      "category": "headphones",
+      "tier": "budget",
+      "prices": {
+        "std": 80
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "Soundcore",
+          "url": "https://www.soundcore.com/products/a3028011",
+          "price": 80
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Soundcore%20Life%20Q30"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "ps5-pro",
+      "name": "PlayStation 5 Pro",
+      "brand": "Sony",
+      "category": "gaming",
+      "tier": "flagship",
+      "prices": {
+        "std": 900
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "PlayStation",
+          "url": "https://direct.playstation.com/en-us/buy-consoles/playstation5-pro-console-2-tb",
+          "price": 900
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=PlayStation%205%20Pro"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Unavailable on PlayStation Direct right now."
+    },
+    {
+      "id": "ps5-slim",
+      "name": "PlayStation 5 Slim",
+      "brand": "Sony",
+      "category": "gaming",
+      "tier": "mid",
+      "prices": {
+        "std": 650
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "PlayStation",
+          "url": "https://direct.playstation.com/en-us/buy-consoles/playstation5-console-1-tb",
+          "price": 650
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/playstation-5-slim-console-1tb/JXHQ37TYLC",
+          "price": 650
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=PlayStation%205%20Slim"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Digital Edition is $599.99."
+    },
+    {
+      "id": "switch-2",
+      "name": "Nintendo Switch 2",
+      "brand": "Nintendo",
+      "category": "gaming",
+      "tier": "mid",
+      "prices": {
+        "std": 500
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Nintendo",
+          "url": "https://www.nintendo.com/us/store/products/nintendo-switch-2-system-123669/",
+          "price": 500
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/switch-2-system/J7GSL57TGH",
+          "price": 500
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Nintendo%20Switch%202"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "dyson-v15",
+      "name": "Dyson V15 Detect",
+      "brand": "Dyson",
+      "category": "vacuum",
+      "tier": "flagship",
+      "prices": {
+        "std": 850
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Dyson",
+          "url": "https://www.dyson.com/vacuum-cleaners/cordless/v15",
+          "price": 850
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/dyson-v15-detect-cordless-vacuum-with-8-accessories-yellow-nickel/J3ZCSYCVPL"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0C2J8KJH9"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "$849.99 on dyson.com, out of stock there right now"
+    },
+    {
+      "id": "shark-stratos",
+      "name": "Shark Stratos Cordless",
+      "brand": "Shark",
+      "category": "vacuum",
+      "tier": "mid",
+      "prices": {
+        "std": 330
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/shark-stratos-multiflex-cordless-stick-vacuum-with-clean-sense-iq-and-odor-neutralizer-duoclean-powerfins-hairpro-ash-purple/6514613.p?skuId=6514613"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0B5JMNGNQ",
+          "price": 330
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Shark's own site now sells the PowerDetect Speed (IA1241, $429.99) in its place; Amazon sells the Stratos at $329.99 (list $499.99)"
+    },
+    {
+      "id": "bissell-cleanview",
+      "name": "BISSELL CleanView Swivel Rewind Pet (3837)",
+      "brand": "Bissell",
+      "category": "vacuum",
+      "tier": "budget",
+      "prices": {
+        "std": 165
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "BISSELL",
+          "url": "https://www.bissell.com/en-us/product/cleanview-swivel-rewind-pet-vacuum-cleaner-3837.html",
+          "price": 165
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=BISSELL%20CleanView%20Swivel%20Rewind%20Pet%20(3837)"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "breville-barista",
+      "name": "Breville Barista Express",
+      "brand": "Breville",
+      "category": "kitchen",
+      "tier": "flagship",
+      "prices": {
+        "std": 700
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Breville",
+          "url": "https://www.breville.com/en-us/product/bes870",
+          "price": 700
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/breville-the-barista-express-espresso-machine-with-integrated-grinder-stainless-steel/6291169.p?skuId=6291169",
+          "price": 700
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B00CH9QWOU",
+          "price": 660
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "out of stock on breville.com; retailer prices from snippets"
+    },
+    {
+      "id": "kitchenaid-mixer",
+      "name": "KitchenAid Artisan 5-Qt Stand Mixer",
+      "brand": "KitchenAid",
+      "category": "kitchen",
+      "tier": "mid",
+      "prices": {
+        "std": 500
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "KitchenAid",
+          "url": "https://www.kitchenaid.com/countertop-appliances/stand-mixers/tilt-head-stand-mixers/p.artisan-series-5-quart-tilt-head-stand-mixer.KSM150PSER.html",
+          "price": 500
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/kitchenaid-ksm150pswh-artisan-series-tilt-head-stand-mixer-white/5224884.p?skuId=5224884"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B00005UP2K",
+          "price": 500
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "$499.99 list; kitchenaid.com wouldn't load, Amazon's live price is $499.95"
+    },
+    {
+      "id": "ninja-air-fryer",
+      "name": "Ninja Air Fryer AF101 (4 qt)",
+      "brand": "Ninja",
+      "category": "kitchen",
+      "tier": "budget",
+      "prices": {
+        "std": 120
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/ninja-ninja-air-fryer-black-gray/6269234.p"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B07FDJMC9Q",
+          "price": 120
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Ninja's own site no longer lists the AF101; Amazon sells it at $119.99"
+    },
+    {
+      "id": "aeron-chair",
+      "name": "Herman Miller Aeron (Size B)",
+      "brand": "Herman Miller",
+      "category": "chair",
+      "tier": "flagship",
+      "prices": {
+        "std": 2070
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Herman Miller",
+          "url": "https://store.hermanmiller.com/office-chairs/aeron-chair/2195348.html",
+          "price": 2070
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Herman%20Miller%20Aeron%20(Size%20B)"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "cheapest Size B configuration; the page's default build is $2,305"
+    },
+    {
+      "id": "branch-ergo-chair",
+      "name": "Branch Ergonomic Chair",
+      "brand": "Branch",
+      "category": "chair",
+      "tier": "mid",
+      "prices": {
+        "std": 369
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Branch",
+          "url": "https://www.branchfurniture.com/products/ergonomic-chair",
+          "price": 369
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0C15C11D9",
+          "price": 389
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "$369 in Black on branchfurniture.com, $389 in other colors"
+    },
+    {
+      "id": "ikea-markus",
+      "name": "IKEA MARKUS Office Chair",
+      "brand": "IKEA",
+      "category": "chair",
+      "tier": "budget",
+      "prices": {
+        "std": 300
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "IKEA",
+          "url": "https://www.ikea.com/us/en/p/markus-office-chair-vissle-dark-gray-90289172/",
+          "price": 300
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=IKEA%20MARKUS%20Office%20Chair"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "purple-mattress",
+      "name": "Purple Plus Mattress",
+      "brand": "Purple",
+      "category": "mattress",
+      "tier": "flagship",
+      "prices": {
+        "Twin": 1599,
+        "Queen": 2099
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Purple",
+          "url": "https://purple.com/mattresses/plus",
+          "price": 1599
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B09GXG53YS",
+          "price": 2099
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "casper-original",
+      "name": "Casper Original Mattress",
+      "brand": "Casper",
+      "category": "mattress",
+      "tier": "mid",
+      "prices": {
+        "Twin": 895,
+        "Queen": 1295
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Casper",
+          "url": "https://casper.com/products/original-foam-v1",
+          "price": 895
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B085HGGMHG",
+          "price": 1295
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "still sold; site now leads with Casper One ($874/$1149, sale $699/$899)"
+    },
+    {
+      "id": "zinus-foam",
+      "name": "Zinus Green Tea Memory Foam Mattress",
+      "brand": "Zinus",
+      "category": "mattress",
+      "tier": "budget",
+      "prices": {
+        "Twin": 499,
+        "Queen": 718
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "Zinus",
+          "url": "https://www.zinus.com/products/original-green-tea-memory-foam-mattress",
+          "price": 499
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0CKYZC93L",
+          "price": 300
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "zinus.com version is 10in on clearance; 12in only on Amazon (Queen $299.99)"
+    },
+    {
+      "id": "nike-pegasus-41",
+      "name": "Nike Pegasus 42",
+      "brand": "Nike",
+      "category": "shoes",
+      "tier": "mid",
+      "prices": {
+        "std": 145
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Nike",
+          "url": "https://www.nike.com/t/pegasus-42-mens-road-running-shoes-S1bYkOza/IB1873-001",
+          "price": 145
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Nike%20Pegasus%2042"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Pegasus 41 men's gone; Amazon only third-party"
+    },
+    {
+      "id": "hoka-clifton-10",
+      "name": "HOKA Clifton 10",
+      "brand": "Hoka",
+      "category": "shoes",
+      "tier": "mid",
+      "prices": {
+        "std": 155
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "HOKA",
+          "url": "https://www.hoka.com/en/us/mens-everyday-running-gear/clifton-10/1162030.html",
+          "price": 155
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=HOKA%20Clifton%2010"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Clifton 11 also offered; Amazon only third-party"
+    },
+    {
+      "id": "asics-gel-contend",
+      "name": "ASICS GEL-CONTEND 10",
+      "brand": "ASICS",
+      "category": "shoes",
+      "tier": "budget",
+      "prices": {
+        "std": 80
+      },
+      "rating": 3,
+      "buy": [
+        {
+          "store": "ASICS",
+          "url": "https://www.asics.com/us/en-us/gel-contend-10/p/ANA_1011C249-001.html",
+          "price": 80
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/dp/B0GYZ6JR5P",
+          "price": 70
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "on sale $69.95 on asics.com; Amazon sold by Zappos"
+    },
+    {
+      "id": "patagonia-down-sweater",
+      "name": "Patagonia Down Sweater",
+      "brand": "Patagonia",
+      "category": "jacket",
+      "tier": "flagship",
+      "prices": {
+        "std": 289
+      },
+      "rating": 5,
+      "buy": [
+        {
+          "store": "Patagonia",
+          "url": "https://www.patagonia.com/product/mens-down-sweater-insulated-jacket/84675.html",
+          "price": 289
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=Patagonia%20Down%20Sweater"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "uniqlo-ultra-light-down",
+      "name": "UNIQLO PUFFTECH Jacket",
+      "brand": "Uniqlo",
+      "category": "jacket",
+      "tier": "budget",
+      "prices": {
+        "std": 80
+      },
+      "rating": 4,
+      "buy": [
+        {
+          "store": "Uniqlo",
+          "url": "https://www.uniqlo.com/us/en/products/E486171-000/00",
+          "price": 80
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=UNIQLO%20PUFFTECH%20Jacket"
+        }
+      ],
+      "checked": "2026-10-18",
+      "priceNote": "Replaces Uniqlo Ultra Light Down (out of season)."
+    }
+  ],
+  "categories": {
+    "laptop": {
+      "label": "laptop",
+      "words": [
+        "laptop",
+        "laptops",
+        "macbook",
+        "notebook",
+        "chromebook",
+        "computer"
+      ],
+      "lifespanMonths": 48,
+      "fragile": true
+    },
+    "tablet": {
+      "label": "tablet",
+      "words": [
+        "tablet",
+        "tablets",
+        "ipad"
+      ],
+      "lifespanMonths": 48,
+      "fragile": true
+    },
+    "tv": {
+      "label": "TV",
+      "words": [
+        "tv",
+        "tvs",
+        "television",
+        "oled",
+        "qled"
+      ],
+      "lifespanMonths": 84,
+      "fragile": true
+    },
+    "headphones": {
+      "label": "headphones",
+      "words": [
+        "headphones",
+        "earbuds",
+        "airpods",
+        "headset"
+      ],
+      "lifespanMonths": 36
+    },
+    "gaming": {
+      "label": "game console",
+      "words": [
+        "console",
+        "playstation",
+        "ps5",
+        "switch",
+        "xbox"
+      ],
+      "lifespanMonths": 72,
+      "fragile": true
+    },
+    "vacuum": {
+      "label": "vacuum",
+      "words": [
+        "vacuum",
+        "vacuums",
+        "dyson",
+        "hoover"
+      ],
+      "lifespanMonths": 72
+    },
+    "kitchen": {
+      "label": "kitchen appliance",
+      "words": [
+        "air fryer",
+        "mixer",
+        "espresso",
+        "coffee maker",
+        "blender",
+        "kitchen"
+      ],
+      "lifespanMonths": 96
+    },
+    "chair": {
+      "label": "desk chair",
+      "words": [
+        "chair",
+        "desk chair",
+        "office chair"
+      ],
+      "lifespanMonths": 96
+    },
+    "mattress": {
+      "label": "mattress",
+      "words": [
+        "mattress",
+        "bed"
+      ],
+      "lifespanMonths": 96
+    },
+    "shoes": {
+      "label": "shoes",
+      "words": [
+        "shoes",
+        "sneakers",
+        "running shoes",
+        "trainers"
+      ],
+      "lifespanMonths": 12
+    },
+    "jacket": {
+      "label": "jacket",
+      "words": [
+        "jacket",
+        "coat",
+        "puffer",
+        "parka"
+      ],
+      "lifespanMonths": 48
+    }
+  }
 }
