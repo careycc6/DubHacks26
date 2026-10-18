@@ -1,5 +1,5 @@
 {
-  "_note": "Synthetic catalog for the hackathon. Prices are mock data, not real offers.",
+  "_note": "Synthetic catalog for the hackathon. Prices are mock data, not real offers. Phones get the carrier treatment (battery health, payments, plans); everything else is judged by the general product rules.",
   "phones": [
     { "id": "iphone-17-pro-max", "name": "iPhone 17 Pro Max", "brand": "Apple", "tier": "flagship", "prices": { "256": 1199, "512": 1399, "1024": 1599 }, "camera": 5, "gaming": 5, "batteryHours": 33, "screenIn": 6.9 },
     { "id": "iphone-17-pro", "name": "iPhone 17 Pro", "brand": "Apple", "tier": "flagship", "prices": { "256": 1099, "512": 1299, "1024": 1499 }, "camera": 5, "gaming": 5, "batteryHours": 30, "screenIn": 6.3 },
@@ -18,5 +18,54 @@
     { "id": "protection-360", "name": "Device Protection", "monthly": 18 },
     { "id": "hotspot-plus", "name": "Hotspot Plus", "monthly": 10 },
     { "id": "intl-pass", "name": "International Pass", "monthly": 15 }
-  ]
+  ],
+  "products": [
+    {"id": "macbook-air-13", "name": "MacBook Air 13", "brand": "Apple", "category": "laptop", "tier": "mid", "prices": {"256GB": 1099, "512GB": 1299}, "rating": 5},
+    {"id": "macbook-pro-14", "name": "MacBook Pro 14", "brand": "Apple", "category": "laptop", "tier": "flagship", "prices": {"512GB": 1599, "1TB": 1999}, "rating": 5},
+    {"id": "dell-xps-13", "name": "Dell XPS 13", "brand": "Dell", "category": "laptop", "tier": "mid", "prices": {"512GB": 999, "1TB": 1199}, "rating": 4},
+    {"id": "lenovo-ideapad-5", "name": "Lenovo IdeaPad 5", "brand": "Lenovo", "category": "laptop", "tier": "budget", "prices": {"512GB": 649}, "rating": 4},
+    {"id": "chromebook-plus", "name": "Chromebook Plus", "brand": "Acer", "category": "laptop", "tier": "budget", "prices": {"128GB": 399}, "rating": 3},
+    {"id": "ipad-pro-11", "name": "iPad Pro 11", "brand": "Apple", "category": "tablet", "tier": "flagship", "prices": {"256GB": 999, "512GB": 1199}, "rating": 5},
+    {"id": "ipad-11", "name": "iPad", "brand": "Apple", "category": "tablet", "tier": "budget", "prices": {"128GB": 349, "256GB": 449}, "rating": 4},
+    {"id": "galaxy-tab-s10-fe", "name": "Galaxy Tab S10 FE", "brand": "Samsung", "category": "tablet", "tier": "budget", "prices": {"128GB": 449}, "rating": 3},
+    {"id": "lg-oled-c5", "name": "LG OLED C5", "brand": "LG", "category": "tv", "tier": "flagship", "prices": {"55in": 1499, "65in": 1999}, "rating": 5},
+    {"id": "samsung-qled-q70", "name": "Samsung QLED Q70", "brand": "Samsung", "category": "tv", "tier": "mid", "prices": {"55in": 799, "65in": 999}, "rating": 4},
+    {"id": "tcl-qm7", "name": "TCL QM7", "brand": "TCL", "category": "tv", "tier": "budget", "prices": {"55in": 599, "65in": 749}, "rating": 4},
+    {"id": "sony-wh-1000xm6", "name": "Sony WH-1000XM6", "brand": "Sony", "category": "headphones", "tier": "flagship", "prices": {"std": 449}, "rating": 5},
+    {"id": "airpods-pro-3", "name": "AirPods Pro 3", "brand": "Apple", "category": "headphones", "tier": "mid", "prices": {"std": 249}, "rating": 5},
+    {"id": "soundcore-q30", "name": "Soundcore Life Q30", "brand": "Anker", "category": "headphones", "tier": "budget", "prices": {"std": 79}, "rating": 3},
+    {"id": "ps5-pro", "name": "PlayStation 5 Pro", "brand": "Sony", "category": "gaming", "tier": "flagship", "prices": {"std": 749}, "rating": 5},
+    {"id": "ps5-slim", "name": "PlayStation 5 Slim", "brand": "Sony", "category": "gaming", "tier": "mid", "prices": {"std": 499}, "rating": 5},
+    {"id": "switch-2", "name": "Nintendo Switch 2", "brand": "Nintendo", "category": "gaming", "tier": "mid", "prices": {"std": 449}, "rating": 5},
+    {"id": "dyson-v15", "name": "Dyson V15 Detect", "brand": "Dyson", "category": "vacuum", "tier": "flagship", "prices": {"std": 749}, "rating": 5},
+    {"id": "shark-stratos", "name": "Shark Stratos Cordless", "brand": "Shark", "category": "vacuum", "tier": "mid", "prices": {"std": 399}, "rating": 4},
+    {"id": "bissell-cleanview", "name": "Bissell CleanView", "brand": "Bissell", "category": "vacuum", "tier": "budget", "prices": {"std": 149}, "rating": 3},
+    {"id": "breville-barista", "name": "Breville Barista Express", "brand": "Breville", "category": "kitchen", "tier": "flagship", "prices": {"std": 699}, "rating": 5},
+    {"id": "kitchenaid-mixer", "name": "KitchenAid Stand Mixer", "brand": "KitchenAid", "category": "kitchen", "tier": "mid", "prices": {"std": 449}, "rating": 5},
+    {"id": "ninja-air-fryer", "name": "Ninja Air Fryer", "brand": "Ninja", "category": "kitchen", "tier": "budget", "prices": {"std": 129}, "rating": 4},
+    {"id": "aeron-chair", "name": "Herman Miller Aeron", "brand": "Herman Miller", "category": "chair", "tier": "flagship", "prices": {"std": 1395}, "rating": 5},
+    {"id": "branch-ergo-chair", "name": "Branch Ergonomic Chair", "brand": "Branch", "category": "chair", "tier": "mid", "prices": {"std": 499}, "rating": 4},
+    {"id": "ikea-markus", "name": "IKEA Markus", "brand": "IKEA", "category": "chair", "tier": "budget", "prices": {"std": 229}, "rating": 3},
+    {"id": "purple-mattress", "name": "Purple Plus Mattress", "brand": "Purple", "category": "mattress", "tier": "flagship", "prices": {"Twin": 1299, "Queen": 1999}, "rating": 5},
+    {"id": "casper-original", "name": "Casper Original", "brand": "Casper", "category": "mattress", "tier": "mid", "prices": {"Twin": 895, "Queen": 1295}, "rating": 4},
+    {"id": "zinus-foam", "name": "Zinus Green Tea Foam", "brand": "Zinus", "category": "mattress", "tier": "budget", "prices": {"Twin": 249, "Queen": 329}, "rating": 3},
+    {"id": "nike-pegasus-41", "name": "Nike Pegasus 41", "brand": "Nike", "category": "shoes", "tier": "mid", "prices": {"std": 140}, "rating": 4},
+    {"id": "hoka-clifton-10", "name": "Hoka Clifton 10", "brand": "Hoka", "category": "shoes", "tier": "mid", "prices": {"std": 145}, "rating": 5},
+    {"id": "asics-gel-contend", "name": "ASICS Gel-Contend 9", "brand": "ASICS", "category": "shoes", "tier": "budget", "prices": {"std": 70}, "rating": 3},
+    {"id": "patagonia-down-sweater", "name": "Patagonia Down Sweater", "brand": "Patagonia", "category": "jacket", "tier": "flagship", "prices": {"std": 279}, "rating": 5},
+    {"id": "uniqlo-ultra-light-down", "name": "Uniqlo Ultra Light Down", "brand": "Uniqlo", "category": "jacket", "tier": "budget", "prices": {"std": 89}, "rating": 4}
+  ],
+  "categories": {
+    "laptop": {"label": "laptop", "words": ["laptop", "laptops", "macbook", "notebook", "chromebook", "computer"], "lifespanMonths": 48, "fragile": true},
+    "tablet": {"label": "tablet", "words": ["tablet", "tablets", "ipad"], "lifespanMonths": 48, "fragile": true},
+    "tv": {"label": "TV", "words": ["tv", "tvs", "television", "oled", "qled"], "lifespanMonths": 84, "fragile": true},
+    "headphones": {"label": "headphones", "words": ["headphones", "earbuds", "airpods", "headset"], "lifespanMonths": 36},
+    "gaming": {"label": "game console", "words": ["console", "playstation", "ps5", "switch", "xbox"], "lifespanMonths": 72, "fragile": true},
+    "vacuum": {"label": "vacuum", "words": ["vacuum", "vacuums", "dyson", "hoover"], "lifespanMonths": 72},
+    "kitchen": {"label": "kitchen appliance", "words": ["air fryer", "mixer", "espresso", "coffee maker", "blender", "kitchen"], "lifespanMonths": 96},
+    "chair": {"label": "desk chair", "words": ["chair", "desk chair", "office chair"], "lifespanMonths": 96},
+    "mattress": {"label": "mattress", "words": ["mattress", "bed"], "lifespanMonths": 96},
+    "shoes": {"label": "shoes", "words": ["shoes", "sneakers", "running shoes", "trainers"], "lifespanMonths": 12},
+    "jacket": {"label": "jacket", "words": ["jacket", "coat", "puffer", "parka"], "lifespanMonths": 48}
+  }
 }

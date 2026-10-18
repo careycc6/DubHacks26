@@ -1,11 +1,12 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
-  describePrefs, findPhone, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
-  priceTrack, protectionAdvice,
+  bestMatch, cartLabel, cartPrice, categories, describePrefs, findCategory, findPhone, leavingNest, member, mergePrefs, parseLink, pickVariant,
+  PREF_LABELS, promosFor, recommend, recommendProducts, runTrial, usd,
+  priceTrack, productProtection, protectionAdvice,
   type Prefs,
 } from "./engine.ts";
 import { changed, newId, refreshTrial, state, trialOpts, world } from "./store.ts";
-import type { Ruling, Stamp, Trial } from "./types.ts";
+import type { Promo, Ruling, Stamp, Trial } from "./types.ts";
 
 const caseFileUrl = () => `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
 
@@ -48,7 +49,7 @@ function rulingLine(r: Ruling, day: number, hasProtection = false) {
 export function formatVerdict(t: Trial) {
   const budget =
     t.budget === undefined ? []
-    : t.overBudget ? [`💰 Budget ${usd(t.budget)}: still ${usd(t.now - t.budget)} over (everything left is a phone that can't wait)`]
+    : t.overBudget ? [`💰 Budget ${usd(t.budget)}: still ${usd(t.now - t.budget)} over (everything left replaces something broken or failing)`]
     : [`💰 Budget ${usd(t.budget)}: ${usd(t.budget - t.now)} left`];
   return [
     "⚖️ THE COURT RULES",
@@ -59,15 +60,19 @@ export function formatVerdict(t: Trial) {
   ].join("\n");
 }
 
+const promoLine = (p: Promo) => `${p.name}: ${p.percentOff ? `${p.percentOff}% off` : `−${usd(p.credit ?? 0)}`} (days ${p.startsOnDay}-${p.endsOnDay})`;
+
 export const tools = {
   get_household: {
-    description: "Who is on the plan, their current phones (age, battery health, storage used, payments left, trade-in value), account add-ons, and today's demo day.",
+    description: "Who is on the plan, their current phones (age, battery health, storage used, payments left, trade-in value), other things they already own (TV, laptop, vacuum…), account add-ons, the product categories the store carries, and today's demo day.",
     params: {},
     run: () => ({
       day: state.day,
       household: world.household.name,
       members: world.household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, age: m.age, usage: m.usage, device: m.device })),
+      owned: world.household.owned ?? [],
       accountAddons: world.household.accountAddons,
+      categories: Object.entries(categories(world)).map(([id, c]) => `${id} (${c.label})`),
     }),
   },
   recommend_phones: {
@@ -103,20 +108,127 @@ export const tools = {
             ...r,
             protection: protectionAdvice(m, r.price),
             priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : undefined,
-            promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: −${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`),
+            promos: promosFor(world, r.phoneId, state.day).map(promoLine),
           };
         }),
       };
     },
   },
+  recommend_products: {
+    description:
+      "Matchmaker for anything that isn't a phone (laptops, TVs, headphones, game consoles, vacuums, kitchen appliances, chairs, mattresses, shoes, jackets…): " +
+      "top 3 in a category with prices, upcoming sales and protection advice.",
+    params: {
+      member: { type: "string", description: "member name or id" },
+      category: { type: "string", description: `a category id (${Object.keys(categories(world)).join(", ")}) or what they called it ("laptop", "air fryer")` },
+      budget: { type: "number", description: "max price in USD, if they gave one" },
+      brand: { type: "string", description: "only if they named a brand" },
+      cheap: { type: "boolean", description: "they care most about price" },
+      best: { type: "boolean", description: "they want the best, price matters less" },
+    },
+    required: ["member", "category"],
+    run: (a: { member: string; category: string; budget?: number; brand?: string; cheap?: boolean; best?: boolean }) => {
+      const m = resolveMember(a.member);
+      const category = a.category in categories(world) ? a.category : findCategory(world, a.category);
+      if (!category) throw new Error(`The store doesn't carry "${a.category}". Categories: ${Object.keys(categories(world)).join(", ")}. For anything else, add it with add_product_to_cart and the price they gave.`);
+      const picks = recommendProducts(world, m.id, category, a);
+      state.lastRecs[m.id] = picks.map((r) => ({ productId: r.productId, variant: r.variant }));
+      const cat = categories(world)[category];
+      return {
+        forWhom: m.name,
+        category: cat.label,
+        picks: picks.map((r) => {
+          const track = priceTrack(world, r.productId, r.variant, state.day, 90);
+          return {
+            ...r,
+            protection: cat.fragile ? productProtection(m, r.price) : undefined,
+            priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : undefined,
+            promos: promosFor(world, r.productId, state.day, category).map(promoLine),
+          };
+        }),
+      };
+    },
+  },
+  add_product_to_cart: {
+    description:
+      "Add anything that isn't a phone to the shared cart: a catalog product (id or loose name like 'macbook air', 'lg oled 65') or, " +
+      "if the store doesn't carry it, a custom item with the name and the price the person gave (never guess a price).",
+    params: {
+      member: { type: "string" },
+      product: { type: "string", description: "catalog id or name, or what the item is" },
+      variant: { type: "string", description: "size/config if they said one: '65in', '1TB', 'Queen'" },
+      quantity: { type: "number", description: "how many (default 1)" },
+      price: { type: "number", description: "USD per item; only for items not in the catalog, as the person stated it" },
+      category: { type: "string", description: "for custom items: the closest category id, if any" },
+      addedBy: { type: "string", description: "who asked" },
+    },
+    required: ["member", "product"],
+    run: (a: { member: string; product: string; variant?: string; quantity?: number; price?: number; category?: string; addedBy?: string }) => {
+      const m = resolveMember(a.member);
+      const products = world.catalog.products ?? [];
+      const p = products.find((x) => x.id === a.product) ?? bestMatch(products, a.product)?.item;
+      const quantity = Math.max(1, Math.round(a.quantity ?? 1));
+      if (p) {
+        const variant = a.variant && a.variant in p.prices ? a.variant : pickVariant(p, `${a.variant ?? ""} ${a.product}`);
+        const item = { id: newId("c"), kind: "product" as const, memberId: m.id, productId: p.id, variant, quantity, addedBy: a.addedBy };
+        state.cart.push(item);
+        refreshTrial();
+        changed();
+        return { added: `${cartLabel(world, item)} for ${m.name}`, price: cartPrice(world, item), itemId: item.id };
+      }
+      if (!(a.price && a.price > 0)) {
+        throw new Error(`"${a.product}" isn't in the catalog. Ask what it costs, then add it with that price.`);
+      }
+      const category = a.category && a.category in categories(world) ? a.category : findCategory(world, a.product);
+      const item = { id: newId("c"), kind: "product" as const, memberId: m.id, custom: { name: a.product, price: Math.round(a.price), category }, quantity, addedBy: a.addedBy };
+      state.cart.push(item);
+      refreshTrial();
+      changed();
+      return { added: `${cartLabel(world, item)} for ${m.name}`, price: cartPrice(world, item), itemId: item.id };
+    },
+  },
+  report_owned_item: {
+    description:
+      "Someone says something about a thing they already own that isn't their phone: 'the vacuum died', 'my laptop is 6 years old', 'our TV still works fine'. " +
+      "Updates what the rulings use (a broken one is replaced now; a working one can wait).",
+    params: {
+      member: { type: "string", description: "whose it is; omit for something the household shares" },
+      category: { type: "string", description: "category id or what it is ('tv', 'laptop', 'vacuum')" },
+      name: { type: "string", description: "what it is, e.g. 'old Hoover upright'" },
+      ageMonths: { type: "number" },
+      broken: { type: "boolean" },
+    },
+    required: ["category"],
+    run: (a: { member?: string; category: string; name?: string; ageMonths?: number; broken?: boolean }) => {
+      const m = a.member ? resolveMember(a.member) : undefined;
+      const category = a.category in categories(world) ? a.category : findCategory(world, `${a.category} ${a.name ?? ""}`);
+      if (!category) throw new Error(`Unknown category "${a.category}"`);
+      const owned = (world.household.owned ??= []);
+      let o = owned.find((x) => x.category === category && (x.memberId === m?.id || !x.memberId));
+      if (!o) owned.push((o = { id: newId("o"), memberId: m?.id, category, name: a.name ?? `old ${categories(world)[category].label}`, ageMonths: a.ageMonths ?? 0 }));
+      if (a.name) o.name = a.name;
+      if (typeof a.ageMonths === "number" && a.ageMonths >= 0) o.ageMonths = Math.round(a.ageMonths);
+      if (typeof a.broken === "boolean") o.broken = a.broken;
+      refreshTrial();
+      changed();
+      const item = state.cart.find((c) => c.kind === "product" && (!m || c.memberId === m.id) &&
+        (c.custom?.category ?? world.catalog.products?.find((p) => p.id === c.productId)?.category) === category);
+      const ruling = state.trial?.rulings.find((r) => r.itemId === item?.id);
+      return {
+        owned: o,
+        updatedRuling: ruling ? { stamp: ruling.stamp, reasons: ruling.reasons, nowCost: ruling.nowCost } : "no trial yet; it will count when the cart goes on trial",
+      };
+    },
+  },
   add_recommended: {
-    description: "Add one of the phones just recommended to the cart: 'add the first one' = pick 1.",
+    description: "Add one of the phones or products just recommended to the cart: 'add the first one' = pick 1.",
     params: { member: { type: "string" }, pick: { type: "number", description: "1, 2 or 3" } },
     required: ["member", "pick"],
     run: (a: { member: string; pick: number }): unknown => {
       const m = resolveMember(a.member);
       const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(3, a.pick)) - 1];
       if (!r) throw new Error(`No recent picks for ${m.name}. Ask the court for a recommendation first.`);
+      if (r.productId) return callTool("add_product_to_cart", { member: m.id, product: r.productId, variant: r.variant, addedBy: m.id });
       return callTool("add_phone_to_cart", { member: m.id, phone: r.phoneId, storageGB: r.storageGB, addedBy: m.id });
     },
   },
@@ -153,13 +265,15 @@ export const tools = {
     },
   },
   add_from_link: {
-    description: "Someone pasted a store link. Parse it into a catalog phone + storage and add it to the cart for that member.",
-    params: { url: { type: "string" }, member: { type: "string", description: "who the phone is for (usually the sender)" } },
+    description: "Someone pasted a store link. Match it to a catalog phone or product (with its storage/size) and add it to the cart for that member.",
+    params: { url: { type: "string" }, member: { type: "string", description: "who it's for (usually the sender)" } },
     required: ["url", "member"],
     run: (a: { url: string; member: string }): unknown => {
-      const hit = parseProductLink(world, a.url);
-      if (!hit) throw new Error(`Couldn't match that link to a phone in the catalog`);
-      return callTool("add_phone_to_cart", { member: a.member, phone: hit.phone.id, storageGB: hit.storageGB, addedBy: resolveMember(a.member).id });
+      const hit = parseLink(world, a.url);
+      if (!hit) throw new Error(`Couldn't match that link to anything in the catalog. Ask what it is and what it costs, then add it with add_product_to_cart`);
+      const addedBy = resolveMember(a.member).id;
+      if (hit.kind === "product") return callTool("add_product_to_cart", { member: a.member, product: hit.product.id, variant: hit.variant, addedBy });
+      return callTool("add_phone_to_cart", { member: a.member, phone: hit.phone.id, storageGB: hit.storageGB, addedBy });
     },
   },
   enter_evidence: {
@@ -225,9 +339,10 @@ export const tools = {
     description: "The current shared cart with sticker prices.",
     params: {},
     run: () =>
-      state.cart.map((i) => i.kind === "device"
-        ? { itemId: i.id, who: member(world, i.memberId).name, item: `${phone(world, i.phoneId!).name} ${i.storageGB}GB`, price: phone(world, i.phoneId!).prices[String(i.storageGB)] }
-        : { itemId: i.id, who: member(world, i.memberId).name, item: i.addonId }),
+      state.cart.map((i) => ({
+        itemId: i.id, who: member(world, i.memberId).name, item: cartLabel(world, i),
+        ...(i.kind === "addon" ? { yearly: cartPrice(world, i) } : { price: cartPrice(world, i) }),
+      })),
   },
   run_trial: {
     description: "Put the cart on trial before checkout. Returns rulings (KEEP/SWAP/WAIT/CUT) with exact numbers plus a ready-to-send verdict text. Use whenever someone wants to check out, asks 'should we buy', or asks the court to rule.",

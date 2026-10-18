@@ -3,7 +3,11 @@
   "promos": [
     { "id": "fall-tradein", "name": "Fall Trade-In Event", "startsOnDay": 41, "endsOnDay": 90, "phones": ["iphone-17-pro", "iphone-17-pro-max"], "requiresTradeIn": true, "credit": 312 },
     { "id": "pixel-launch", "name": "Pixel launch credit", "startsOnDay": 0, "endsOnDay": 30, "phones": ["pixel-10", "pixel-10-pro"], "requiresTradeIn": false, "credit": 100 },
-    { "id": "holiday-galaxy", "name": "Holiday Galaxy deal", "startsOnDay": 60, "endsOnDay": 100, "phones": ["galaxy-s26", "galaxy-s26-ultra"], "requiresTradeIn": false, "credit": 200 }
+    { "id": "holiday-galaxy", "name": "Holiday Galaxy deal", "startsOnDay": 60, "endsOnDay": 100, "phones": ["galaxy-s26", "galaxy-s26-ultra"], "requiresTradeIn": false, "credit": 200 },
+    { "id": "back-to-school-mac", "name": "Back-to-school Mac credit", "startsOnDay": 0, "endsOnDay": 14, "products": ["macbook-air-13", "macbook-pro-14"], "requiresTradeIn": false, "credit": 100 },
+    { "id": "black-friday", "name": "Black Friday", "startsOnDay": 41, "endsOnDay": 46, "categories": ["tv", "laptop", "tablet", "headphones", "gaming", "vacuum", "kitchen"], "requiresTradeIn": false, "percentOff": 20 },
+    { "id": "holiday-mattress", "name": "Holiday mattress sale", "startsOnDay": 55, "endsOnDay": 70, "categories": ["mattress"], "requiresTradeIn": false, "percentOff": 25 },
+    { "id": "winter-clearance", "name": "Winter coat clearance", "startsOnDay": 75, "endsOnDay": 90, "categories": ["jacket"], "requiresTradeIn": false, "percentOff": 30 }
   ],
   "familyPlan": { "name": "Family Unlimited", "totalMonthlyByLines": { "1": 75, "2": 130, "3": 160, "4": 180, "5": 200, "6": 220 } },
   "soloPlans": [

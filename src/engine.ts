@@ -1,6 +1,6 @@
 // The pricing engine. Deterministic and LLM-free: every number the agent says comes from here.
 import type {
-  CartItem, Member, NestRuling, Phone, Promo, Recommendation, Ruling, Trial, World,
+  CartItem, Category, Member, NestRuling, Owned, Phone, Product, Promo, Recommendation, Ruling, Trial, World,
 } from "./types.ts";
 
 const LOW_BATTERY = 80; // below this, upgrading now is justified
@@ -22,20 +22,36 @@ export function phone(world: World, id: string): Phone {
   return p;
 }
 
-/** Loose name match ("17 pro max", "pixel 10") -> catalog phone. */
-export function findPhone(world: World, query: string): Phone | undefined {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** Best loose name match in a list, with its score (>= 0.6 counts as a match). */
+export function bestMatch<T extends { name: string }>(items: T[], query: string): { item: T; score: number } | undefined {
   const q = norm(query);
-  const scored = world.catalog.phones
-    .map((p) => {
-      const name = norm(p.name);
+  const scored = items
+    .map((item) => {
+      const name = norm(item.name);
       const words = name.split(" ");
       const hits = words.filter((w) => q.split(" ").includes(w)).length;
-      return { p, score: q.includes(name) ? 100 + name.length : hits / words.length };
+      return { item, score: q.includes(name) ? 100 + name.length : hits / words.length };
     })
     .sort((a, b) => b.score - a.score);
-  return scored[0] && scored[0].score >= 0.6 ? scored[0].p : undefined;
+  return scored[0] && scored[0].score >= 0.6 ? scored[0] : undefined;
 }
+
+/** Loose name match ("17 pro max", "pixel 10") -> catalog phone. */
+export function findPhone(world: World, query: string): Phone | undefined {
+  return bestMatch(world.catalog.phones, query)?.item;
+}
+
+/** Does this promo cover this phone / product (by id, or by its whole category)? */
+export const promoCovers = (x: Promo, id: string, category?: string) =>
+  !!(x.phones?.includes(id) || x.products?.includes(id) || (category && x.categories?.includes(category)));
+
+/** What a promo takes off this sticker: a flat credit or a percentage. */
+export const promoCredit = (x: Promo, sticker: number) => x.credit ?? Math.round((sticker * (x.percentOff ?? 0)) / 100);
+
+/** "−$312" or "20% off (−$300)". */
+const promoText = (x: Promo, sticker: number) => (x.percentOff ? `${x.percentOff}% off (−${usd(promoCredit(x, sticker))})` : `−${usd(promoCredit(x, sticker))}`);
 
 const storageOptions = (p: Phone) => Object.keys(p.prices).map(Number).sort((a, b) => a - b);
 
@@ -45,10 +61,10 @@ export function neededStorage(p: Phone, m: Member): number {
   return opts.find((gb) => gb >= m.device.storageUsedGB * 2) ?? opts[opts.length - 1];
 }
 
-const promoFor = (world: World, phoneId: string, day: number) => ({
-  active: world.offers.promos.find((x) => x.phones.includes(phoneId) && x.startsOnDay <= day && day < x.endsOnDay),
+const promoFor = (world: World, id: string, day: number, category?: string) => ({
+  active: world.offers.promos.find((x) => promoCovers(x, id, category) && x.startsOnDay <= day && day < x.endsOnDay),
   upcoming: world.offers.promos.find(
-    (x) => x.phones.includes(phoneId) && x.startsOnDay > day && x.startsOnDay - day <= PROMO_LOOKAHEAD_DAYS,
+    (x) => promoCovers(x, id, category) && x.startsOnDay > day && x.startsOnDay - day <= PROMO_LOOKAHEAD_DAYS,
   ),
 });
 
@@ -81,12 +97,19 @@ export const VERDICT: Record<string, { word: string; hint: string }> = {
 
 // ---------------------------------------------------------------- price tracker
 
-/** Store price of a phone on a given demo day (sticker minus any promo running that day). */
-export function priceOn(world: World, phoneId: string, gb: number, day: number): number {
-  const p = phone(world, phoneId);
-  const sticker = p.prices[String(gb)] ?? Math.min(...Object.values(p.prices));
-  const promo = world.offers.promos.find((x) => x.phones.includes(phoneId) && x.startsOnDay <= day && day < x.endsOnDay);
-  return sticker - (promo?.credit ?? 0);
+/** Sticker and category for anything priceable: a phone (variant = storage GB), a product (variant = size), or a custom item. */
+function sticker(world: World, id: string, variant: string | number): { price: number; category?: string } {
+  const ph = world.catalog.phones.find((x) => x.id === id);
+  if (ph) return { price: ph.prices[String(variant)] ?? Math.min(...Object.values(ph.prices)) };
+  const pr = product(world, id);
+  return { price: pr.prices[String(variant)] ?? Math.min(...Object.values(pr.prices)), category: pr.category };
+}
+
+/** Store price on a given demo day (sticker minus any promo running that day). Pass `custom` for items not in the catalog. */
+export function priceOn(world: World, id: string, variant: string | number, day: number, custom?: { price: number; category?: string }): number {
+  const { price, category } = custom ?? sticker(world, id, variant);
+  const promo = world.offers.promos.find((x) => promoCovers(x, id, category) && x.startsOnDay <= day && day < x.endsOnDay);
+  return price - (promo ? promoCredit(promo, price) : 0);
 }
 
 export interface PriceTrack {
@@ -96,13 +119,16 @@ export interface PriceTrack {
 }
 
 /** Price over the next `span` days, with every promo start/end as its own point, so drops show exactly. */
-export function priceTrack(world: World, phoneId: string, gb: number, fromDay: number, span = 120): PriceTrack {
+export function priceTrack(
+  world: World, id: string, variant: string | number, fromDay: number, span = 120, custom?: { price: number; category?: string },
+): PriceTrack {
+  const { category } = custom ?? sticker(world, id, variant);
   const days = new Set<number>();
   for (let d = fromDay; d <= fromDay + span; d += 10) days.add(d);
-  for (const x of world.offers.promos.filter((x) => x.phones.includes(phoneId))) {
+  for (const x of world.offers.promos.filter((x) => promoCovers(x, id, category))) {
     for (const d of [x.startsOnDay - 1, x.startsOnDay, x.endsOnDay - 1, x.endsOnDay]) if (d >= fromDay && d <= fromDay + span) days.add(d);
   }
-  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world, phoneId, gb, day) }));
+  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world, id, variant, day, custom) }));
   const lowest = points.reduce((best, p) => (p.price < best.price ? p : best), points[0]);
   return { points, now: points[0].price, lowest };
 }
@@ -196,17 +222,19 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
   // 4. Timing: should this purchase wait?
   const { active, upcoming } = promoFor(world, target.id, day);
   if (active) {
-    reasons.push(`${active.name} is live: −${usd(active.credit)}`);
-    price -= active.credit;
-    math.push({ label: `${active.name} (live now)`, amount: -active.credit });
+    reasons.push(`${active.name} is live: ${promoText(active, target.prices[String(gb)])}`);
+    const off = promoCredit(active, target.prices[String(gb)]);
+    price -= off;
+    math.push({ label: `${active.name} (live now)`, amount: -off });
   }
   const healthy = m.device.batteryHealth >= LOW_BATTERY;
   let holdUntilDay: number | undefined;
   if (healthy && upcoming && !active) {
     holdUntilDay = upcoming.startsOnDay;
-    reasons.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: −${usd(upcoming.credit)}`);
-    price -= upcoming.credit;
-    math.push({ label: `${upcoming.name} (from day ${upcoming.startsOnDay})`, amount: -upcoming.credit });
+    const off = promoCredit(upcoming, target.prices[String(gb)]);
+    reasons.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: ${promoText(upcoming, target.prices[String(gb)])}`);
+    price -= off;
+    math.push({ label: `${upcoming.name} (from day ${upcoming.startsOnDay})`, amount: -off });
   }
   // installmentsLeft is as of day 0; payments keep getting made as the demo clock moves.
   const paymentsLeft = Math.max(0, Math.ceil((m.device.installmentsLeft * DAYS_PER_PAYMENT - day) / DAYS_PER_PAYMENT));
@@ -241,6 +269,8 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     holdUntilDay,
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
     witness: stamp === "WAIT" ? witnessStatement(m) : undefined,
+    witnessOf: stamp === "WAIT" ? `${m.name}'s current phone` : undefined,
+    urgent: !healthy || !!m.device.screenCracked,
     math,
     protection: protectionAdvice(m, target.prices[String(gb)]),
     track: priceTrack(world, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40)),
@@ -282,7 +312,10 @@ function reviewAddon(world: World, item: CartItem, cart: CartItem[] = []): Rulin
 
 /** Put the whole cart (plus the account's dead weight) on trial. */
 export function runTrial(world: World, cart: CartItem[], day: number, opts: TrialOptions = {}): Trial {
-  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day, opts) : reviewAddon(world, item, cart)));
+  const rulings = cart.map((item) =>
+    item.kind === "device" ? reviewDevice(world, item, day, opts)
+    : item.kind === "product" ? reviewProduct(world, item, day, opts, cart)
+    : reviewAddon(world, item, cart));
   for (const a of world.household.accountAddons) {
     if (a.usedInLast12Months) continue;
     const yearly = a.monthly * 12;
@@ -299,7 +332,7 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
   const holdAddonsWithPhones = () => {
     for (const r of rulings) {
       if (r.stamp !== "KEEP" || !r.label.includes("Protection") || !r.memberId) continue;
-      const phoneRuling = rulings.find((x) => x.memberId === r.memberId && x.proposed && x.stamp === "WAIT");
+      const phoneRuling = rulings.find((x) => x.memberId === r.memberId && x.proposed?.phoneId && x.stamp === "WAIT");
       if (!phoneRuling) continue;
       r.stamp = "WAIT";
       r.holdUntilDay = phoneRuling.holdUntilDay;
@@ -310,15 +343,20 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
   };
   holdAddonsWithPhones();
 
-  // Family budget: if today's spend is over it, hold the purchases that can most afford to wait
-  // (healthiest current phone first). Phones that are failing are never held for budget.
+  // Family budget: if today's spend is over it, hold the purchases that can most afford to wait:
+  // nice-to-haves first (priciest first), then phones (healthiest current phone first).
+  // Anything replacing something broken or failing is never held for budget.
   if (opts.budget !== undefined && sum((r) => r.nowCost) > opts.budget) {
-    const canWait = rulings
-      .filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.proposed)
+    const products = rulings
+      .filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.proposed?.productId !== undefined && !r.urgent)
+      .sort((a, b) => b.nowCost - a.nowCost);
+    const phones = rulings
+      .filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.proposed?.phoneId)
       .map((r) => ({ r, m: member(world, r.memberId!) }))
       .filter(({ m }) => m.device.batteryHealth >= 75 && !m.device.screenCracked)
-      .sort((a, b) => b.m.device.batteryHealth - a.m.device.batteryHealth);
-    for (const { r } of canWait) {
+      .sort((a, b) => b.m.device.batteryHealth - a.m.device.batteryHealth)
+      .map(({ r }) => r);
+    for (const r of [...products, ...phones]) {
       if (sum((x) => x.nowCost) <= opts.budget) break;
       r.stamp = "WAIT";
       r.holdUntilDay = day + 30;
@@ -510,8 +548,35 @@ export function mergePrefs(old: Prefs = {}, next: Prefs): Prefs {
   return merged;
 }
 
-export function promosFor(world: World, phoneId: string, day: number): Promo[] {
-  return world.offers.promos.filter((p) => p.phones.includes(phoneId) && p.endsOnDay > day);
+export function promosFor(world: World, id: string, day: number, category?: string): Promo[] {
+  return world.offers.promos.filter((p) => promoCovers(p, id, category) && p.endsOnDay > day);
+}
+
+/** Words in a store URL: "/lg-oled-c5?size=65in" -> "lg oled c 5 size 65 in". */
+function linkWords(url: string) {
+  let decoded = url;
+  try {
+    const u = new URL(url);
+    decoded = `${u.pathname} ${u.search}`;
+  } catch {}
+  decoded = decodeURIComponent(decoded);
+  return { decoded, words: decoded.replace(/[-_/+=&?.,:]+/g, " ").replace(/([a-z])(\d)/gi, "$1 $2").replace(/(\d)([a-z])/gi, "$1 $2") };
+}
+
+/** "Close your tabs" for anything: a pasted store URL -> a catalog phone (+ storage) or product (+ size). */
+export function parseLink(world: World, url: string):
+  | { kind: "phone"; phone: Phone; storageGB: number }
+  | { kind: "product"; product: Product; variant: string }
+  | undefined {
+  const { decoded, words } = linkWords(url);
+  const ph = bestMatch(world.catalog.phones, words);
+  const pr = bestMatch(world.catalog.products ?? [], words);
+  if (ph && (!pr || ph.score >= pr.score)) {
+    const hit = parseProductLink(world, url)!;
+    return { kind: "phone", ...hit };
+  }
+  if (!pr) return undefined;
+  return { kind: "product", product: pr.item, variant: pickVariant(pr.item, decoded) };
 }
 
 /** "Close your tabs": turn a pasted store URL into a catalog phone + storage. */
@@ -547,4 +612,232 @@ export function familyBudget(text: string): number | undefined {
   if (!/\b(our|family|household|total|we have|we can spend|we've got)\b/.test(t)) return undefined;
   const m = t.match(/(?:budget|spend|have|got)[^$\d]{0,20}\$?\s*(\d{3,5})/) ?? t.match(/\$\s*(\d{3,5})/);
   return m ? Number(m[1]) : undefined;
+}
+
+// ---------------------------------------------------------------- everything else the store sells
+
+const COOLING_OFF_DAYS = 30; // "sleep on it" for a want, not a need
+
+export const categories = (world: World): Record<string, Category> => world.catalog.categories ?? {};
+
+export function product(world: World, id: string): Product {
+  const p = world.catalog.products?.find((x) => x.id === id);
+  if (!p) throw new Error(`Unknown product "${id}"`);
+  return p;
+}
+
+/** Loose name match ("macbook air", "lg oled") -> catalog product. */
+export function findProduct(world: World, query: string): Product | undefined {
+  return bestMatch(world.catalog.products ?? [], query)?.item;
+}
+
+/** "what laptop should I get", "a new tv" -> "laptop", "tv". Longest phrase wins ("air fryer" over "air"). */
+export function findCategory(world: World, text: string): string | undefined {
+  const t = ` ${norm(text)} `;
+  const hits = Object.entries(categories(world))
+    .flatMap(([id, c]) => c.words.map((w) => ({ id, w: norm(w) })))
+    .filter(({ w }) => t.includes(` ${w} `))
+    .sort((a, b) => b.w.length - a.w.length);
+  return hits[0]?.id;
+}
+
+/** Cheapest variant first ("55in" before "65in"). */
+export const variants = (p: Product) => Object.keys(p.prices).sort((a, b) => p.prices[a] - p.prices[b]);
+
+/** A variant named in free text ("65 inch", "1tb", "queen"), else the cheapest. */
+export function pickVariant(p: Product, text = ""): string {
+  const t = norm(text).replace(/(\d) (in|inch|gb|tb)\b/g, "$1$2").replace(/inch\b/g, "in");
+  return variants(p).find((v) => v !== "std" && new RegExp(`\\b${norm(v).replace(/ /g, "")}\\b`).test(t)) ?? variants(p)[0];
+}
+
+/** "MacBook Air 13 512GB", "AirPods Pro 3" (no "std"). */
+export const productLabel = (p: Product, variant: string) => (variant === "std" ? p.name : `${p.name} ${variant}`);
+
+/** What this person (or the household) already has in this category: their own first, then a shared one. */
+export function ownedFor(world: World, memberId: string, category: string): Owned | undefined {
+  const owned = world.household.owned ?? [];
+  return owned.find((o) => o.memberId === memberId && o.category === category) ?? owned.find((o) => !o.memberId && o.category === category);
+}
+
+/** Is a protection plan worth it for this product? (Only asked for fragile categories.) */
+export function productProtection(m: Member, price: number): { verdict: "ADD" | "SKIP" | "OPTIONAL"; monthly: number; reason: string } {
+  const monthly = Math.max(3, Math.round(price * 0.01));
+  const young = m.age < 20 || ["teen", "kid"].includes(m.role);
+  if (price >= 800 && young) return { verdict: "ADD", monthly, reason: `Teens drop things: ${usd(monthly)}/mo protects a ${usd(price)} purchase` };
+  if (price < 250) return { verdict: "SKIP", monthly, reason: `Skip it: ${usd(monthly * 12)}/yr is a lot next to a ${usd(price)} purchase` };
+  return { verdict: "OPTIONAL", monthly, reason: `Optional: ${usd(monthly * 12)}/yr. Check the card you pay with first, many add a free extra year of warranty` };
+}
+
+const years = (months: number) => (months % 12 === 0 ? `${months / 12} years` : `${months} months`);
+
+function reviewProduct(world: World, item: CartItem, day: number, opts: TrialOptions, cart: CartItem[]): Ruling {
+  const m = member(world, item.memberId);
+  const qty = Math.max(1, Math.round(item.quantity ?? 1));
+  const picked = item.productId ? product(world, item.productId) : undefined;
+  if (!picked && !item.custom) throw new Error(`Cart item ${item.id} has no product`);
+  const category = picked?.category ?? item.custom?.category;
+  const cat = category ? categories(world)[category] : undefined;
+  const pickedVariant = picked ? (item.variant && item.variant in picked.prices ? item.variant : variants(picked)[0]) : "std";
+  const many = (name: string) => (qty > 1 ? `${qty} × ${name}` : name);
+  const pickedName = picked ? productLabel(picked, pickedVariant) : item.custom!.name;
+  const pickedUnit = picked ? picked.prices[pickedVariant] : item.custom!.price;
+  const originalCost = pickedUnit * qty;
+  const label = `${m.name} · ${many(pickedName)}`;
+  const math: { label: string; amount: number }[] = [{ label: `${many(pickedName)}, as argued`, amount: originalCost }];
+
+  // 0. The same thing twice for the same person: strike the extra copy.
+  const sameAs = (c: CartItem) =>
+    c.kind === "product" && c.memberId === m.id &&
+    (picked ? c.productId === picked.id : c.custom?.name.toLowerCase() === item.custom!.name.toLowerCase());
+  const first = cart.find(sameAs);
+  if (first && first.id !== item.id) {
+    return {
+      itemId: item.id, memberId: m.id, label, stamp: "CUT",
+      reasons: [`Already in the cart for ${m.name}. One is enough`],
+      originalCost, nowCost: 0, heldCost: 0, savings: originalCost,
+      math: [...math, { label: "Struck: duplicate", amount: -originalCost }],
+    };
+  }
+
+  const reasons: string[] = [];
+  // 1. Right product? Budget pressure (private DM): a premium pick goes to a cheaper one rated nearly as well.
+  let target = picked;
+  let variant = pickedVariant;
+  if (picked && opts.tightBudget && picked.tier === "flagship") {
+    const cheaper = (world.catalog.products ?? [])
+      .filter((p) => p.category === picked.category && p.tier !== "flagship" && p.rating >= picked.rating - 1)
+      .sort((a, b) => Number(b.brand === picked.brand) - Number(a.brand === picked.brand) || b.rating - a.rating || Math.min(...Object.values(a.prices)) - Math.min(...Object.values(b.prices)))[0];
+    if (cheaper) {
+      target = cheaper;
+      variant = pickedVariant in cheaper.prices ? pickedVariant : variants(cheaper)[0];
+      reasons.push(`Keeping this month's total in check: the ${cheaper.name} is rated ${cheaper.rating}/5 for less`);
+    }
+  }
+  const unit = target ? target.prices[variant] : pickedUnit;
+  const name = target ? productLabel(target, variant) : pickedName;
+  let price = unit * qty;
+  if (price !== originalCost) math.push({ label: `Switch to ${many(name)}`, amount: price - originalCost });
+
+  // 2. What they already own: trade it in, and is it actually done?
+  const owned = category ? ownedFor(world, m.id, category) : undefined;
+  if (owned?.tradeInValue && !owned.broken) {
+    reasons.push(`Trade in the ${owned.name}: −${usd(owned.tradeInValue)}`);
+    price -= owned.tradeInValue;
+    math.push({ label: `Trade-in: ${owned.name}`, amount: -owned.tradeInValue });
+  }
+  const urgent = !!owned?.broken;
+  const stillGood = !!owned && !owned.broken && !!cat?.lifespanMonths && owned.ageMonths < cat.lifespanMonths;
+
+  // 3. Timing: a sale running now, or one coming soon.
+  const id = target?.id ?? `custom:${item.id}`;
+  const custom = target ? undefined : { price: unit, category };
+  const { active, upcoming } = promoFor(world, id, day, category);
+  if (active) {
+    const off = promoCredit(active, unit) * qty;
+    reasons.push(`${active.name} is live: ${promoText(active, unit * qty)}`);
+    price -= off;
+    math.push({ label: `${active.name} (live now)`, amount: -off });
+  }
+  let holdUntilDay: number | undefined;
+  if (!urgent && upcoming && !active) {
+    holdUntilDay = upcoming.startsOnDay;
+    const off = promoCredit(upcoming, unit) * qty;
+    reasons.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: ${promoText(upcoming, unit * qty)}`);
+    price -= off;
+    math.push({ label: `${upcoming.name} (from day ${upcoming.startsOnDay})`, amount: -off });
+  }
+  if (stillGood && holdUntilDay === undefined && !active) {
+    holdUntilDay = day + COOLING_OFF_DAYS;
+    reasons.push(`It's a want, not a need yet: sleep on it for ${COOLING_OFF_DAYS} days. Still want it then? Buy it`);
+  }
+  if (owned?.broken) reasons.unshift(`The ${owned.name} is broken. Replacing it now makes sense`);
+  else if (stillGood) reasons.unshift(`The ${owned!.name} still works and is ${owned!.ageMonths} months old. A ${cat!.label} lasts about ${years(cat!.lifespanMonths)}`);
+  else if (owned && cat?.lifespanMonths) reasons.unshift(`The ${owned.name} is ${owned.ageMonths} months old, past the ~${years(cat.lifespanMonths)} a ${cat.label} lasts. Fair to replace`);
+  if (!reasons.length) reasons.push(`Fair price. No sale coming up in the next ${PROMO_LOOKAHEAD_DAYS} days`);
+
+  const changed = target !== picked;
+  const stamp = holdUntilDay !== undefined ? "WAIT" : changed ? "SWAP" : "KEEP";
+  const witness = stamp === "WAIT" && owned && !owned.broken
+    ? `I am the ${owned.name}. I am ${owned.ageMonths} months old and I still do my job every day. I'd like to be heard before I'm replaced.`
+    : undefined;
+  return {
+    itemId: item.id,
+    memberId: m.id,
+    label,
+    stamp,
+    reasons,
+    originalCost,
+    nowCost: stamp === "WAIT" ? 0 : price,
+    heldCost: stamp === "WAIT" ? price : 0,
+    savings: originalCost - price,
+    holdUntilDay,
+    proposed: { productId: id, variant, label: many(name) },
+    witness,
+    witnessOf: witness ? (owned!.memberId ? `${m.name}'s ${owned!.name}` : `the household's ${owned!.name}`) : undefined,
+    urgent,
+    math,
+    protection: cat?.fragile ? productProtection(m, unit) : undefined,
+    track: priceTrack(world, id, variant, day, Math.max(90, (holdUntilDay ?? day) - day + 40), custom),
+  };
+}
+
+export interface ProductPick {
+  productId: string;
+  name: string;
+  variant: string;
+  price: number;
+  why: string[];
+}
+
+/** Matchmaker for anything but phones: top 3 in a category, by how well it does the job for the money. */
+export function recommendProducts(
+  world: World, memberId: string, category: string, opts: { budget?: number; brand?: string; cheap?: boolean; best?: boolean } = {},
+): ProductPick[] {
+  const m = member(world, memberId);
+  const cat = categories(world)[category];
+  if (!cat) throw new Error(`Unknown category "${category}". Categories: ${Object.keys(categories(world)).join(", ")}`);
+  const owned = ownedFor(world, m.id, category);
+  const brand = opts.brand?.toLowerCase();
+  return (world.catalog.products ?? [])
+    .filter((p) => p.category === category)
+    .map((p) => {
+      const variant = variants(p)[0];
+      const price = p.prices[variant];
+      const why: string[] = [];
+      let score = p.rating * 20 - price / (opts.cheap ? 10 : opts.best ? 200 : 40);
+      if (opts.budget && price > opts.budget) score -= 50;
+      if (brand) {
+        if (p.brand.toLowerCase() === brand) {
+          score += 25;
+          why.push(`the ${p.brand} you asked for`);
+        } else score -= 15;
+      }
+      why.push(`rated ${p.rating}/5`);
+      if (opts.budget) why.push(price <= opts.budget ? `${usd(price)}, under your ${usd(opts.budget)}` : `${usd(price)}, over your ${usd(opts.budget)}`);
+      if (variants(p).length > 1) why.push(`from ${usd(price)} (${variant})`);
+      if (owned?.tradeInValue && !owned.broken) why.push(`trade in the ${owned.name} for −${usd(owned.tradeInValue)}`);
+      return { productId: p.id, name: p.name, variant, price, why, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .filter((r, _i, all) => !opts.budget || r.price <= opts.budget || all.filter((x) => x.price <= opts.budget!).length < 2)
+    .slice(0, 3)
+    .map(({ score: _score, ...r }) => r);
+}
+
+/** "iPhone 17 Pro 256GB", "2 × Nike Pegasus 41", "Hotspot Plus": how a cart line reads anywhere. */
+export function cartLabel(world: World, i: CartItem): string {
+  const many = (name: string) => ((i.quantity ?? 1) > 1 ? `${i.quantity} × ${name}` : name);
+  if (i.kind === "device") return `${phone(world, i.phoneId!).name} ${i.storageGB}GB`;
+  if (i.kind === "product") return many(i.custom?.name ?? productLabel(product(world, i.productId!), i.variant ?? variants(product(world, i.productId!))[0]));
+  return world.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "an add-on";
+}
+
+/** Sticker price of a cart line (add-ons: a year of them). */
+export function cartPrice(world: World, i: CartItem): number {
+  if (i.kind === "device") return phone(world, i.phoneId!).prices[String(i.storageGB)];
+  if (i.kind === "product") {
+    const p = i.productId ? product(world, i.productId) : undefined;
+    return (p ? p.prices[i.variant ?? variants(p)[0]] : i.custom!.price) * (i.quantity ?? 1);
+  }
+  return (world.catalog.addons.find((a) => a.id === i.addonId)?.monthly ?? 0) * 12;
 }

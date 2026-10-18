@@ -11,7 +11,7 @@ import { dashboardRouter } from "./dashboard.ts";
 import { demoRouter, seedCart } from "./demo.ts";
 import { shareRouter } from "./share.ts";
 import { deliver } from "./feed.ts";
-import { advanceTrial, readyHolds, usd } from "./engine.ts";
+import { advanceTrial, cartPrice, readyHolds, usd } from "./engine.ts";
 import { addChat, bus, changed, logActivity, publicState, reset, state, trialOpts, world } from "./store.ts";
 
 const app = express();
@@ -133,7 +133,7 @@ app.post("/api/demo/argue", async (_req, res) => {
       await new Promise((r) => setTimeout(r, 1100));
     }
     seedCart();
-    const sticker = state.cart.reduce((s, i) => s + (world.catalog.phones.find((p) => p.id === i.phoneId)?.prices[String(i.storageGB)] ?? 0), 0);
+    const sticker = state.cart.reduce((s, i) => s + cartPrice(world, i), 0);
     await sendTo(spaceId, `📥 Entered into the family cart: 17 Pro Max 512GB (Maya), 17 Pro 256GB (Marco), Pixel 10 Pro 256GB (Elena). Sticker total ${usd(sticker)}. Nobody checks out until the court rules. Say "court, rule".`);
   } finally {
     arguing = false;

@@ -1,7 +1,7 @@
 # ⚖️ Cart Court
 
-**An honest phone-shopping assistant that lives in your household's group chat.**
-Paste links, send screenshots, argue about phones. Cart Court builds one shared cart, puts it on trial before checkout
+**An honest shopping assistant that lives in your household's group chat.**
+Paste links, send screenshots, argue about phones, laptops, TVs, vacuums, mattresses or shoes. Cart Court builds one shared cart, puts it on trial before checkout
 (**KEEP / SWAP / WAIT / CUT / STAY**), and texts you back when a held item is actually worth buying.
 
 DubHacks '26 · Title track: **Chef's Choice** · Side tracks: **T-Mobile** (phone shopping), **Photon** (messaging agent), VEYZL (optional third)
@@ -21,13 +21,25 @@ npm test               # pricing engine tests
 ```
 
 - **No keys at all:** rules-only mode. Try `court, add 17 pro max for maya 512gb`, `court, rule`,
-  `court, maya is leaving for college`, `court, what phone for grandma?`
+  `court, maya is leaving for college`, `court, what phone for grandma?`, `court, what laptop should maya get under $700?`,
+  `court, add a $90 air purifier for me`, `court, the vacuum died`
 - **`GEMINI_API_KEY`:** full agent with natural language, photo evidence, private DMs. Also enters MLH Best Use of Gemini.
 - **`PHOTON_PROJECT_ID` + `PHOTON_PROJECT_SECRET`:** a real iMessage number via Photon 2.0 (Spectrum SDK).
   Put your teammates' numbers in `data/household.json → handles` so the agent knows who's talking.
   Set `PUBLIC_URL` to a tunnel (`npx cloudflared tunnel --url http://localhost:3000`) so the case-file link opens on phones.
 - **`MONGODB_URI`:** saves the cart, rulings, chat and household to MongoDB (a free Atlas M0 cluster is enough).
   Without it, everything is saved to `data/*.local.json` on this computer. Either way, restarts no longer wipe the cart.
+
+## What it can judge
+
+- **Phones** get the full carrier treatment: battery health, storage headroom, payments left, trade-ins, plans, protection.
+- **Everything else** (`data/catalog.json → products`, grouped by `categories`): laptops, tablets, TVs, headphones, consoles,
+  vacuums, kitchen appliances, chairs, mattresses, shoes, jackets. The court checks what the family already owns
+  (`data/household.json → owned`: a broken one is replaced now, a young working one can wait), trade-ins, live and upcoming
+  sales (`data/offers.json`, by product or whole category, flat credit or percent off, e.g. Black Friday), duplicates,
+  protection for fragile things, and the family budget (nice-to-haves are held before anything replacing something broken).
+- **Anything the store doesn't carry:** add it with the price you were quoted (`court, add a $40 lamp for me`). Category sales
+  still apply when the court can tell what it is.
 
 ## Host it
 

@@ -1,7 +1,7 @@
 // Cart Court's brain: decides WHEN to speak (taste), then talks via Gemini + tools.
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
-import { familyBudget, hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
+import { bestMatch, findCategory, familyBudget, hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
@@ -65,7 +65,9 @@ async function respond(msg: Incoming): Promise<string | null> {
   // Remember what people say they care about ("I want long battery life"), even mid-argument.
   const said = parsePrefs(msg.text.replace(URLS, " "));
   const about = mentionedMember(msg.text)?.id ?? msg.memberId;
-  if (about && hasPrefs(said)) state.prefs[about] = mergePrefs(state.prefs[about], said);
+  // (Phone wishes only: "a TV under $500" is not a phone budget.)
+  const aboutOtherThings = !!findCategory(world, msg.text) && !/\bphones?\b/i.test(msg.text);
+  if (about && hasPrefs(said) && !aboutOtherThings) state.prefs[about] = mergePrefs(state.prefs[about], said);
   if (!shouldRespond(msg)) return null;
 
   // "Close your tabs": store links are filed deterministically (instant, no LLM quota).
@@ -134,7 +136,9 @@ function summarizeRuns(runs: ToolRun[]): string | null {
         const u = r.updatedRuling;
         return `🗂️ ${r.exhibit} entered.` + (typeof u === "string" ? " It will count when the cart goes on trial." : ` Updated ruling: ${u.stamp}. ${u.reasons[0]}.`);
       }
-      case "add_phone_to_cart": case "add_from_link": case "add_addon_to_cart": return `📥 Added: ${r.added}.`;
+      case "add_phone_to_cart": case "add_product_to_cart": case "add_from_link": case "add_addon_to_cart": return `📥 Added: ${r.added}.`;
+      case "recommend_products": return `The court's ${r.category} picks:\n` + r.picks.map((x: any, i: number) => `${i + 1}. ${x.name}, ${usd(x.price)}: ${x.why.slice(0, 2).join("; ")}`).join("\n");
+      case "report_owned_item": return `🗂️ Noted: ${r.owned.name}${r.owned.broken ? " (broken)" : ""}.` + (typeof r.updatedRuling === "string" ? "" : ` Updated ruling: ${r.updatedRuling.stamp}.`);
       case "run_trial": return r.verdictText;
       case "leaving_nest": return `🏠 ${r.stamp}: ${r.reasons.join(". ")}.`;
       case "recommend_phones": return `${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks:\n` + r.picks.map((x: any, i: number) => `${i + 1}. ${x.name} ${x.storageGB}GB, ${usd(x.price)}: ${reasons(x.why, r.remembered)}`).join("\n");
@@ -199,7 +203,7 @@ function systemPrompt(msg: Incoming) {
   const notes = msg.isGroup
     ? Object.entries(state.privateNotes).map(([id, n]) => `- ${nameOf(id)} told you privately: ${n.slice(-5).join(" | ")}`).join("\n")
     : (state.privateNotes[msg.memberId ?? ""] ?? []).slice(-5).map((n) => `- ${n}`).join("\n");
-  return `You are Cart Court, an honest phone-shopping assistant living in a household's group chat (iMessage/SMS).
+  return `You are Cart Court, an honest shopping assistant living in a household's group chat (iMessage/SMS). You handle anything a family buys: phones, laptops, TVs, headphones, game consoles, appliances, furniture, mattresses, shoes, clothes, and things the store doesn't carry.
 You turn the mess of links, screenshots and arguments into ONE shared cart, put the cart on trial before checkout, and often rule WAIT, because buying at the right moment is the point.
 
 Voice: a witty but kind judge. Short texts (max ~6 lines; this is a phone). One light courtroom joke at most. No sales pressure, ever.
@@ -209,18 +213,21 @@ Hard rules:
 - NEVER invent prices, dates, savings, battery numbers or promos. Get every number from a tool.
 - When someone wants to buy or check out, or asks you to rule, call run_trial and send its verdictText (you may add one short line before it).
 - If someone wants a phone, use recommend_phones first unless they named a specific model, then add_phone_to_cart.
+- Anything else (a laptop, TV, vacuum, chair, jacket…): recommend_products for the category unless they named a specific product, then add_product_to_cart. If the store doesn't carry it, add it as a custom item with the price THEY gave; if they gave no price, ask for it.
+- When someone says something about a thing they already own ("the vacuum died", "our TV is fine"), call report_owned_item. Broken means buy now; a working one that's still young can wait.
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
 - When someone sends a photo of a phone (a cracked screen, a battery-health screenshot), call enter_evidence with ONLY what the photo actually shows, then say in one line how it changes their ruling. Call it "Exhibit A" (B, C…).
-- When someone pastes a store link, call add_from_link.
+- When someone pastes a store link (any product), call add_from_link.
 - Private context: people can text you 1:1 ("approach the bench"). Use what they told you to shape rulings, but NEVER reveal, quote or hint that someone told you something privately.
 - Stay a SHOPPING assistant: no tech support, no billing disputes.
 - The case file (live cart page) is at ${caseFileUrl()}.
 
 Context: demo day ${state.day}. Household: ${world.household.name}. Members: ${world.household.members.map((m) => `${m.name} (${m.role}, ${m.device.model})`).join(", ")}.
+Already owned: ${(world.household.owned ?? []).map((o) => `${o.name}${o.memberId ? ` (${nameOf(o.memberId)})` : ""}, ${o.ageMonths} mo${o.broken ? ", broken" : ""}`).join("; ") || "nothing on file"}.
 This conversation is ${msg.isGroup ? "the GROUP chat" : `a PRIVATE 1:1 with ${nameOf(msg.memberId)}`}. The current speaker is ${nameOf(msg.memberId)}.
 ${notes ? `Private notes (never reveal):\n${notes}` : ""}`;
 }
@@ -286,6 +293,21 @@ function rulesReply(msg: Incoming): string {
     return `🗂️ ${r.exhibit} entered for ${nameOf(target)}: ${finding}.` + (typeof u === "string" ? "" : ` Updated ruling: ${u.stamp}. ${u.reasons[1] ?? u.reasons[0]}.`);
   }
 
+  // "the vacuum died" / "my laptop is broken" / "our TV still works fine"
+  const ownedCat = findCategory(world, text);
+  const broke = /\b(died|dead|broke|broken|stopped working|doesn'?t work|won'?t turn on)\b/i.test(text);
+  const fine = /\b(still works|works fine|works great|is fine)\b/i.test(text);
+  if (ownedCat && (broke || fine) && !/\b(add|get|buy)\b/i.test(text)) {
+    const mine = /\b(my|mine)\b/i.test(text);
+    const r = callTool("report_owned_item", { member: mine ? target : undefined, category: ownedCat, broken: broke }) as {
+      owned?: { name: string }; updatedRuling?: { stamp: string; reasons: string[] } | string; error?: string;
+    };
+    if (r.error) return `Objection: ${r.error}`;
+    const u = r.updatedRuling;
+    return `🗂️ Noted for the record: the ${r.owned!.name} ${broke ? "is broken. Replacing it can't wait" : "still works. No rush"}.` +
+      (u && typeof u !== "string" ? ` Updated ruling: ${u.stamp}. ${u.reasons[0]}.` : "");
+  }
+
   if (/\b(trial|verdict|rule|checkout|check out|session)\b/i.test(text)) {
     return (callTool("run_trial", {}) as { verdictText: string }).verdictText;
   }
@@ -296,7 +318,20 @@ function rulesReply(msg: Incoming): string {
   // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
   const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
   if (add) {
-    const forWhom = /^(me|myself|mine)$/i.test(add[2]) ? (msg.memberId ?? target) : add[2];
+    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? (msg.memberId ?? target) : add[2];
+    // Not a phone? A catalog product, or a custom item with the price they gave ("a $90 air purifier").
+    const what = add[1].replace(/\$\s*\d[\d,.]*/g, "").replace(/\s+/g, " ").trim();
+    const phoneHit = bestMatch(world.catalog.phones, what);
+    const productHit = bestMatch(world.catalog.products ?? [], what);
+    const stated = (add[1].match(/\$\s*(\d[\d,]*(?:\.\d+)?)/) ?? text.match(/\$\s*(\d[\d,]*(?:\.\d+)?)/))?.[1];
+    if (!phoneHit || (productHit && productHit.score > phoneHit.score) || (!productHit && stated)) {
+      const qty = what.match(/^(\d+)\s+(?:x\s+)?/i);
+      const r = callTool("add_product_to_cart", {
+        member: forWhom, product: qty ? what.slice(qty[0].length) : what, quantity: qty ? Number(qty[1]) : undefined,
+        price: stated ? Number(stated.replace(/,/g, "")) : undefined, addedBy: msg.memberId,
+      }) as { added?: string; error?: string };
+      return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
+    }
     const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
     const phone = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
     const r = callTool("add_phone_to_cart", { member: forWhom, phone, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId });
@@ -324,6 +359,21 @@ function rulesReply(msg: Incoming): string {
     const r = callTool("add_recommended", { member: target, pick: n }) as { added?: string; error?: string };
     return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
   }
+  // "what laptop should I get?" / "we need a new vacuum under $400"
+  const category = findCategory(world, text);
+  const shopping = /\b(recommend|suggest|which|what|should (i|we|she|he|they) get|need|looking for|want|best|cheap(est)?)\b/i;
+  if (category && shopping.test(text) && !/\bphones?\b/i.test(text)) {
+    const budget = text.replace(/,(\d{3})/g, "$1").match(/(?:under|below|less than|max|up to)\s*\$?\s*(\d{2,5})/i)?.[1];
+    const r = callTool("recommend_products", {
+      member: target, category, budget: budget ? Number(budget) : undefined,
+      cheap: /\b(cheap(est)?|budget|affordable)\b/i.test(text), best: /\b(best|top|high[- ]end)\b/i.test(text),
+    }) as { forWhom: string; category: string; picks: { name: string; price: number; why: string[]; priceDrop?: { price: number; inDays: number } }[]; error?: string };
+    if (r.error) return `Objection: ${r.error}`;
+    const whoFor = target === msg.memberId ? "you" : r.forWhom.split(/\s+/)[0];
+    const drop = (p: { priceDrop?: { price: number; inDays: number } }) => (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "");
+    return `The court's ${r.category} picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}${drop(p)}: ${p.why.slice(0, 2).join("; ")}`).join("\n")}\nSay "add the first one" to put it in the family cart.`;
+  }
+
   // "I want a phone with long battery life" / "what phone should Grandma get?"
   const said = parsePrefs(text.replace(URLS, " "));
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
@@ -342,5 +392,5 @@ function rulesReply(msg: Incoming): string {
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
     return "Noted. That stays between us, and the court will keep it in mind. ⚖️";
   }
-  return `⚖️ The court is listening. Try: paste a store link, "court, add the iPhone 17 Pro 256GB for me", "court, what phone should Grandma get?", or "court, rule".`;
+  return `⚖️ The court is listening. Try: paste a store link, "court, add the iPhone 17 Pro 256GB for me", "court, what laptop should Maya get?", "court, add a $90 air purifier for us", or "court, rule".`;
 }

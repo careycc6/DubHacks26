@@ -1,7 +1,7 @@
 // Family feed: on Photon's free plan everyone talks to the court in their own 1:1 chat, so when one
 // person changes the shared cart (or the court rules), everyone else gets a one-line update.
 // It feels like a group chat without needing one. Private things (DM notes, budget talk) never go out.
-import { usd, VERDICT } from "./engine.ts";
+import { cartLabel as engineCartLabel, usd, VERDICT } from "./engine.ts";
 import { sendTo } from "./channels/index.ts";
 import { photonReady, sendToHandle } from "./channels/photon.ts";
 import { logActivity, state, world } from "./store.ts";
@@ -20,9 +20,7 @@ const first = (name: string) => name.split(/\s+/)[0];
 function cartLabel(itemId: string): string {
   const i = state.cart.find((x) => x.id === itemId);
   if (!i) return "an item";
-  const p = world.catalog.phones.find((x) => x.id === i.phoneId);
-  const a = world.catalog.addons.find((x) => x.id === i.addonId);
-  return p ? `${p.name} ${i.storageGB}GB` : a?.name ?? "an add-on";
+  return engineCartLabel(world, i);
 }
 
 export function snapshot(): Snapshot {
@@ -50,7 +48,7 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
 
   if (state.exhibits.length > before.exhibits) {
     for (const e of state.exhibits.slice(before.exhibits)) {
-      if (!e.private) lines.push(`🗂️ ${actor} filed evidence about ${first(nameOf(e.memberId))}'s phone: ${e.finding}.`);
+      if (!e.private) lines.push(`🗂️ ${actor} filed evidence for ${first(nameOf(e.memberId))}: ${e.finding}.`);
     }
   }
 
