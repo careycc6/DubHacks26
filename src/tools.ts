@@ -1,6 +1,7 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
   accessoryType, bestMatch, cartLabel, cartPrice, categories, describePrefs, findAccessory, findCategory, findPhone, handMeDownText, leavingNest,
+  memberByTitle,
   member, mergePrefs, parseLink, parseProductLink, perMonth, phone, phoneBrandFor, pickVariant, PREF_LABELS, priceTrack, productProtection,
   promosFor, protectionAdvice, recommend, recommendAccessories, recommendProducts, runTrial, tradeIn, usd,
   type Prefs,
@@ -17,9 +18,11 @@ function resolveMember(nameOrId: string) {
   const q = String(nameOrId).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
   const all = world.household.members;
   const words = (x: (typeof all)[number]) => x.name.toLowerCase().split(/\s+/);
-  // Exact id / full name / role first, then a first or last name ("kairui", "cheng"), then a name that starts with it.
+  // Exact id / full name / role, then "dad" / "mom" / "grandma", then a first or last name ("kairui", "cheng"),
+  // then a name that starts with it.
   const m =
-    all.find((x) => x.id === q || x.name.toLowerCase() === q || x.role === q || (q === "dad" && x.id === "marco") || (q === "mom" && x.id === "elena") || (q === "grandma" && x.role === "grandparent")) ??
+    all.find((x) => x.id === q || x.name.toLowerCase() === q || x.role === q) ??
+    memberByTitle(world, q) ??
     unique(all.filter((x) => words(x).includes(q) || q.split(" ").every((w) => words(x).includes(w)))) ??
     unique(all.filter((x) => q.length >= 2 && x.name.toLowerCase().startsWith(q)));
   if (!m) throw new Error(`No household member "${nameOrId}". Members: ${world.household.members.map((x) => x.name).join(", ")}`);
@@ -187,7 +190,7 @@ export const tools = {
         forWhom: m.name,
         remembered: describePrefs(prefs),
         picks: recs.map((r) => {
-          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90);
+          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, undefined, m);
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
@@ -223,7 +226,7 @@ export const tools = {
         forWhom: m.name,
         category: cat.label,
         picks: picks.map((r) => {
-          const track = priceTrack(world, r.productId, r.variant, state.day, 90);
+          const track = priceTrack(world, r.productId, r.variant, state.day, 90, undefined, m);
           return {
             ...r,
             protection: cat.fragile ? productProtection(m, r.price) : undefined,

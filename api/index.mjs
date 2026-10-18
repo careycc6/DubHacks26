@@ -18,6 +18,25 @@ function member(world2, id) {
   if (!m) throw new Error(`Unknown member "${id}"`);
   return m;
 }
+var MANAGER_ROLES = /* @__PURE__ */ new Set(["parent", "partner"]);
+var managers = (world2) => world2.household.members.filter((m) => MANAGER_ROLES.has(m.role));
+var TITLES = [
+  [/\b(dad|father)\b/, "dad"],
+  [/\b(mom|mum|mother)\b/, "mom"],
+  [/\b(grandma|grandmother|abuela)\b/, "grandma"]
+];
+function memberByTitle(world2, text) {
+  const t = text.toLowerCase();
+  for (const [re, title] of TITLES) {
+    if (!re.test(t)) continue;
+    if (title === "grandma") return world2.household.members.find((m) => m.aka?.includes(title)) ?? world2.household.members.find((m) => m.role === "grandparent");
+    const parents = managers(world2);
+    const named = parents.find((m) => m.aka?.includes(title));
+    if (named) return named;
+    if (parents.length === 1) return parents[0];
+  }
+  return void 0;
+}
 function phone(world2, id) {
   const p = world2.catalog.phones.find((x) => x.id === id);
   if (!p) throw new Error(`Unknown phone "${id}"`);
@@ -91,19 +110,19 @@ function sticker(world2, id, variant) {
   const pr = product(world2, id);
   return { price: pr.prices[String(variant)] ?? Math.min(...Object.values(pr.prices)), category: pr.category };
 }
-function priceOn(world2, id, variant, day, custom) {
+function priceOn(world2, id, variant, day, custom, m) {
   const { price, category } = custom ?? sticker(world2, id, variant);
-  const promo = world2.offers.promos.find((x) => promoCovers(x, id, category) && x.startsOnDay <= day && day < x.endsOnDay);
+  const promo = promoFor(world2, id, day, { m, category, sticker: price }).active;
   return price - (promo ? promoCredit(promo, price) : 0);
 }
-function priceTrack(world2, id, variant, fromDay, span = 120, custom) {
+function priceTrack(world2, id, variant, fromDay, span = 120, custom, m) {
   const { category } = custom ?? sticker(world2, id, variant);
   const days = /* @__PURE__ */ new Set();
   for (let d = fromDay; d <= fromDay + span; d += 10) days.add(d);
   for (const x of world2.offers.promos.filter((x2) => promoCovers(x2, id, category))) {
     for (const d of [x.startsOnDay - 1, x.startsOnDay, x.endsOnDay - 1, x.endsOnDay]) if (d >= fromDay && d <= fromDay + span) days.add(d);
   }
-  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world2, id, variant, day, custom) }));
+  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world2, id, variant, day, custom, m) }));
   const lowest = points.reduce((best, p) => p.price < best.price ? p : best, points[0]);
   return { points, now: points[0].price, lowest };
 }
@@ -257,7 +276,7 @@ function judgeDevice(world2, item, day, opts = {}) {
     math,
     protection: protectionAdvice(m, target.prices[String(gb)]),
     tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, withTradeIn: price, withoutTradeIn: price + ti.value + tradeInDeal } : void 0,
-    track: priceTrack(world2, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40))
+    track: priceTrack(world2, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40), void 0, m)
   };
 }
 function overrule(world2, item, day, court) {
@@ -303,7 +322,7 @@ function overrule(world2, item, day, court) {
     witness: void 0,
     protection: protectionAdvice(m, sticker2),
     tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, withTradeIn: price, withoutTradeIn: price + ti.value } : void 0,
-    track: priceTrack(world2, picked.id, gb, day, 90),
+    track: priceTrack(world2, picked.id, gb, day, 90, void 0, m),
     math,
     overruled: { by, courtPlan, extra }
   };
@@ -486,7 +505,18 @@ function advanceTrial(world2, cart, old, day, opts = {}) {
     return prev && (prev.stamp !== "WAIT" || stillHeld) ? prev : r;
   });
   const sum = (f) => rulings.reduce((t, r) => t + f(r), 0);
-  return { day, rulings, before: sum((r) => r.originalCost), now: sum((r) => r.nowCost), held: sum((r) => r.heldCost), savings: sum((r) => r.savings) };
+  const planned = sum((r) => r.nowCost + r.heldCost);
+  return {
+    day,
+    rulings,
+    before: sum((r) => r.originalCost),
+    now: sum((r) => r.nowCost),
+    held: sum((r) => r.heldCost),
+    savings: sum((r) => r.savings),
+    planned,
+    budget: opts.budget,
+    overBudget: opts.budget !== void 0 && planned > opts.budget
+  };
 }
 function readyHolds(trial, day) {
   return (trial?.rulings ?? []).filter((r) => r.stamp === "WAIT" && !!r.proposed && (r.holdUntilDay ?? Infinity) <= day);
@@ -1198,7 +1228,10 @@ var BUDGET_WORDS = /\b(tight|budget|afford|broke|expensive|money|bills?)\b/i;
 var spent = () => state.purchases.reduce((t, p) => t + p.paid, 0);
 var remainingBudget = () => state.budget === void 0 ? void 0 : Math.max(0, state.budget - spent());
 function trialOpts() {
-  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs, budget: remainingBudget() };
+  const payers = new Set(managers(world).map((m) => m.id));
+  const anyone = payers.size === 0;
+  const tightBudget = Object.entries(state.privateNotes).some(([id, notes]) => (anyone || payers.has(id)) && notes.some((n) => BUDGET_WORDS.test(n)));
+  return { tightBudget, prefs: state.prefs, budget: remainingBudget() };
 }
 function logActivity(lines) {
   for (const text of lines) state.activity.push({ at: Date.now(), day: state.day, text });
@@ -1254,13 +1287,7 @@ function introducedAs(text) {
   const word = (w) => new RegExp(`\\b${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t);
   const byName = world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0]));
   if (byName) return byName.id;
-  const roles = [
-    [/\b(dad|father)\b/, (m) => m.id === "marco"],
-    [/\b(mom|mum|mother)\b/, (m) => m.id === "elena"],
-    [/\b(grandma|grandmother|abuela)\b/, (m) => m.role === "grandparent"]
-  ];
-  for (const [re, pick] of roles) if (re.test(t)) return world.household.members.find(pick)?.id;
-  return void 0;
+  return memberByTitle(world, t)?.id;
 }
 function shouldAsk(handle2, isGroup) {
   if (!isGroup) return true;
@@ -2163,7 +2190,7 @@ function resolveMember(nameOrId) {
   const q = String(nameOrId).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
   const all = world.household.members;
   const words = (x) => x.name.toLowerCase().split(/\s+/);
-  const m = all.find((x) => x.id === q || x.name.toLowerCase() === q || x.role === q || q === "dad" && x.id === "marco" || q === "mom" && x.id === "elena" || q === "grandma" && x.role === "grandparent") ?? unique(all.filter((x) => words(x).includes(q) || q.split(" ").every((w) => words(x).includes(w)))) ?? unique(all.filter((x) => q.length >= 2 && x.name.toLowerCase().startsWith(q)));
+  const m = all.find((x) => x.id === q || x.name.toLowerCase() === q || x.role === q) ?? memberByTitle(world, q) ?? unique(all.filter((x) => words(x).includes(q) || q.split(" ").every((w) => words(x).includes(w)))) ?? unique(all.filter((x) => q.length >= 2 && x.name.toLowerCase().startsWith(q)));
   if (!m) throw new Error(`No household member "${nameOrId}". Members: ${world.household.members.map((x) => x.name).join(", ")}`);
   return m;
 }
@@ -2301,7 +2328,7 @@ var tools = {
         forWhom: m.name,
         remembered: describePrefs(prefs),
         picks: recs.map((r) => {
-          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90);
+          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, void 0, m);
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
@@ -2335,7 +2362,7 @@ var tools = {
         forWhom: m.name,
         category: cat.label,
         picks: picks.map((r) => {
-          const track = priceTrack(world, r.productId, r.variant, state.day, 90);
+          const track = priceTrack(world, r.productId, r.variant, state.day, 90, void 0, m);
           return {
             ...r,
             protection: cat.fragile ? productProtection(m, r.price) : void 0,
@@ -3347,7 +3374,7 @@ Reply to ${nameOf3(msg.memberId)}'s latest message.` }];
 function mentionedMember(text) {
   const t = text.toLowerCase();
   const word = (w) => new RegExp(`\\b${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t);
-  return world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0])) ?? (/\b(dad|my dad)\b/.test(t) ? world.household.members.find((m) => m.id === "marco") : void 0) ?? (/\bmom\b/.test(t) ? world.household.members.find((m) => m.id === "elena") : void 0) ?? (/\bgrandma\b/.test(t) ? world.household.members.find((m) => m.role === "grandparent") : void 0);
+  return world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0])) ?? memberByTitle(world, t);
 }
 function courtroom(msg) {
   if (!state.trial) return false;
@@ -3373,7 +3400,8 @@ function continuesAppeal(msg) {
 }
 function rulesReply(msg) {
   const text = msg.text;
-  const target = mentionedMember(text)?.id ?? msg.memberId ?? "marco";
+  const target = mentionedMember(text)?.id ?? msg.memberId ?? managers(world)[0]?.id ?? world.household.members[0]?.id;
+  if (!target) return "\u2696\uFE0F The court doesn't know anyone in this household yet. Add the family on /setup first.";
   if (courtroom(msg)) {
     const about = mentionedMember(text)?.id;
     if (REINSTATE.test(text)) return reinstate(msg.memberId, about, canManage);
@@ -3599,7 +3627,7 @@ Say "add the first one" to put it in the family cart.`;
     '\u2022 Say "court, rule" when the family is ready to check out'
   ].join("\n");
 }
-var MANAGERS = /* @__PURE__ */ new Set(["parent", "partner"]);
+var MANAGERS = MANAGER_ROLES;
 var ONLY_PARENTS = (what) => `Only a parent can ${what}.`;
 function canManage(memberId) {
   if (!memberId) return false;
@@ -3680,8 +3708,9 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
     // Price tracker: every phone and product in the cart, now vs the lowest price coming up (synthetic store prices).
     tracker: state.cart.filter((i) => i.kind === "device" && i.phoneId || i.kind === "product").map((i) => {
       const custom = i.custom ? { price: i.custom.price, category: i.custom.category } : void 0;
-      const t = i.kind === "device" ? priceTrack(world, i.phoneId, i.storageGB ?? 128, state.day, 120) : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom);
-      return { who: world.household.members.find((m) => m.id === i.memberId)?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
+      const who = world.household.members.find((m) => m.id === i.memberId);
+      const t = i.kind === "device" ? priceTrack(world, i.phoneId, i.storageGB ?? 128, state.day, 120, void 0, who) : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom, who);
+      return { who: who?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
     }),
     members: world.household.members.filter((m) => !saved.length || saved.includes(m.id)).map((m) => {
       const handles = [.../* @__PURE__ */ new Set([...m.handles, ...claimedHandles(m.id)])];

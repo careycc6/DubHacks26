@@ -79,10 +79,11 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
       .filter((i) => (i.kind === "device" && i.phoneId) || i.kind === "product")
       .map((i) => {
         const custom = i.custom ? { price: i.custom.price, category: i.custom.category } : undefined;
+        const who = world.household.members.find((m) => m.id === i.memberId);
         const t = i.kind === "device"
-          ? priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120)
-          : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom);
-        return { who: world.household.members.find((m) => m.id === i.memberId)?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
+          ? priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120, undefined, who)
+          : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom, who);
+        return { who: who?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
       }),
     members: world.household.members
       .filter((m) => !saved.length || saved.includes(m.id))

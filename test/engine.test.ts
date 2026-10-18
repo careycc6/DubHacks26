@@ -239,3 +239,37 @@ test("a worn battery on a newer phone suggests a battery replacement; a 6-year-o
   assert.ok(!t.rulings.find((x) => x.memberId === "rosa")!.reasons.some((x) => x.includes("battery replacement")));
 });
 
+test("moving the clock keeps the family-budget line", async () => {
+  const { advanceTrial } = await import("../src/engine.ts");
+  const t0 = runTrial(world, demoCart, 0, { budget: 1000 });
+  const t41 = advanceTrial(world, demoCart, t0, 41, { budget: 1000 })!;
+  assert.equal(t41.budget, 1000);
+  assert.equal(t41.planned, t41.rulings.reduce((t, r) => t + r.nowCost + r.heldCost, 0));
+  assert.equal(t41.overBudget, t41.planned! > 1000);
+});
+
+test("the price track skips deals the ruling would turn down", async () => {
+  const { priceTrack } = await import("../src/engine.ts");
+  const elena = world.household.members.find((m) => m.id === "elena")!;
+  const sticker = world.catalog.phones.find((p) => p.id === "galaxy-s26-ultra")!.prices["256"];
+  const t = priceTrack(world, "galaxy-s26-ultra", 256, 0, 120, undefined, elena);
+  assert.equal(t.now, sticker); // premium-plan credit costs more in plan fees than it gives
+  assert.deepEqual(t.lowest, { day: 60, price: sticker - 200 }); // the holiday deal is real
+  // A trade-in deal doesn't show for someone with nothing to trade in.
+  const rosa = world.household.members.find((m) => m.id === "rosa")!;
+  assert.equal(priceTrack(world, "iphone-17-pro", 256, 0, 120, undefined, rosa).lowest.price, 1099);
+});
+
+test("dad and mom come from the household, not hard-coded ids", async () => {
+  const { memberByTitle } = await import("../src/engine.ts");
+  assert.equal(memberByTitle(world, "this is dad")?.id, "marco");
+  assert.equal(memberByTitle(world, "my mom")?.id, "elena");
+  assert.equal(memberByTitle(world, "grandma")?.id, "rosa");
+  const strip = (ms: typeof world.household.members) => ms.map((m) => ({ ...m, aka: undefined }));
+  const twoParents = { ...world, household: { ...world.household, members: strip(world.household.members) } };
+  assert.equal(memberByTitle(twoParents, "dad"), undefined); // two parents and no names for them: don't guess
+  const oneParent = { ...world, household: { ...world.household, members: strip(world.household.members).filter((m) => m.id !== "marco") } };
+  assert.equal(memberByTitle(oneParent, "dad")?.id, "elena");
+  const empty = { ...world, household: { ...world.household, members: [] } };
+  assert.equal(memberByTitle(empty, "dad"), undefined);
+});
