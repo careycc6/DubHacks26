@@ -14,7 +14,7 @@ test("the pre-trial scene rules exactly like DEMO.md", () => {
   assert.equal(store.state.trial, undefined);
   callTool("run_trial", {});
   const t = store.state.trial!;
-  assert.equal(t.before, 3933);
+  assert.equal(t.before, 3935);
   assert.equal(t.now, 709); // Kairui's private "money is tight" is part of the scene
   assert.equal(t.savings, 2248);
 });

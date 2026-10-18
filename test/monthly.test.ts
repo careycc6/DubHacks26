@@ -24,7 +24,7 @@ test("each phone in the verdict shows its monthly price; account skips don't", a
   callTool("add_phone_to_cart", { member: "marco", phone: "iphone-17-pro", storageGB: 256, addedBy: "marco" });
   callTool("add_phone_to_cart", { member: "elena", phone: "pixel-10-pro", storageGB: 256, addedBy: "elena" });
   const v = (await handle({ spaceId: "sim:dm:marco", isGroup: false, memberId: "marco", text: "court, rule" }))!;
-  assert.match(v, /Marco · iPhone 17 Pro 256GB · \$407 on day 41 with trade-in \(\$1,099 without\) · ≈\$17\/mo/);
+  assert.match(v, /Marco · iPhone 17 Pro 256GB · \$408 on day 41 with trade-in \(\$1,100 without\) · ≈\$17\/mo/);
   assert.match(v, /Elena · Pixel 10 Pro 256GB · \$909 today with trade-in \(\$999 without\) · ≈\$38\/mo/);
   assert.doesNotMatch(v.split("\n").filter((l) => l.startsWith("✂️")).join("\n"), /\/mo/);
 });

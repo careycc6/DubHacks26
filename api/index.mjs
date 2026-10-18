@@ -573,8 +573,17 @@ function parsePrefs(text) {
   return p;
 }
 var hasPrefs = (p) => Object.keys(p).length > 0;
+function modelAsked(text) {
+  const m = text.toLowerCase().match(/\b(iphone|pixel|galaxy)\s+(\d{1,2}[a-z]?|air|s\d{2}|a\d{2})\b(?:\s+(pro max|pro xl|pro|ultra|plus|max|fe))?/);
+  return m ? m.slice(1).filter(Boolean).join(" ") : void 0;
+}
+function modelLine(world2, model) {
+  const want = norm(model).split(" ");
+  return world2.catalog.phones.filter((p) => want.every((w) => norm(p.name).split(" ").includes(w)));
+}
 function recommend(world2, memberId, opts = {}) {
   const m = member(world2, memberId);
+  const line = new Set(opts.model ? modelLine(world2, opts.model).map((p) => p.id) : []);
   const prefs = opts.prefs ?? {};
   const budget = opts.budget ?? prefs.budget;
   const wantsSimple = prefs.simple || m.age >= 70;
@@ -618,6 +627,10 @@ function recommend(world2, memberId, opts = {}) {
       } else score -= 15;
     }
     if (budget) why.push(price <= budget ? `${usd(price)}, under your ${usd(budget)}` : `${usd(price)}, over your ${usd(budget)}`);
+    if (line.has(p.id)) {
+      score += 1e3;
+      why.unshift(`the ${opts.model.replace(/\b(iphone|pixel|galaxy)\b/, (b) => ({ iphone: "iPhone", pixel: "Pixel", galaxy: "Galaxy" })[b])} you asked about`);
+    }
     if (p.simple) why.unshift("Big buttons and simple mode");
     why.push(`${gb}GB fits ${m.device.storageUsedGB}GB of use with room to grow`);
     if (!prefs.battery) why.push(`${p.batteryHours}h battery`);
@@ -2312,6 +2325,7 @@ var tools = {
         description: "what they said matters to them"
       },
       brand: { type: "string", enum: ["Apple", "Google", "Samsung"], description: "only if they named a brand" },
+      model: { type: "string", description: "a model line they named, e.g. 'iphone 18' or 'pixel 10 pro'" },
       budget: { type: "number", description: "max price in USD, if they gave one" }
     },
     required: ["member"],
@@ -2322,17 +2336,28 @@ var tools = {
       if (a.brand) said.brand = a.brand;
       if (a.budget) said.budget = a.budget;
       const prefs = state.prefs[m.id] = mergePrefs(state.prefs[m.id], said);
-      const recs = recommend(world, m.id, { prefs });
+      const recs = recommend(world, m.id, { prefs, model: a.model });
       state.lastRecs[m.id] = recs.map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
+      const line = (a.model ? modelLine(world, a.model) : []).sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices)));
+      const exact = line.some((p) => p.name.toLowerCase() === a.model.toLowerCase());
+      const ti = tradeIn(m);
       return {
         forWhom: m.name,
         remembered: describePrefs(prefs),
+        modelNote: a.model && !exact ? line.length ? `There's no plain ${line[0].name.split(" ").slice(0, 2).join(" ")}: the line is ${line.map((p) => p.name).join(" and ")}.` : `The court doesn't carry a "${a.model}".` : void 0,
+        // What gets traded in, for how much, and where.
+        tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, where: "T-Mobile (in store or by mail), or the maker's own trade-in" } : void 0,
         picks: recs.map((r) => {
           const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, void 0, m);
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
-            withTradeIn: tradeIn(m).value > 0 ? { price: Math.max(0, r.price - tradeIn(m).value), tradeIn: m.device.model } : void 0,
+            withTradeIn: ti.value > 0 ? { price: Math.max(0, r.price - ti.value), tradeIn: m.device.model } : void 0,
+            stores: (() => {
+              const p = phone(world, r.phoneId);
+              return shopLinks(p.name, [p.brand], { buy: p.buy });
+            })(),
+            carrierDeal: phone(world, r.phoneId).carrierDeal,
             priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : void 0,
             promos: promosFor(world, r.phoneId, state.day).map(promoLine)
           };
@@ -3233,6 +3258,25 @@ async function reply_(msg) {
   }
 }
 var reasons = (why, remembered) => why.slice(0, Math.max(1, Math.min(2, remembered ? remembered.split(/, | and /).length : 1))).join("; ");
+function phonePicksText(r, who, whose, pairs = []) {
+  const top = r.picks[0];
+  const tmo = (p) => p.stores?.find((l) => l.store === "T-Mobile" && l.price !== void 0 && Math.round(l.price) === Math.round(p.price));
+  const line = (p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${tmo(p) ? " at T-Mobile" : ""}` + (p.withTradeIn ? ` (${usd(p.withTradeIn.price)} after trading in ${whose} ${p.withTradeIn.tradeIn})` : "") + (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "") + `: ${reasons(p.why, r.remembered)}`;
+  const out = [`${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks for ${who}:`];
+  if (r.modelNote) out.push(r.modelNote);
+  out.push(...r.picks.map(line));
+  if (r.tradeIn) out.push(`\u267B\uFE0F Trade-in: ${whose} ${r.tradeIn.device}, worth about ${usd(r.tradeIn.value)} at ${r.tradeIn.where}.`);
+  const deal = top?.carrierDeal;
+  if (deal) out.push(`\u{1F4E3} ${deal.store} deal on #1: up to ${usd(deal.value)} off ${deal.needs} on ${deal.plans}, paid as monthly bill credits. ${deal.url}`);
+  if (top?.stores?.length) {
+    out.push(`\u{1F6D2} Where to buy #1:
+${top.stores.map((l) => `   ${l.store}${l.price !== void 0 ? ` ${usd(l.price)}` : ""}: ${l.url}`).join("\n")}`);
+  }
+  if (top) out.push(`\u{1F6E1}\uFE0F Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.`);
+  if (pairs.length) out.push(`\u{1F3A7} Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.`);
+  out.push(`Say "add the first one" to put it in the family cart.`);
+  return out.join("\n");
+}
 function summarizeRuns(runs) {
   const lines = runs.filter((r) => !r.result?.error).map(({ name, result: r }) => {
     switch (name) {
@@ -3255,8 +3299,7 @@ function summarizeRuns(runs) {
       case "leaving_nest":
         return `\u{1F3E0} ${r.stamp}: ${r.reasons.join(". ")}.`;
       case "recommend_phones":
-        return `${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks:
-` + r.picks.map((x, i) => `${i + 1}. ${x.name} ${x.storageGB}GB, ${usd(x.price)}: ${reasons(x.why, r.remembered)}`).join("\n");
+        return phonePicksText(r, r.forWhom.split(/\s+/)[0], `${r.forWhom.split(/\s+/)[0]}'s`);
       case "add_recommended":
         return `\u{1F4E5} Added: ${r.added}.`;
       default:
@@ -3439,11 +3482,14 @@ function rulesReply(msg) {
     const n = callTool("leaving_nest", { member: target });
     return `\u{1F3E0} ${n.stamp}: ${n.reasons.join(". ")}.`;
   }
-  const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
+  const bare = text.match(/\b(?:add|buy|get me)\s+(?:me\s+)?(?:the\s+|a\s+|an\s+)?(.+?)(?:\s+(?:to|in)\s+(?:the\s+|our\s+|my\s+)?(?:family\s+)?cart)?\s*[.!]*$/i);
+  const bareItem = bare?.[1].replace(/\s+for\s+.*$/i, "").trim();
+  const bareAdd = bare && !/\sfor\s/i.test(bare[1]) && !PROTECTION_ASK.test(text) && !accessoryType(bareItem) && !/\?/.test(text) && !/^(?:#|number )?(first|second|third|1st|2nd|3rd|[123])\b/i.test(bareItem) && (bestMatch(world.catalog.phones, bareItem) || bestMatch(world.catalog.products ?? [], bareItem)) ? [bare[0], bareItem, "me", void 0] : void 0;
+  const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i) ?? bareAdd;
   if (add) {
     const after = text.slice(text.toLowerCase().lastIndexOf(" for ") + 5).toLowerCase();
-    const fullName = world.household.members.find((m) => after.startsWith(m.name.toLowerCase()))?.name;
-    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? msg.memberId ?? target : fullName ?? add[2];
+    const fullName = add === bareAdd ? void 0 : world.household.members.find((m) => after.startsWith(m.name.toLowerCase()))?.name;
+    const forWhom = add === bareAdd ? target : /^(me|myself|mine|us)$/i.test(add[2]) ? msg.memberId ?? target : fullName ?? add[2];
     const what = add[1].replace(/\$\s*\d[\d,.]*/g, "").replace(/\s+/g, " ").trim();
     const phoneHit = bestMatch(world.catalog.phones, what);
     const productHit = bestMatch(world.catalog.products ?? [], what);
@@ -3465,7 +3511,8 @@ function rulesReply(msg) {
     if ("error" in r) return `Objection: ${r.error}`;
     const asked2 = phone2.toLowerCase().split(/\s+/);
     const extra = phoneHit.item.name.toLowerCase().split(/\s+/).filter((w) => !asked2.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
-    const closest = extra.length ? ` (closest match for "${phone2}": there's no exact model by that name)` : "";
+    const family = world.catalog.phones.filter((p) => asked2.every((w) => p.name.toLowerCase().split(/\s+/).includes(w))).sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices))).map((p) => p.name);
+    const closest = extra.length ? ` (closest match for "${phone2}": there's no exact model by that name${family.length > 1 ? `; the line is ${family.join(" and ")}` : ""})` : "";
     return `\u{1F4E5} Added to the family cart: ${r.added}${closest}. Nobody checks out until the court rules.`;
   }
   if (CLEAR_CART.test(text)) {
@@ -3597,19 +3644,11 @@ Say "add the first one" to put it in the family cart.`;
   const said = parsePrefs(text.replace(URLS, " "));
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
   if (asking.test(text) || hasPrefs(said)) {
-    const r = callTool("recommend_phones", { member: target });
-    const whoFor = target === msg.memberId ? "you" : r.forWhom.split(/\s+/)[0];
-    const heard = r.remembered ? `Got it: ${r.remembered}. ` : "";
-    const drop = (p) => p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "";
+    const r = callTool("recommend_phones", { member: target, model: modelAsked(text) });
+    const you = target === msg.memberId;
     const top = r.picks[0];
-    const shield = top ? `
-\u{1F6E1}\uFE0F Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.` : "";
     const pairs = top ? recommendAccessories(world, target, { cart: [{ id: "preview", kind: "device", memberId: target, phoneId: top.phoneId }] }).slice(0, 2).map((a) => `${a.name} (${usd(a.price)})`) : [];
-    const pairLine = pairs.length ? `
-\u{1F3A7} Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.` : "";
-    return `${heard}The court's picks for ${whoFor}:
-${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${p.withTradeIn ? ` (${usd(p.withTradeIn.price)} with trade-in)` : ""}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}
-Say "add the first one" to put it in the family cart.`;
+    return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairs);
   }
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
     return "Noted. That stays between us, and the court will keep it in mind. \u2696\uFE0F";

@@ -2,7 +2,7 @@
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
 import {
-  accessoryType, bestMatch, familyBudget, findAccessory, findCategory, findPhone, hasPrefs, managers, memberByTitle, MANAGER_ROLES, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
+  accessoryType, bestMatch, familyBudget, modelAsked, findAccessory, findCategory, findPhone, hasPrefs, managers, memberByTitle, MANAGER_ROLES, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
 } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, findCartItems, formatMonthly, formatOldPhone, formatStatus, formatVerdict, tools } from "./tools.ts";
@@ -221,6 +221,38 @@ type ToolRun = { name: string; result: any };
 const reasons = (why: string[], remembered: string) =>
   why.slice(0, Math.max(1, Math.min(2, remembered ? remembered.split(/, | and /).length : 1))).join("; ");
 
+type PhonePick = {
+  phoneId: string; name: string; storageGB: number; price: number; why: string[];
+  priceDrop?: { price: number; inDays: number }; protection: { verdict: string; reason: string };
+  withTradeIn?: { price: number; tradeIn: string }; stores?: { store: string; url: string; price?: number }[];
+  carrierDeal?: { store: string; value: number; needs: string; plans: string; url: string };
+};
+type PhonePicks = { forWhom: string; remembered: string; modelNote?: string; tradeIn?: { device: string; value: number; where: string }; picks: PhonePick[] };
+
+/** The court's phone picks: price at T-Mobile, what's traded in and where, the carrier deal, and every store for #1. */
+function phonePicksText(r: PhonePicks, who: string, whose: string, pairs: string[] = []): string {
+  const top = r.picks[0];
+  const tmo = (p: PhonePick) => p.stores?.find((l) => l.store === "T-Mobile" && l.price !== undefined && Math.round(l.price) === Math.round(p.price));
+  const line = (p: PhonePick, i: number) =>
+    `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${tmo(p) ? " at T-Mobile" : ""}` +
+    (p.withTradeIn ? ` (${usd(p.withTradeIn.price)} after trading in ${whose} ${p.withTradeIn.tradeIn})` : "") +
+    (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "") +
+    `: ${reasons(p.why, r.remembered)}`;
+  const out = [`${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks for ${who}:`];
+  if (r.modelNote) out.push(r.modelNote);
+  out.push(...r.picks.map(line));
+  if (r.tradeIn) out.push(`♻️ Trade-in: ${whose} ${r.tradeIn.device}, worth about ${usd(r.tradeIn.value)} at ${r.tradeIn.where}.`);
+  const deal = top?.carrierDeal;
+  if (deal) out.push(`📣 ${deal.store} deal on #1: up to ${usd(deal.value)} off ${deal.needs} on ${deal.plans}, paid as monthly bill credits. ${deal.url}`);
+  if (top?.stores?.length) {
+    out.push(`🛒 Where to buy #1:\n${top.stores.map((l) => `   ${l.store}${l.price !== undefined ? ` ${usd(l.price)}` : ""}: ${l.url}`).join("\n")}`);
+  }
+  if (top) out.push(`🛡️ Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.`);
+  if (pairs.length) out.push(`🎧 Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.`);
+  out.push(`Say "add the first one" to put it in the family cart.`);
+  return out.join("\n");
+}
+
 /** Plain-text summary of tool results, used when the LLM fails after acting. */
 function summarizeRuns(runs: ToolRun[]): string | null {
   const lines = runs.filter((r) => !r.result?.error).map(({ name, result: r }) => {
@@ -234,7 +266,7 @@ function summarizeRuns(runs: ToolRun[]): string | null {
       case "report_owned_item": return `🗂️ Noted: ${r.owned.name}${r.owned.broken ? " (broken)" : ""}.` + (typeof r.updatedRuling === "string" ? "" : ` Updated ruling: ${r.updatedRuling.stamp}.`);
       case "run_trial": return r.verdictText;
       case "leaving_nest": return `🏠 ${r.stamp}: ${r.reasons.join(". ")}.`;
-      case "recommend_phones": return `${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks:\n` + r.picks.map((x: any, i: number) => `${i + 1}. ${x.name} ${x.storageGB}GB, ${usd(x.price)}: ${reasons(x.why, r.remembered)}`).join("\n");
+      case "recommend_phones": return phonePicksText(r, r.forWhom.split(/\s+/)[0], `${r.forWhom.split(/\s+/)[0]}'s`);
       case "add_recommended": return `📥 Added: ${r.added}.`;
       default: return "";
     }
@@ -455,12 +487,21 @@ function rulesReply(msg: Incoming): string {
     return `🏠 ${n.stamp}: ${n.reasons.join(". ")}.`;
   }
   // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
-  const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
+  // "add an iPhone 18" / "buy me the pixel 10 256gb": no "for", so it's for whoever's named, else the sender.
+  // Only when it names a phone or product; "add the first one", "add protection" and "add a case" are handled below.
+  const bare = text.match(/\b(?:add|buy|get me)\s+(?:me\s+)?(?:the\s+|a\s+|an\s+)?(.+?)(?:\s+(?:to|in)\s+(?:the\s+|our\s+|my\s+)?(?:family\s+)?cart)?\s*[.!]*$/i);
+  const bareItem = bare?.[1].replace(/\s+for\s+.*$/i, "").trim();
+  const bareAdd = bare && !/\sfor\s/i.test(bare[1]) && !PROTECTION_ASK.test(text) && !accessoryType(bareItem!) && !/\?/.test(text) &&
+    !/^(?:#|number )?(first|second|third|1st|2nd|3rd|[123])\b/i.test(bareItem!) &&
+    (bestMatch(world.catalog.phones, bareItem!) || bestMatch(world.catalog.products ?? [], bareItem!))
+    ? ([bare[0], bareItem!, "me", undefined] as unknown as RegExpMatchArray)
+    : undefined;
+  const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i) ?? bareAdd;
   if (add) {
     // "for kairui cheng": prefer a whole name typed after "for" over just its first word.
     const after = text.slice(text.toLowerCase().lastIndexOf(" for ") + 5).toLowerCase();
-    const fullName = world.household.members.find((m) => after.startsWith(m.name.toLowerCase()))?.name;
-    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? (msg.memberId ?? target) : (fullName ?? add[2]);
+    const fullName = add === bareAdd ? undefined : world.household.members.find((m) => after.startsWith(m.name.toLowerCase()))?.name;
+    const forWhom = add === bareAdd ? target : /^(me|myself|mine|us)$/i.test(add[2]) ? (msg.memberId ?? target) : (fullName ?? add[2]);
     // Not a phone? A catalog product, or a custom item with the price they gave ("a $90 air purifier").
     const what = add[1].replace(/\$\s*\d[\d,.]*/g, "").replace(/\s+/g, " ").trim();
     const phoneHit = bestMatch(world.catalog.phones, what);
@@ -481,7 +522,11 @@ function rulesReply(msg: Incoming): string {
     // "iphone 18" -> iPhone 18 Pro: say it was the closest model, so nobody's surprised by the price.
     const asked = phone.toLowerCase().split(/\s+/);
     const extra = phoneHit.item.name.toLowerCase().split(/\s+/).filter((w) => !asked.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
-    const closest = extra.length ? ` (closest match for "${phone}": there's no exact model by that name)` : "";
+    const family = world.catalog.phones.filter((p) => asked.every((w) => p.name.toLowerCase().split(/\s+/).includes(w)))
+      .sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices))).map((p) => p.name);
+    const closest = extra.length
+      ? ` (closest match for "${phone}": there's no exact model by that name${family.length > 1 ? `; the line is ${family.join(" and ")}` : ""})`
+      : "";
     return `📥 Added to the family cart: ${(r as { added: string }).added}${closest}. Nobody checks out until the court rules.`;
   }
   // "add the first one" / "add #2" after a recommendation
@@ -640,21 +685,16 @@ function rulesReply(msg: Incoming): string {
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
   // Any message that says what they care about gets fresh picks ("actually I also want a bigger screen").
   if (asking.test(text) || hasPrefs(said)) {
-    type Pick = { name: string; storageGB: number; price: number; why: string[]; priceDrop?: { price: number; inDays: number }; protection: { verdict: string; reason: string }; withTradeIn?: { price: number; tradeIn: string } };
-    const r = callTool("recommend_phones", { member: target }) as { forWhom: string; remembered: string; picks: Pick[] };
-    const whoFor = target === msg.memberId ? "you" : r.forWhom.split(/\s+/)[0];
-    const heard = r.remembered ? `Got it: ${r.remembered}. ` : "";
-    const drop = (p: Pick) => (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "");
+    const r = callTool("recommend_phones", { member: target, model: modelAsked(text) }) as PhonePicks;
+    const you = target === msg.memberId;
     const top = r.picks[0];
-    const shield = top ? `\n🛡️ Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.` : "";
     // Accessories that fit the top pick (as if it were in the cart).
     const pairs = top
-      ? recommendAccessories(world, target, { cart: [{ id: "preview", kind: "device", memberId: target, phoneId: (top as Pick & { phoneId: string }).phoneId }] })
+      ? recommendAccessories(world, target, { cart: [{ id: "preview", kind: "device", memberId: target, phoneId: top.phoneId }] })
           .slice(0, 2)
           .map((a) => `${a.name} (${usd(a.price)})`)
       : [];
-    const pairLine = pairs.length ? `\n🎧 Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.` : "";
-    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${p.withTradeIn ? ` (${usd(p.withTradeIn.price)} with trade-in)` : ""}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}\nSay "add the first one" to put it in the family cart.`;
+    return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairs);
   }
   // A private aside ("money's tight, don't tell the kids"): acknowledge, never repeat it.
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {

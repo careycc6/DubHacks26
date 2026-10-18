@@ -33,7 +33,7 @@ test("after a ruling the preview carries the verdict, and the verdict text links
   const verdict = (await rule())!;
   const p = preview();
   assert.equal(p.title, "The court saved the Rivera household $2,048");
-  assert.equal(p.description, "Maya waits till day 120 · Marco waits till day 41 · Elena buys today. Spend today $3,933 → $909");
+  assert.equal(p.description, "Maya waits till day 120 · Marco waits till day 41 · Elena buys today. Spend today $3,935 → $909");
   assert.match(verdict, /Case file: https:\/\/court\.example\/case\?v=0-2048$/);
 });
 
@@ -60,7 +60,7 @@ test("the page keeps its tab title and gets escaped og tags with an absolute ima
 test("prices starting with $1 stay prices in the link preview (no regex group swap)", async () => {
   seed();
   await rule();
-  store.state.trial!.now = 1885; // "Spend today $3,933 → $1,885"
+  store.state.trial!.now = 1885; // "Spend today $3,935 → $1,885"
   const p = preview();
   const html = caseFileHtml();
   assert.ok(html.includes(`content="${p.description}"`), p.description);

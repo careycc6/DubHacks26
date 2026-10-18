@@ -29,15 +29,15 @@ test("no hand-me-down when the parent's phone isn't an upgrade (the demo family)
 
 test("while a trade-in deal is on, trading the phone in wins, and the court says so", () => {
   const r = trial(0, true);
-  assert.equal(r.handMeDown!.saves, -23);
-  assert.match(handMeDownText(store.world, r)!, /would cost \$23 more than trading it in/);
+  assert.equal(r.handMeDown!.saves, -22);
+  assert.match(handMeDownText(store.world, r)!, /would cost \$22 more than trading it in/);
   assert.equal(r.stamp, "KEEP"); // a hand-me-down never changes the ruling by itself
 });
 
 test("once the deal is over, the hand-me-down saves money", () => {
   const r = trial(200, true);
-  assert.deepEqual({ forgone: r.handMeDown!.forgone, saves: r.handMeDown!.saves }, { forgone: 380, saves: 289 });
-  assert.match(handMeDownText(store.world, r)!, /Maya takes Marco's iPhone 15 Pro \(89% battery\) on day 200.*\$289 less/);
+  assert.deepEqual({ forgone: r.handMeDown!.forgone, saves: r.handMeDown!.saves }, { forgone: 380, saves: 290 });
+  assert.match(handMeDownText(store.world, r)!, /Maya takes Marco's iPhone 15 Pro \(89% battery\) on day 200.*\$290 less/);
 });
 
 test("\"why?\" mentions the hand-me-down when there is one", async () => {

@@ -3,7 +3,7 @@ import {
   accessoryType, bestMatch, cartLabel, cartPrice, categories, describePrefs, findAccessory, findCategory, findPhone, handMeDownText, leavingNest,
   memberByTitle,
   member, mergePrefs, parseLink, parseProductLink, perMonth, phone, phoneBrandFor, pickVariant, PREF_LABELS, priceTrack, productProtection,
-  promosFor, protectionAdvice, recommend, recommendAccessories, recommendProducts, runTrial, tradeIn, usd,
+  modelLine, promosFor, protectionAdvice, recommend, recommendAccessories, recommendProducts, runTrial, shopLinks, tradeIn, usd,
   type Prefs,
 } from "./engine.ts";
 import { caseFileUrl } from "./share.ts";
@@ -174,27 +174,39 @@ export const tools = {
         description: "what they said matters to them",
       },
       brand: { type: "string", enum: ["Apple", "Google", "Samsung"], description: "only if they named a brand" },
+      model: { type: "string", description: "a model line they named, e.g. 'iphone 18' or 'pixel 10 pro'" },
       budget: { type: "number", description: "max price in USD, if they gave one" },
     },
     required: ["member"],
-    run: (a: { member: string; wants?: string[]; brand?: Prefs["brand"]; budget?: number }) => {
+    run: (a: { member: string; wants?: string[]; brand?: Prefs["brand"]; model?: string; budget?: number }) => {
       const m = resolveMember(a.member);
       const said: Prefs = {};
       for (const w of a.wants ?? []) if (w in PREF_LABELS) (said as Record<string, boolean>)[w] = true;
       if (a.brand) said.brand = a.brand;
       if (a.budget) said.budget = a.budget;
       const prefs = (state.prefs[m.id] = mergePrefs(state.prefs[m.id], said));
-      const recs = recommend(world, m.id, { prefs });
+      const recs = recommend(world, m.id, { prefs, model: a.model });
       state.lastRecs[m.id] = recs.map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
+      // "iphone 18" when there's no plain iPhone 18: say which models make up that line.
+      const line = (a.model ? modelLine(world, a.model) : []).sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices)));
+      const exact = line.some((p) => p.name.toLowerCase() === a.model!.toLowerCase());
+      const ti = tradeIn(m);
       return {
         forWhom: m.name,
         remembered: describePrefs(prefs),
+        modelNote: a.model && !exact
+          ? line.length ? `There's no plain ${line[0].name.split(" ").slice(0, 2).join(" ")}: the line is ${line.map((p) => p.name).join(" and ")}.` : `The court doesn't carry a "${a.model}".`
+          : undefined,
+        // What gets traded in, for how much, and where.
+        tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, where: "T-Mobile (in store or by mail), or the maker's own trade-in" } : undefined,
         picks: recs.map((r) => {
           const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, undefined, m);
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
-            withTradeIn: tradeIn(m).value > 0 ? { price: Math.max(0, r.price - tradeIn(m).value), tradeIn: m.device.model } : undefined,
+            withTradeIn: ti.value > 0 ? { price: Math.max(0, r.price - ti.value), tradeIn: m.device.model } : undefined,
+            stores: (() => { const p = phone(world, r.phoneId); return shopLinks(p.name, [p.brand], { buy: p.buy }); })(),
+            carrierDeal: phone(world, r.phoneId).carrierDeal,
             priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : undefined,
             promos: promosFor(world, r.phoneId, state.day).map(promoLine),
           };

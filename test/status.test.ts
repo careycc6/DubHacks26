@@ -24,7 +24,7 @@ test("before a ruling: items, sticker total, and the next step", async () => {
   seed();
   const r = (await say("maya", "what's in the cart?"))!;
   if (process.env.SHOW) console.log(r);
-  assert.match(r, /^🛒 Family cart, day 0: 3 items, sticker \$3,597/);
+  assert.match(r, /^🛒 Family cart, day 0: 3 items, sticker \$3,599/);
   assert.match(r, /Maya's iPhone 17 Pro Max 512GB \(yours\), \$1,\d{3} · not ruled yet/);
   assert.match(r, /say "court, rule"/);
 });
@@ -34,7 +34,7 @@ test("after a ruling: each item shows buy, or wait till when and for what", asyn
   await say("marco", "court, rule");
   const r = (await say("elena", "where do we stand?"))!;
   if (process.env.SHOW) console.log(r);
-  assert.match(r, /Maya's iPhone 17 Pro Max 512GB, \$[\d,]+ · ⏳ wait till day 120, the iPhone 17 256GB: \$669/);
+  assert.match(r, /Maya's iPhone 17 Pro Max 512GB, \$[\d,]+ · ⏳ wait till day 120, the iPhone 17 256GB: \$670/);
   assert.match(r, /Elena's Pixel 10 Pro 256GB \(yours\), \$[\d,]+ · ✅ buy: \$909/);
   assert.match(r, /Case file:/);
 });
@@ -45,7 +45,7 @@ test("something added after the ruling is ruled on right away", async () => {
   callTool("add_phone_to_cart", { member: "rosa", phone: "iphone-17", storageGB: 256, addedBy: "marco" });
   const r = (await say("marco", "status"))!;
   assert.match(r, /4 items/);
-  assert.match(r, /Rosa's iPhone 17 256GB, \$929 · ✅ buy: \$929/);
+  assert.match(r, /Rosa's iPhone 17 256GB, \$930 · ✅ buy: \$930/);
   assert.doesNotMatch(r, /not ruled yet/);
 });
 
@@ -103,6 +103,6 @@ test("who gets my old phone? names the trade-in and what it's worth", async () =
   await say("marco", "court, rule");
   const r = (await say("maya", "who gets my old phone?"))!;
   if (process.env.SHOW) console.log(r);
-  assert.match(r, /^📱 Trade it in on day 120: your iPhone 14 is worth \$260, already counted in the \$669 price \(\$929 if you keep it as a backup\)/);
+  assert.match(r, /^📱 Trade it in on day 120: your iPhone 14 is worth \$260, already counted in the \$670 price \(\$930 if you keep it as a backup\)/);
   assert.match((await say("elena", "what happens to my phone?"))!, /^📱 Trade it in today/);
 });

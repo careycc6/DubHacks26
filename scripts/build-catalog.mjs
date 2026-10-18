@@ -52,8 +52,17 @@ for (const p of catalog.phones) {
   const plan = PHONES[p.id];
   if (!plan) continue; // e.g. Easy Flip 5: a stand-in senior phone with no real listing
   const r = phoneResearch.find((x) => x.id === (plan.research ?? p.id));
-  p.prices = plan.prices;
+  // Court price = T-Mobile's for the storage it sells (rounded to the dollar), the maker's for the rest.
+  const tmPrices = Object.fromEntries(Object.entries(tmo.tmobilePrices[p.id] ?? {}).map(([gb, v]) => [gb, Math.round(v)]));
+  p.prices = { ...plan.prices, ...tmPrices };
   if (plan.name) p.name = plan.name;
+  // T-Mobile's current deal on this phone (verified ones only), e.g. up to $1,000 off with trade-in on Experience Beyond.
+  const deal = tmo.deals.find((d) => d.verified && d.device === (plan.name ?? p.name));
+  if (deal) {
+    const needs = deal.tradeIn === true ? "with a trade-in" : typeof deal.tradeIn === "string" ? `with a ${deal.tradeIn.replace(/w\/ /, "with a ")}` : deal.newLine ? "when you add a new line" : "";
+    const plans = deal.plans.split("/").map((x) => `Experience ${x.trim()}`).join(" or ").replace(/Experience Essentials/, "Essentials");
+    p.carrierDeal = { store: "T-Mobile", value: deal.value, needs, plans, url: deal.url };
+  } else delete p.carrierDeal;
   const links = r ? [...r.buy] : [{ store: "T-Mobile", url: `https://www.t-mobile.com/cell-phone/${p.brand.toLowerCase()}-${p.id}` }];
   const tm = links.find((l) => l.store === "T-Mobile");
   if (tm && tmo.tmobilePrices[p.id]) tm.price = Math.min(...Object.values(tmo.tmobilePrices[p.id]));

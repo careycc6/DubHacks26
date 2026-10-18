@@ -24,6 +24,8 @@ export interface Phone extends Sourced {
   batteryHours: number;
   screenIn: number;
   simple?: boolean;
+  /** A carrier's current deal, e.g. T-Mobile's "up to $1,000 off with trade-in on Experience Beyond" (paid as bill credits). */
+  carrierDeal?: { store: string; value: number; needs: string; plans: string; url: string };
 }
 
 /** Anything else the store sells: laptops, TVs, appliances, furniture, clothes, groceries… */

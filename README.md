@@ -125,7 +125,7 @@ Dashboard + /sim (backup) ┘     │
 ## The 3-minute demo
 
 Full script with lines, clicks, numbers, judge Q&A and fallbacks: **[DEMO.md](DEMO.md)**.
-Short version: **▶ Play the argument**, Mom privately DMs "money is tight", then "court, rule" (**$3,933 → $709 today**),
+Short version: **▶ Play the argument**, Mom privately DMs "money is tight", then "court, rule" (**$3,935 → $709 today**),
 **+41 days** (Dad's phone is ready, $692 cheaper), **+2 years** (Maya leaves for college, STAY saves $240/yr, then a phone for Grandma).
 
 ## Build plan (4 people)

@@ -53,11 +53,11 @@ The cue strip at the top always shows the next beat and the numbers to say.
 > right time to buy. T-Mobile asked for the one that says *wait*. We built a court your family can text."
 
 ### 0:15, everyone shops from their own phone (Jaret, Carey, Kairui)
-1. **Jaret** pastes their link into the Cart Court chat. The court replies *"📎 Filed into the family cart: iPhone 17 Pro Max 512GB for Jaret Zhang ($1,399). You can close that tab."*
+1. **Jaret** pastes their link into the Cart Court chat. The court replies *"📎 Filed into the family cart: iPhone 17 Pro Max 512GB for Jaret Zhang ($1,400). You can close that tab."*
 2. **Carey** pastes theirs, and **Kairui** pastes theirs.
 3. Each time, **the other two phones buzz**: *"📥 Jaret added iPhone 17 Pro Max 512GB to the family cart."*
 
-**Driver points at the projector:** three PENDING cards, the sticker total climbing to **$3,597**, and the Activity feed filling up.
+**Driver points at the projector:** three PENDING cards, the sticker total climbing to **$3,599**, and the Activity feed filling up.
 > "Everyone texts the court on their own. It's one shared cart, and everyone sees what everyone else adds. Close your tabs, text them to us."
 
 ### 0:45, approach the bench (Kairui, privately)
@@ -69,26 +69,26 @@ The cue strip at the top always shows the next beat and the numbers to say.
 
 ### 1:00, the trial (Driver clicks **⚖️ Rule now** on the dashboard)
 All three phones buzz at once:
-*"⚖️ The court has ruled. Jaret: WAIT till day 120, Carey: WAIT till day 41, Kairui: SWAP. Spend today $3,933 → $709. Case file: …"*
+*"⚖️ The court has ruled. Jaret: WAIT till day 120, Carey: WAIT till day 41, Kairui: SWAP. Spend today $3,935 → $709. Case file: …"*
 
 The stamps land on the projector. **Read the projector:**
 
 | Who | Ruling | Why |
 |---|---|---|
 | Kairui | **SWAP** Pixel 10 Pro → Pixel 10 | Battery at 71%, so buy now, but the Pixel 10 has the camera she actually uses. **$709** after trade-in and the launch credit (this is the private DM at work) |
-| Jaret | **WAIT** until day 120, as iPhone 17 256GB | Battery 88%, 4 payments left, uses 61GB and no Pro features. **$1,399 → $669** |
-| Carey | **WAIT** until day 41 | Battery 89%, and a $312 trade-in promo starts in 41 days. **$1,099 → $407** |
+| Jaret | **WAIT** until day 120, as iPhone 17 256GB | Battery 88%, 4 payments left, uses 61GB and no Pro features. **$1,400 → $670** |
+| Carey | **WAIT** until day 41 | Battery 89%, and a $312 trade-in promo starts in 41 days. **$1,100 → $408** |
 | Account | **CUT** ×2 | Protection on a dead tablet, plus Hotspot nobody used. **$336/yr** |
 
-> "Spend today: **$3,933 → $709**. The court saved this family **$2,248**, and Carey's old phone gets to testify."
+> "Spend today: **$3,935 → $709**. The court saved this family **$2,248**, and Carey's old phone gets to testify."
 
 Point at Carey's **witness statement** on the projector: *"I am Carey Chiu's iPhone 15 Pro… I'd like to be heard before I'm replaced."*
 
 ### 1:50, waiting is part of buying (Driver: **Demo tools → +41 days**)
-Every phone gets: *"⏳➡️✅ Carey, it's time. Your iPhone 17 Pro 256GB is ready at $407 instead of $1,099. Waiting saved $692."*
+Every phone gets: *"⏳➡️✅ Carey, it's time. Your iPhone 17 Pro 256GB is ready at $408 instead of $1,100. Waiting saved $692."*
 > "WAIT isn't 'no sale.' It's a held cart that comes back when the price is right. That's how you earn trust."
 
-(Optional: **+120 days**. Jaret's iPhone 17 is ready at $669 instead of $1,399.)
+(Optional: **+120 days**. Jaret's iPhone 17 is ready at $670 instead of $1,400.)
 
 ### 2:10, the kid grows up (Driver: **+2 years**)
 - **Kairui** texts: **`court, Jaret is leaving for college in August`**
@@ -150,7 +150,7 @@ Synthetic only, per T-Mobile's rules. The engine takes plain JSON, so real catal
 | Everything down | Play the backup video. |
 
 ## Numbers cheat sheet
-- Sticker total as argued: **$3,597** · first-year cart including unused add-ons: **$3,933**
+- Sticker total as argued: **$3,599** · first-year cart including unused add-ons: **$3,935**
 - Spend today after the ruling: **$709** (without Kairui's DM it would be **$909**)
 - Held: **$976** · Total saved: **$2,248**
-- Carey: day 41, $1,099 → $407 · Jaret: day 120, $1,399 → $669 · Jaret stays on the plan: $240/yr
+- Carey: day 41, $1,100 → $408 · Jaret: day 120, $1,400 → $670 · Jaret stays on the plan: $240/yr

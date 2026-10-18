@@ -53,7 +53,7 @@ test("the chat log reads like iMessage's own tapback fallback", () => {
 
 test("why? explains your ruling, or the one you name; parents are told they can overrule", async () => {
   await ruled();
-  assert.match((await say("maya", "why?"))!, /^⚖️ Why your ruling is WAIT till day 120, iPhone 17 256GB for \$669:\n• /);
+  assert.match((await say("maya", "why?"))!, /^⚖️ Why your ruling is WAIT till day 120, iPhone 17 256GB for \$670:\n• /);
   assert.match((await say("maya", "why marco?"))!, /Why Marco's ruling is WAIT till day 41/);
   assert.match((await say("maya", "why not the pro max"))!, /Why your ruling/);
   assert.match((await say("elena", "how come"))!, /Why your ruling is BUY: the Pixel 10 Pro/);

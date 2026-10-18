@@ -7,9 +7,9 @@
       "brand": "Apple",
       "tier": "flagship",
       "prices": {
-        "256": 1199,
-        "512": 1399,
-        "1024": 1599
+        "256": 1200,
+        "512": 1400,
+        "1024": 1600
       },
       "camera": 5,
       "gaming": 5,
@@ -39,14 +39,21 @@
       "brand": "Apple",
       "tier": "flagship",
       "prices": {
-        "256": 1099,
-        "512": 1299,
-        "1024": 1499
+        "256": 1100,
+        "512": 1300,
+        "1024": 1500
       },
       "camera": 5,
       "gaming": 5,
       "batteryHours": 30,
       "screenIn": 6.3,
+      "carrierDeal": {
+        "store": "T-Mobile",
+        "value": 1000,
+        "needs": "with a trade-in",
+        "plans": "Experience Beyond",
+        "url": "https://www.t-mobile.com/offers/apple-iphone-deals"
+      },
       "buy": [
         {
           "store": "T-Mobile",
@@ -71,13 +78,20 @@
       "brand": "Apple",
       "tier": "mid",
       "prices": {
-        "256": 929,
-        "512": 1129
+        "256": 930,
+        "512": 1130
       },
       "camera": 4,
       "gaming": 4,
       "batteryHours": 30,
       "screenIn": 6.3,
+      "carrierDeal": {
+        "store": "T-Mobile",
+        "value": 830,
+        "needs": "with a trade-in",
+        "plans": "Experience More or Experience Beyond",
+        "url": "https://www.t-mobile.com/offers/apple-iphone-deals"
+      },
       "buy": [
         {
           "store": "Apple",
@@ -141,7 +155,7 @@
       "brand": "Google",
       "tier": "flagship",
       "prices": {
-        "128": 999,
+        "128": 1000,
         "256": 1099,
         "512": 1219
       },
@@ -179,7 +193,7 @@
       "brand": "Google",
       "tier": "mid",
       "prices": {
-        "128": 799,
+        "128": 700,
         "256": 899
       },
       "camera": 4,
@@ -258,6 +272,13 @@
       "gaming": 5,
       "batteryHours": 31,
       "screenIn": 6.9,
+      "carrierDeal": {
+        "store": "T-Mobile",
+        "value": 1200,
+        "needs": "when you add a new line",
+        "plans": "Experience More or Experience Beyond",
+        "url": "https://www.t-mobile.com/offers/samsung-phone-deals"
+      },
       "buy": [
         {
           "store": "Samsung",
@@ -295,6 +316,13 @@
       "gaming": 4,
       "batteryHours": 28,
       "screenIn": 6.2,
+      "carrierDeal": {
+        "store": "T-Mobile",
+        "value": 1000,
+        "needs": "when you add a new line",
+        "plans": "Essentials or Experience More or Experience Beyond",
+        "url": "https://www.t-mobile.com/offers/samsung-phone-deals"
+      },
       "buy": [
         {
           "store": "Samsung",
@@ -413,9 +441,16 @@
       "batteryHours": 37,
       "screenIn": 6.9,
       "prices": {
-        "256": 1299,
+        "256": 1300,
         "512": 1499,
         "1024": 1899
+      },
+      "carrierDeal": {
+        "store": "T-Mobile",
+        "value": 1000,
+        "needs": "with a trade-in or new line with a port-in",
+        "plans": "Experience Beyond",
+        "url": "https://www.t-mobile.com/offers/apple-iphone-deals"
       },
       "buy": [
         {
@@ -449,9 +484,16 @@
       "batteryHours": 31,
       "screenIn": 6.3,
       "prices": {
-        "256": 1199,
-        "512": 1399,
+        "256": 1200,
+        "512": 1400,
         "1024": 1799
+      },
+      "carrierDeal": {
+        "store": "T-Mobile",
+        "value": 1000,
+        "needs": "with a trade-in or new line with a port-in",
+        "plans": "Experience Beyond",
+        "url": "https://www.t-mobile.com/offers/apple-iphone-deals"
       },
       "buy": [
         {

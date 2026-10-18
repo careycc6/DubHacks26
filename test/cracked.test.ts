@@ -41,7 +41,7 @@ test("buying now with a cracked phone uses the lower trade-in; waiting with a re
   const r = (id: string) => store.state.trial!.rulings.find((x) => x.memberId === id)!;
   assert.equal(r("marco").stamp, "KEEP");
   assert.equal(r("marco").tradeIn!.value, 251);
-  assert.equal(r("marco").nowCost, 1099 - 251);
+  assert.equal(r("marco").nowCost, 1100 - 251);
   assert.equal(r("maya").stamp, "WAIT");
   assert.equal(r("maya").nowCost, 129); // the repair, today
   assert.equal(r("maya").tradeIn!.value, 260);

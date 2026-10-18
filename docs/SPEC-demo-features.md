@@ -6,7 +6,7 @@
 
 **Constraints**
 - Final Devpost is due Sun 10/18 at 10:00 AM. Every feature has to be small, isolated, and safe to leave out.
-- Don't change the numbers in DEMO.md: $3,933 → $709, $2,248 saved, day 41 and day 120.
+- Don't change the numbers in DEMO.md: $3,935 → $709, $2,248 saved, day 41 and day 120.
 - Admin-only controls go behind `localOnly` (local or `ADMIN_TOKEN`). Phones and judges only ever see `/cart`.
 - New saved data goes through `db.ts`.
 
@@ -33,7 +33,7 @@ That's slow and can go wrong in front of a judge.
 `POST /api/demo/scene/prefiled`. All admin-only (they sit under the existing `/api/demo` gate).
 
 *Done when:* save, then run the trial and +41 days, then restore puts the dashboard back exactly as it was, with no
-texts sent. The scene, followed by Rule now, gives $3,933 → $709. There's a test for the store-level snapshot and restore.
+texts sent. The scene, followed by Rule now, gives $3,935 → $709. There's a test for the store-level snapshot and restore.
 
 ## F2 · Preflight panel (P0)
 
@@ -80,7 +80,7 @@ amber after a restart.
   the list.
 - A slim **cue strip** along the top shows the next beat from DEMO.md and the numbers to say, based on state:
   empty cart → "Paste the three links"; 3 items, no trial → "Kairui's private DM, then R"; trial at day 0 →
-  "Read $3,933 → $709, then 1 (+41 days)"; day ≥ 41 → "+2 years, then Kairui texts the college line". It can be hidden.
+  "Read $3,935 → $709, then 1 (+41 days)"; day ≥ 41 → "+2 years, then Kairui texts the college line". It can be hidden.
 
 *Done when:* each shortcut fires the same endpoint as its button, and the cue changes as the demo moves forward.
 
@@ -102,7 +102,7 @@ amber after a restart.
 *Why:* when the court texts the case-file link, iMessage shows a preview. Today it's a plain link.
 
 - Serve `/cart` through a route that adds `og:title` ("The People v. The Family Cart"), `og:description` (after a
-  trial: "Spend today $3,933 → $709 · saved $2,248"; before: "Awaiting the court's ruling") and `og:image` (a static
+  trial: "Spend today $3,935 → $709 · saved $2,248"; before: "Awaiting the court's ruling") and `og:image` (a static
   1200×630 PNG in `public/`).
 
 *Done when:* the link texted after a ruling shows the title and savings line in the iMessage preview.

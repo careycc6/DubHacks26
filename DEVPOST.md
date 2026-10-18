@@ -28,13 +28,13 @@ Cart Court is an agent with a real phone number (via **Photon 2.0**) that you ad
 - **Close your tabs.** Paste a store link and it's filed into one shared family cart.
 - **Matchmaker.** "What phone should Grandma get?" It suggests phones based on how that person actually uses one: a flip phone with big buttons for Grandma, the camera Mom actually uses.
 - **Cart on trial.** Before checkout, every item gets a ruling, **KEEP / SWAP / WAIT / CUT**, with exact numbers. It swaps storage nobody needs, catches forgotten trade-ins, cuts add-ons nobody has used in a year, and says **WAIT** when a promo is coming or a phone is still healthy and still being paid off.
-- **Waiting is part of buying.** Held items stay in the cart. When the moment comes, the court texts the group: *"Marco, it's time. Your iPhone 17 Pro is ready at $407 instead of $1,099."*
-- **Evidence.** Send a photo of a cracked screen or a battery-health screenshot and Gemini reads it as **Exhibit A**. The ruling updates: a cracked screen on a healthy phone gets a $129 repair, not a $1,399 phone.
+- **Waiting is part of buying.** Held items stay in the cart. When the moment comes, the court texts the group: *"Marco, it's time. Your iPhone 17 Pro is ready at $408 instead of $1,100."*
+- **Evidence.** Send a photo of a cracked screen or a battery-health screenshot and Gemini reads it as **Exhibit A**. The ruling updates: a cracked screen on a healthy phone gets a $129 repair, not a $1,400 phone.
 - **Approach the bench.** Anyone can text the court privately ("money's tight this month, don't tell the kids"). That shapes the ruling, but the court never reveals who said what.
 - **Life changes.** When a kid leaves for college, it compares the family line ($20/mo) with a solo plan ($40/mo) and rules **STAY**. When the kid grows up, the roles flip, and they're the one shopping for Grandma.
 - **A live case file** (shared link) shows the cart, every ruling with its stamp, the evidence, a "when to buy" timeline, and the savings.
 
-In our demo household the court takes the cart from **$3,933 to $709 spent today**, holds $976 for the right moments, and saves **$2,248**.
+In our demo household the court takes the cart from **$3,935 to $709 spent today**, holds $976 for the right moments, and saves **$2,248**.
 
 ## How we built it
 - **Photon 2.0 / Spectrum SDK** connects the agent to iMessage. It handles group chats and direct messages, image attachments and replies. A local chat simulator mirrors the same flow for development.

@@ -722,9 +722,22 @@ export function parsePrefs(text: string): Prefs {
 
 export const hasPrefs = (p: Prefs) => Object.keys(p).length > 0;
 
+/** "what iphone 18 should I get" -> "iphone 18": a model line someone named, beyond just the brand. */
+export function modelAsked(text: string): string | undefined {
+  const m = text.toLowerCase().match(/\b(iphone|pixel|galaxy)\s+(\d{1,2}[a-z]?|air|s\d{2}|a\d{2})\b(?:\s+(pro max|pro xl|pro|ultra|plus|max|fe))?/);
+  return m ? m.slice(1).filter(Boolean).join(" ") : undefined;
+}
+
+/** Catalog phones in the line someone named ("iphone 18" -> 18 Pro, 18 Pro Max). */
+export function modelLine(world: World, model: string): Phone[] {
+  const want = norm(model).split(" ");
+  return world.catalog.phones.filter((p) => want.every((w) => norm(p.name).split(" ").includes(w)));
+}
+
 /** Matchmaker: best phones for how this person uses a phone, plus anything they told the court they want. */
-export function recommend(world: World, memberId: string, opts: { budget?: number; prefs?: Prefs } = {}): Recommendation[] {
+export function recommend(world: World, memberId: string, opts: { budget?: number; prefs?: Prefs; model?: string } = {}): Recommendation[] {
   const m = member(world, memberId);
+  const line = new Set(opts.model ? modelLine(world, opts.model).map((p) => p.id) : []);
   const prefs = opts.prefs ?? {};
   const budget = opts.budget ?? prefs.budget;
   const wantsSimple = prefs.simple || m.age >= 70;
@@ -773,6 +786,11 @@ export function recommend(world: World, memberId: string, opts: { budget?: numbe
         } else score -= 15;
       }
       if (budget) why.push(price <= budget ? `${usd(price)}, under your ${usd(budget)}` : `${usd(price)}, over your ${usd(budget)}`);
+      // The model they named comes first, whatever else scores well.
+      if (line.has(p.id)) {
+        score += 1000;
+        why.unshift(`the ${opts.model!.replace(/\b(iphone|pixel|galaxy)\b/, (b) => ({ iphone: "iPhone", pixel: "Pixel", galaxy: "Galaxy" })[b]!)} you asked about`);
+      }
 
       if (p.simple) why.unshift("Big buttons and simple mode");
       why.push(`${gb}GB fits ${m.device.storageUsedGB}GB of use with room to grow`);

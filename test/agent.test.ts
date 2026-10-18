@@ -130,7 +130,7 @@ test("only a parent's DM can say money is tight; the demo numbers hold", async (
   await say("elena", "money is really tight this month, keep it between us");
   assert.equal(store.trialOpts().tightBudget, true);
   const t = (callTool("run_trial", {}) as { trial: { before: number; now: number } }).trial;
-  assert.equal(t.before, 3933);
+  assert.equal(t.before, 3935);
   assert.equal(t.now, 709);
 });
 

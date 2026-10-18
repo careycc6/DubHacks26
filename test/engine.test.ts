@@ -198,8 +198,8 @@ test("protection advice: worth it for a teen's $1,199 phone, skip for a $399 one
 test("price tracker finds the promo dip", async () => {
   const { priceTrack } = await import("../src/engine.ts");
   const t = priceTrack(world, "iphone-17-pro", 256, 0, 120);
-  assert.equal(t.now, 1099);
-  assert.deepEqual(t.lowest, { day: 41, price: 1099 - 312 });
+  assert.equal(t.now, 1100);
+  assert.deepEqual(t.lowest, { day: 41, price: 1100 - 312 });
 });
 
 test("accessories match the phone and wait with it", async () => {
@@ -257,7 +257,7 @@ test("the price track skips deals the ruling would turn down", async () => {
   assert.deepEqual(t.lowest, { day: 60, price: sticker - 200 }); // the holiday deal is real
   // A trade-in deal doesn't show for someone with nothing to trade in.
   const rosa = world.household.members.find((m) => m.id === "rosa")!;
-  assert.equal(priceTrack(world, "iphone-17-pro", 256, 0, 120, undefined, rosa).lowest.price, 1099);
+  assert.equal(priceTrack(world, "iphone-17-pro", 256, 0, 120, undefined, rosa).lowest.price, 1100);
 });
 
 test("dad and mom come from the household, not hard-coded ids", async () => {
