@@ -1,21 +1,21 @@
 // /setup: paste keys, check what's connected, and have the court text your phone.
 // Only reachable from this computer, or (on a hosted server) by someone who opened the ADMIN_TOKEN link once.
 import { createHash, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI } from "@google/genai";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
 import { addPhotonUser, dashboardToken } from "./photonUsers.ts";
 import { loadHouseholdLocal, loadWorld, savedMemberIds, saveHouseholdLocal } from "./data.ts";
-import { get, put } from "./db.ts";
+import { backend, flush, get, put } from "./db.ts";
 import { changed, world } from "./store.ts";
 import { claimedHandles } from "./claims.ts";
 
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
 const exampleFile = fileURLToPath(new URL("../.env.example", import.meta.url));
 
-const EDITABLE = ["GEMINI_API_KEY", "GEMINI_MODELS", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "PUBLIC_URL", "COURT_NUMBER"] as const;
+const EDITABLE = ["GEMINI_API_KEY", "GEMINI_MODELS", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "PUBLIC_URL", "COURT_NUMBER", "MONGODB_URI"] as const;
 type Key = (typeof EDITABLE)[number];
 
 function writeEnv(updates: Partial<Record<Key, string>>) {
@@ -270,4 +270,54 @@ setupRouter.post("/api/setup/hello-all", async (req, res) => {
   );
   put("welcomed", welcomed);
   res.json({ ok: results.every((r) => r.ok), results, skipped, total: targets.length, line: photonStatus.line, canRegister });
+});
+
+// ---- MongoDB: paste an Atlas connection string, test it, save it, and switch the court over.
+
+/** "mongodb+srv://user:pw@cluster0.abcd.mongodb.net/?…" -> "cluster0.abcd.mongodb.net" (never the password). */
+const mongoHost = (uri?: string) => uri?.match(/@([^/?]+)/)?.[1] ?? "";
+
+setupRouter.get("/api/setup/db", (_req, res) => {
+  res.json({ backend, host: backend === "mongodb" ? mongoHost(process.env.MONGODB_URI) : "", configured: !!process.env.MONGODB_URI });
+});
+
+setupRouter.post("/api/setup/mongodb", async (req, res) => {
+  const uri = String(req.body?.uri ?? "").trim();
+  if (!/^mongodb(\+srv)?:\/\//.test(uri)) {
+    return res.json({ ok: false, error: "That doesn't look like a MongoDB connection string. It should start with mongodb+srv://" });
+  }
+  if (/<(db_)?password>/i.test(uri)) {
+    return res.json({ ok: false, error: "Replace <db_password> in the string with the database user's password you created." });
+  }
+  try {
+    const { MongoClient } = await import("mongodb");
+    const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000, appName: "cart-court-setup" });
+    await client.connect();
+    await client.db(process.env.MONGODB_DB || "cartcourt").command({ ping: 1 });
+    await client.close();
+  } catch (err) {
+    const msg = String((err as Error).message ?? err);
+    console.warn("[db] connection test failed:", msg);
+    return res.json({
+      ok: false,
+      error: /auth|authentication|bad auth/i.test(msg)
+        ? "Wrong username or password. In Atlas → Database Access, check the user (or reset its password) and paste the string again."
+        : /ENOTFOUND|querySrv|ENODATA/i.test(msg)
+          ? "Couldn't find that cluster address. Copy the whole connection string again from Atlas → Connect → Drivers."
+          : /timed out|Server selection|ETIMEDOUT|ECONNREFUSED|ReplicaSetNoPrimary/i.test(msg)
+            ? "Couldn't reach the cluster. In Atlas → Network Access, add your current IP address (for the hackathon, 0.0.0.0/0 also works), wait a minute, then try again."
+            : msg.slice(0, 200),
+    });
+  }
+  writeEnv({ MONGODB_URI: uri });
+  await flush(); // everything saved so far gets copied into MongoDB on the restart
+  // Under `npm run dev` (node --watch), touching a watched file restarts the server onto MongoDB.
+  const watching = process.execArgv.some((a) => a.startsWith("--watch"));
+  if (watching) {
+    setTimeout(() => {
+      const now = new Date();
+      utimesSync(fileURLToPath(new URL("./db.ts", import.meta.url)), now, now);
+    }, 400);
+  }
+  res.json({ ok: true, host: mongoHost(uri), restarting: watching });
 });

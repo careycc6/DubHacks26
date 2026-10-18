@@ -49,6 +49,23 @@ links that number for good.
 - Only numbers added under **Users** can text the court.
 - If your texts aren't arriving, iMessage may be sending from your email instead of your number. Open **debug.photon.codes** on your iPhone to see which handle it uses, and add that one.
 
+## 4. Give it a memory with MongoDB Atlas (optional, 5 min, free)
+
+Without it, the court saves to `data/*.local.json` on the laptop running it. With MongoDB, the cart, rulings, household
+and chat survive restarts and can move to a hosted server (see "Host it" in the README).
+
+1. Sign up at **[mongodb.com/cloud/atlas/register](https://www.mongodb.com/cloud/atlas/register)** (Google sign-in works).
+2. **Create a cluster** and choose the **free M0** tier. Any provider or region is fine (pick one near you).
+3. **Database Access → Add New Database User**: choose a username and password, and save the password.
+4. **Network Access → Add IP Address**: add your current IP. For a hackathon on changing Wi-Fi, `0.0.0.0/0` (anywhere)
+   is simplest. Remove it afterwards.
+5. **Connect → Drivers → Node.js**: copy the connection string (`mongodb+srv://…`) and replace `<db_password>` with your password.
+6. Open **localhost:3000/setup**, go to **step 5**, paste it, and click **Test & connect**. The court checks the connection,
+   saves it to `.env`, restarts onto MongoDB, and copies over everything already saved on the laptop.
+
+The setup page explains common problems in plain words: a wrong password, an IP that isn't allowed yet, or a mistyped address.
+Check it any time at `localhost:3000/healthz`: it should say `"db":"mongodb"`.
+
 ## Things to try
 
 | Say or do | What happens |

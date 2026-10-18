@@ -91,6 +91,21 @@
         <div class="row"><input id="url" placeholder="or paste a public URL here" autocomplete="off" /><button class="btn ghost" id="uSave">Save</button></div>
         <div class="msg" id="uMsg"></div>
       </section>
+
+      <section class="step">
+        <h2><span class="n">5</span> MongoDB (the court's memory) <span class="optional">optional</span> <span class="chip no" id="dbChip">checking…</span></h2>
+        <p>Without it, the court saves to files on this laptop. With a free MongoDB Atlas database, the cart, rulings and household
+          survive restarts, and you can move the court to a hosted server.</p>
+        <ol class="sub">
+          <li>Sign up at <a href="https://www.mongodb.com/cloud/atlas/register" target="_blank" rel="noopener">mongodb.com/cloud/atlas/register</a> (Google sign-in works) and create a <b>free M0</b> cluster.</li>
+          <li><b>Database Access</b>: add a database user with a password, and save the password.</li>
+          <li><b>Network Access</b>: add your current IP address. For the hackathon, <code>0.0.0.0/0</code> works from any Wi-Fi.</li>
+          <li><b>Connect → Drivers → Node.js</b>: copy the connection string, replace <code>&lt;db_password&gt;</code> with that password, and paste it below.</li>
+        </ol>
+        <div class="row"><input id="mongo" type="password" placeholder="mongodb+srv://user:password@cluster0.xxxx.mongodb.net/" autocomplete="off" />
+          <button class="btn" id="mSave">Test &amp; connect</button></div>
+        <div class="msg" id="mMsg"></div>
+      </section>
     </div>
     <p class="fine">Keys are saved only to <code>.env</code> on this computer (it's in .gitignore). This page only works on <code>localhost</code>.</p>
   </main>
@@ -218,6 +233,28 @@ $("uSave").onclick = async () => {
   say("uMsg", "ok", "✓ Saved");
   refresh();
 };
+async function refreshDb() {
+  try {
+    const d = await fetch("/api/setup/db").then((r) => r.json());
+    d.backend === "mongodb" ? chip("dbChip", "ok", `MongoDB · ${d.host}`) : chip("dbChip", "no", "files on this laptop");
+    return d;
+  } catch { return null; }
+}
+$("mSave").onclick = async () => {
+  say("mMsg", "", "Testing the connection…");
+  const r = await post("/api/setup/mongodb", { uri: $("mongo").value });
+  if (!r.ok) return say("mMsg", "err", r.error);
+  $("mongo").value = "";
+  if (!r.restarting) return say("mMsg", "ok", `✓ Connected to ${r.host} and saved. Restart the server to switch the court to MongoDB.`);
+  say("mMsg", "ok", `✓ Connected to ${r.host}. Restarting the court onto MongoDB…`);
+  for (let i = 0; i < 30; i++) {
+    await new Promise((res) => setTimeout(res, 1000));
+    const d = await refreshDb();
+    if (d?.backend === "mongodb") return say("mMsg", "ok", `✓ The court now saves to MongoDB (${d.host}). Everything already saved on this laptop was copied over.`);
+  }
+  say("mMsg", "err", "Saved, but the server hasn't come back on MongoDB yet. Check the server terminal.");
+};
+refreshDb();
 loadHousehold();
 refresh();
 setInterval(refresh, 5000);
