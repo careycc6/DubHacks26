@@ -240,7 +240,9 @@ async function llmReply(msg: Incoming, applied: ToolRun[] = []): Promise<string>
 
 function mentionedMember(text: string) {
   const t = text.toLowerCase();
-  return world.household.members.find((m) => t.includes(m.name.toLowerCase()))
+  // Full name or first name ("Jaret Zhang" or "Jaret").
+  const word = (w: string) => new RegExp(`\\b${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t);
+  return world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0]))
     ?? (/\b(dad|my dad)\b/.test(t) ? world.household.members.find((m) => m.id === "marco") : undefined)
     ?? (/\bmom\b/.test(t) ? world.household.members.find((m) => m.id === "elena") : undefined)
     ?? (/\bgrandma\b/.test(t) ? world.household.members.find((m) => m.role === "grandparent") : undefined);
@@ -269,14 +271,22 @@ function rulesReply(msg: Incoming): string {
     const n = callTool("leaving_nest", { member: target }) as { stamp: string; reasons: string[] };
     return `🏠 ${n.stamp}: ${n.reasons.join(". ")}.`;
   }
-  const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?/i);
+  // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
+  const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
   if (add) {
-    const r = callTool("add_phone_to_cart", { member: add[2], phone: add[1], storageGB: add[3] ? Number(add[3]) : undefined, addedBy: msg.memberId });
-    return "error" in (r as object) ? `Objection: ${(r as { error: string }).error}` : `Added to the family cart: ${(r as { added: string }).added}. Say "court, rule" when you're ready to check out.`;
+    const forWhom = /^(me|myself|mine)$/i.test(add[2]) ? (msg.memberId ?? target) : add[2];
+    const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
+    const phone = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
+    const r = callTool("add_phone_to_cart", { member: forWhom, phone, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId });
+    return "error" in (r as object) ? `Objection: ${(r as { error: string }).error}` : `📥 Added to the family cart: ${(r as { added: string }).added}. Nobody checks out until the court rules.`;
   }
   if (/\b(recommend|which phone|what phone|need a (new )?phone)\b/i.test(text)) {
     const recs = callTool("recommend_phones", { member: target }) as { name: string; storageGB: number; price: number; why: string[] }[];
     return `For ${nameOf(target)}:\n${recs.map((r, i) => `${i + 1}. ${r.name} ${r.storageGB}GB, ${usd(r.price)}: ${r.why[0]}`).join("\n")}`;
   }
-  return `Cart Court here (rules-only mode). Try: "court, add 17 pro max for maya 512gb", "court, what phone for grandma", "court, rule", or "court, maya is leaving for college".`;
+  // A private aside ("money's tight, don't tell the kids"): acknowledge, never repeat it.
+  if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
+    return "Noted. That stays between us, and the court will keep it in mind. ⚖️";
+  }
+  return `⚖️ The court is listening. Try: paste a store link, "court, add the iPhone 17 Pro 256GB for me", "court, what phone should Grandma get?", or "court, rule".`;
 }

@@ -87,7 +87,7 @@ app.post("/api/demo/advance", async (req, res) => {
   changed();
   // Held items whose day has come: tell everyone (each person's iMessage chat, plus the simulator group).
   for (const r of due) {
-    const who = (world.household.members.find((m) => m.id === r.memberId)?.name ?? "").split(/s+/)[0];
+    const who = (world.household.members.find((m) => m.id === r.memberId)?.name ?? "").split(/\s+/)[0];
     const text = `⏳➡️✅ ${who}, it's time. Your ${r.proposed?.label} is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. Waiting saved ${usd(r.savings)}. Case file: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
     logActivity([text]);
     await deliver(text, undefined, "photon");

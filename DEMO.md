@@ -1,119 +1,143 @@
-# Cart Court: Demo Script (3 minutes)
+# Cart Court: Demo Script (3 minutes, real phones)
 
-> **One line:** Cart Court is an honest phone-shopping assistant that lives in your family group chat. It turns the
-> mess of links and arguments into one cart, puts the cart on trial before checkout, and is willing to say *wait*.
+> **One line:** Cart Court is an honest phone-shopping assistant your family texts. It turns everyone's links and
+> arguments into one family cart, puts the cart on trial before checkout, and isn't afraid to say *wait*.
 
-## Before judges walk up (60 seconds)
+**Cast**
 
-- [ ] Server running: `npm run dev` (terminal shows `[llm] Gemini…` and `[photon] connected`)
-- [ ] **Screen A (projector):** `http://localhost:3000`, the dashboard (case file + household + activity + Rule now + Demo tools)
-- [ ] **Screen B:** real phones texting the court. Backup if Wi-Fi or Photon fails: `http://localhost:3000/sim` (a simulated chat, not linked from the app)
-- [ ] Click **Reset** in the simulator
-- [ ] Backup video open in a tab, in case the Wi-Fi dies
+| Who | Plays | Their phone story (example data) |
+|---|---|---|
+| **Presenter** | talks to the judges | none |
+| **Driver** (laptop) | runs the dashboard on the projector | none |
+| **Carey** | Dad | iPhone 15 Pro, battery 89%, a trade-in promo starts in 41 days |
+| **Kairui** | Mom | Pixel 7, battery 71% (dies by 2pm), money's tight this month |
+| **Jaret** | the teen | iPhone 14, battery 88%, 4 payments left, wants the Pro Max |
 
-Roles: **Presenter** talks. **Driver** clicks and types in the simulator, and plays Elena in the DM.
+Every line below works **without Gemini** (rules mode). If Gemini is on, the court's replies just get chattier.
+
+---
+
+## Before judges walk up (5 minutes, once)
+
+- [ ] **Server running** on the laptop: `npm run dev`. The terminal shows `[photon] connected`.
+- [ ] **Tunnel running** (second terminal): `npm run tunnel`. Open the `https://…trycloudflare.com` URL once on the laptop, so the case-file link the court texts opens on phones.
+- [ ] **`localhost:3000/setup`, step 3:** Carey, Kairui and Jaret are saved with their numbers.
+      Set **Current phone** to **iPhone 15 Pro / Pixel 7 / iPhone 14** (or leave it blank; those are the defaults).
+- [ ] **Text everyone** has been pressed and all three phones got "Welcome to the court, [name]! ⚖️". Save the number as a contact called **Cart Court**.
+- [ ] Each teammate has their **store link** ready in Notes (copy and paste is faster than typing):
+      - Jaret: `https://store.example.com/iphone-17-pro-max?storage=512`
+      - Carey: `https://store.example.com/iphone-17-pro?storage=256`
+      - Kairui: `https://store.example.com/pixel-10-pro-256gb`
+- [ ] **Projector:** `http://localhost:3000`, the dashboard. Open **Demo tools** and click **Reset cart**.
+- [ ] Backup video open in a browser tab, in case the Wi-Fi dies.
 
 ---
 
 ## The script
 
 ### 0:00, the hook (Presenter)
-> "Phone shopping is broken. You have four tabs open, your kid wants the Pro Max, and nobody knows if now is even the
-> right time to buy. T-Mobile asked for the one that says *wait*. We built a judge for your family group chat."
+> "Phone shopping is broken. Four tabs open, a teenager who *needs* the Pro Max, and nobody knows if now is even the
+> right time to buy. T-Mobile asked for the one that says *wait*. We built a court your family can text."
 
-### 0:15, the argument (Driver clicks **▶ Play the argument**)
-The family argues in the group chat, line by line. Maya pastes a store link, and the court files it at once:
-*"📎 Filed into the family cart: iPhone 17 Pro Max 512GB for Maya ($1,399). You can close that tab."*
-Dad says "let's just order everything tonight."
-**Point out:** the court ignored the chatter. It only speaks when it's called or handed something to shop with,
-like that link. "Close your tabs. Text them to us."
-Then it posts the result: *"📥 Entered into the family cart… Sticker total $3,597."* The case file fills with **PENDING** cards.
-> "Photon's track asks for agents that join human conversations with taste. It doesn't jump in on every message."
+### 0:15, everyone shops from their own phone (Jaret, Carey, Kairui)
+1. **Jaret** pastes their link into the Cart Court chat. The court replies *"📎 Filed into the family cart: iPhone 17 Pro Max 512GB for Jaret Zhang ($1,399). You can close that tab."*
+2. **Carey** pastes theirs, and **Kairui** pastes theirs.
+3. Each time, **the other two phones buzz**: *"📥 Jaret added iPhone 17 Pro Max 512GB to the family cart."*
 
-### 0:40, approach the bench (Driver switches to the **🔒 Elena ↔ Court** tab)
-Driver types: **`honestly money is tight this month, please don't tell the kids`**
-> "Anyone can text the court privately. Watch what happens to the ruling, and notice it never reveals who said what."
+**Driver points at the projector:** three PENDING cards, the sticker total climbing to **$3,597**, and the Activity feed filling up.
+> "Everyone texts the court on their own. It's one shared cart, and everyone sees what everyone else adds. Close your tabs, text them to us."
 
-No need to wait for the court's DM reply (Gemini can take 5–20 seconds). The note counts the moment it's sent, so go straight to the trial.
+### 0:45, approach the bench (Kairui, privately)
+**Kairui** texts: **`honestly money is tight this month, don't tell the kids`**
+→ *"Noted. That stays between us, and the court will keep it in mind. ⚖️"*
+> "Anyone can tell the court something privately. Watch the ruling, and notice that nobody else's phone heard a thing."
 
-### 0:55, the trial (Driver back in **Family group**, as Marco)
-Driver types: **`ok court, rule. we want to check out tonight`**
-Stamps land on the case file. **Read the projector, not the chat:**
+(Nothing shows on the dashboard or the other phones. That's the point.)
+
+### 1:00, the trial (Driver clicks **⚖️ Rule now** on the dashboard)
+All three phones buzz at once:
+*"⚖️ The court has ruled. Jaret: WAIT till day 120, Carey: WAIT till day 41, Kairui: SWAP. Spend today $3,933 → $709. Case file: …"*
+
+The stamps land on the projector. **Read the projector:**
 
 | Who | Ruling | Why |
 |---|---|---|
-| Elena | **SWAP** Pixel 10 Pro → Pixel 10 | Pixel 7 battery at 71%: buy now, but the Pixel 10 has the camera she uses. **$709** after trade-in + launch credit |
-| Maya | **WAIT** until day 120, as iPhone 17 256GB | Battery 88%, 4 payments left, uses 61GB and no Pro features. **$1,399 → $569** |
-| Marco | **WAIT** until day 41 | Battery 89%, and a $312 trade-in promo starts in 41 days. **$1,099 → $407** |
-| Account | **CUT** ×2 | Device Protection on a dead tablet, plus Hotspot nobody used. **$336/yr** |
+| Kairui | **SWAP** Pixel 10 Pro → Pixel 10 | Battery at 71%, so buy now, but the Pixel 10 has the camera she actually uses. **$709** after trade-in and the launch credit (this is the private DM at work) |
+| Jaret | **WAIT** until day 120, as iPhone 17 256GB | Battery 88%, 4 payments left, uses 61GB and no Pro features. **$1,399 → $569** |
+| Carey | **WAIT** until day 41 | Battery 89%, and a $312 trade-in promo starts in 41 days. **$1,099 → $407** |
+| Account | **CUT** ×2 | Protection on a dead tablet, plus Hotspot nobody used. **$336/yr** |
 
-> "Spend today: **$3,933 → $709**. The court saved this family **$2,348**, and Dad's phone gets to testify."
+> "Spend today: **$3,933 → $709**. The court saved this family **$2,348**, and Carey's old phone gets to testify."
 
-Point at Marco's **witness statement**: *"I am Marco's iPhone 15 Pro… I'd like to be heard before I'm replaced."*
+Point at Carey's **witness statement** on the projector: *"I am Carey Chiu's iPhone 15 Pro… I'd like to be heard before I'm replaced."*
 
-### Optional, if a judge asks "what if her phone is actually broken?"
-Driver (as Maya, group chat) attaches a photo of a cracked screen or a battery-health screenshot, then types **`see??`**
-→ *"Exhibit A entered…"* The evidence card appears on the case file and Maya's ruling updates. A cracked screen on a
-healthy phone becomes a **$129 repair today**, still WAIT on the new phone. A low battery flips her to buy-now.
-Without Gemini, type it instead: **`court, my screen is cracked`** or **`court, battery is 76%`**.
+### 1:50, waiting is part of buying (Driver: **Demo tools → +41 days**)
+Every phone gets: *"⏳➡️✅ Carey, it's time. Your iPhone 17 Pro 256GB is ready at $407 instead of $1,099. Waiting saved $692."*
+> "WAIT isn't 'no sale.' It's a held cart that comes back when the price is right. That's how you earn trust."
 
-### 1:45, waiting is part of buying (Driver clicks **+41 days**)
-The group gets: *"⏳➡️✅ Marco, it's time. Your iPhone 17 Pro is ready at $407 instead of $1,099."*
-> "WAIT isn't 'no sale.' It's a held cart. It comes back when the price is right. That's the trust T-Mobile wants."
+(Optional: **+120 days**. Jaret's iPhone 17 is ready at $569 instead of $1,399.)
 
-### 2:05, the kid grows up (Driver clicks **+120 days**, then **+2 years**)
-Driver types as Elena: **`court, maya is leaving for college in august`**
-→ **STAY** on the family plan: $20/mo vs $40 solo, **saves $240/yr**, same number.
-Driver types as Maya: **`court, what phone should we get grandma? she keeps butt-dialing me`**
-→ Easy Flip 5, $149.
-> "When the kid grows up, the chat doesn't end. The roles flip. The kid who was told to wait is now shopping for Grandma."
+### 2:10, the kid grows up (Driver: **+2 years**)
+- **Kairui** texts: **`court, Jaret is leaving for college in August`**
+  → **STAY** on the family plan: $20/mo vs $40 solo, **saves $240/yr**, same number. The other phones get the ruling too.
+- **Jaret** texts: **`court, what phone should grandma get? she keeps butt-dialing me`**
+  → Easy Flip 5, $149, with big buttons and an SOS key.
+> "When the kid grows up the chat doesn't end, the roles flip. The kid who got told to wait is now shopping for Grandma."
 
-### 2:40, close (Presenter clicks **Proceed to checkout**)
-> "Every number you saw came from a deterministic pricing engine. The AI talks, the engine does the math, so it never
-> makes up a price. Cart Court lives on a real phone number through Photon, works in iMessage group chats, and tells
-> you the truth about your cart, including 'not yet.'"
+### 2:40, close (Presenter)
+> "Every number you saw came from a tested pricing engine. The AI talks, the engine does the math, so it never makes up
+> a price. It runs on real phone numbers through Photon, and it tells you the truth about your cart, including 'not yet.'"
+Click **Proceed to checkout →** on the dashboard to end on the mock store.
 
 ---
 
-## Judge Q&A: have these ready
+## Optional beats (if a judge asks)
+
+| Judge asks | Do this |
+|---|---|
+| "What if her phone is actually broken?" | **Jaret** texts `court, my screen is cracked` (or sends a photo if Gemini is on). It's filed as Exhibit A, and the ruling becomes a **$129 screen repair today**, still WAIT on a new phone. |
+| "Can I try?" | Add the judge's number on `/setup` (step 3, the grey row) and press **Text everyone**. Only they get texted. (Their number must be under Users in Photon first, unless you ran the Photon login.) They reply with a link or "court, what phone should I get?" |
+| "What does a family member see?" | Open the case-file link from any phone. It's the same ruling, read-only. |
+
+---
+
+## Judge Q&A
 
 **"Isn't the AI making up prices?"**
-No. Gemini only talks and picks tools. Every price, date and saving comes from `engine.ts`, which is plain code with 12
-unit tests. The verdict text skips the AI entirely.
+No. Gemini only talks and picks tools. Every price, date and saving comes from `engine.ts` (plain code, unit-tested).
+The verdict itself skips the AI entirely.
 
-**"Why would T-Mobile want a bot that tells customers not to buy?"**
-Because trust is what keeps customers. A carrier that says "wait 41 days, it'll be $692 cheaper" is one you don't
-leave, and the sale still happens, at the right moment.
+**"Why would T-Mobile want a bot that says don't buy?"**
+Trust keeps customers. A carrier that says "wait 41 days, it'll be $692 cheaper" is one you don't leave, and the sale
+still happens, at the right moment.
+
+**"Why not a group chat?"**
+On Photon's free plan each person gets a one-on-one chat (group chats need a paid dedicated line). The court relays every
+cart change and ruling to everyone, so it works like a group chat, and private asides stay private.
+
+**"What about privacy? It used Mom's DM."**
+Private messages can shape a ruling, but they're never quoted or forwarded. The dashboard and the other phones only see
+the ruling itself. Real names and numbers stay on the laptop, never in the repo.
 
 **"What happens when the kid grows up?"**
-The household changes, the chat stays. Leaving home (STAY or LEAVE), roommates, couples, adult kids shopping for
-aging parents. It also works one-on-one.
-
-**"Doesn't it get annoying in a group chat?"**
-It only speaks when called, handed a link or photo, or when a held item is ready. A few messages a year.
-
-**"Privacy? It used Mom's DM."**
-Private messages can shape a ruling, but the agent is instructed never to reveal or hint at them, and the case file
-page never sees DMs.
-
-**"How is this different from a shopping chatbot?"**
-A chatbot answers one person. Cart Court sits in a conversation between people, keeps one shared cart, and its
-signature move is the honest "wait."
+The household changes and the chat stays: leaving home (STAY or LEAVE), roommates, couples, adult kids shopping for
+their parents.
 
 **"Real data?"**
-Synthetic only, per T-Mobile's rules. The engine takes plain JSON, so it could be swapped for real catalog and account APIs.
+Synthetic only, per T-Mobile's rules. The engine takes plain JSON, so real catalog and account APIs could plug in.
 
 ## If something breaks
 
-| Problem | What happens / what to do |
+| Problem | Do this |
 |---|---|
-| Gemini rate limit (free tier is 5/min) | Replies fall back to rules mode automatically. The trial never uses Gemini. Keep typing "court, …" commands |
-| Photon / Wi-Fi down | The simulator runs fully local. Keep going |
-| Everything down | Play the backup video |
-| Need a clean slate | **Reset** button, then **Seed cart (instant)** skips the argument |
+| Gemini down / out of quota | Nothing. Replies fall back to rules mode automatically, and every scripted line works there. |
+| A phone doesn't buzz | Check `localhost:3000/setup`: Photon should say connected. The number must be under Users in Photon. |
+| Photon or Wi-Fi down | Open `localhost:3000/sim` (a backup simulated chat, not linked in the app) and type the same lines there. The dashboard updates the same way. |
+| Need a clean slate | Dashboard → **Demo tools → Reset cart** (people and numbers stay saved). |
+| Everything down | Play the backup video. |
 
 ## Numbers cheat sheet
-- Sticker total argued: **$3,597** · first-year cart incl. unused add-ons: **$3,933**
-- Spend today after ruling: **$709** (without Mom's DM: **$909**)
+- Sticker total as argued: **$3,597** · first-year cart including unused add-ons: **$3,933**
+- Spend today after the ruling: **$709** (without Kairui's DM it would be **$909**)
 - Held: **$976** · Total saved: **$2,348**
-- Dad: day 41, $1,099 → $407 · Maya: day 120, $1,399 → $569 · Maya stays on plan: $240/yr
+- Carey: day 41, $1,099 → $407 · Jaret: day 120, $1,399 → $569 · Jaret stays on the plan: $240/yr

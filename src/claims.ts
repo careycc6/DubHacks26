@@ -38,7 +38,8 @@ export function forgetClaims() {
 /** Find a member name in an intro like "I'm Maya", "maya", "this is dad". */
 export function introducedAs(text: string): string | undefined {
   const t = text.toLowerCase();
-  const byName = world.household.members.find((m) => new RegExp(`\\b${m.name.toLowerCase()}\\b`).test(t));
+  const word = (w: string) => new RegExp(`\\b${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t);
+  const byName = world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0])); // "I'm Jaret" or "Jaret Zhang"
   if (byName) return byName.id;
   const roles: [RegExp, (m: { role: string; id: string }) => boolean][] = [
     [/\b(dad|father)\b/, (m) => m.id === "marco"],
