@@ -551,7 +551,7 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 // src/db.ts
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-var KEYS = ["household", "claims", "welcomed", "state"];
+var KEYS = ["household", "claims", "welcomed", "state", "accounts"];
 var dataDir = process.env.CART_COURT_DATA_DIR ? process.env.CART_COURT_DATA_DIR.replace(/[\/]?$/, "/") : fileURLToPath(new URL("../data/", import.meta.url));
 var fileFor = (key) => `${dataDir}${key}.local.json`;
 var readFile = (key) => existsSync(fileFor(key)) ? JSON.parse(readFileSync(fileFor(key), "utf8")) : void 0;
@@ -785,19 +785,19 @@ function rulingLine(r, day, hasProtection = false) {
   const item = r.proposed?.label ?? r.label.split(" \xB7 ").slice(1).join(" \xB7 ");
   const was = r.label.split(" \xB7 ").slice(1).join(" \xB7 ");
   const swapped = r.proposed && !r.label.endsWith(r.proposed.label) ? ` (instead of ${was})` : "";
-  const save = r.savings > 0 ? ` \xB7 saves ${usd(r.savings)}` : "";
+  const save2 = r.savings > 0 ? ` \xB7 saves ${usd(r.savings)}` : "";
   const shield = r.protection?.verdict === "ADD" && !hasProtection ? " \xB7 \u{1F6E1}\uFE0F add protection" : "";
   const ti = r.tradeIn ? ` with trade-in (${usd(r.tradeIn.withoutTradeIn)} without)` : "";
   switch (r.stamp) {
     case "KEEP":
     case "SWAP":
-      return `\u2705 BUY: ${who}${r.memberId ? item : r.label.split(" \xB7 ").slice(1).join(" \xB7 ")}${swapped} \xB7 ${usd(r.nowCost)} today${ti}${save}${shield}`;
+      return `\u2705 BUY: ${who}${r.memberId ? item : r.label.split(" \xB7 ").slice(1).join(" \xB7 ")}${swapped} \xB7 ${usd(r.nowCost)} today${ti}${save2}${shield}`;
     case "WAIT": {
       const days = (r.holdUntilDay ?? day) - day;
-      return `\u23F3 WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} \xB7 ${usd(r.heldCost)} on day ${r.holdUntilDay}${ti}${save}${shield}`;
+      return `\u23F3 WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} \xB7 ${usd(r.heldCost)} on day ${r.holdUntilDay}${ti}${save2}${shield}`;
     }
     case "CUT":
-      return `\u2702\uFE0F SKIP: ${r.label.split(" \xB7 ").slice(1).join(" \xB7 ") || r.label}${save ? `${save}/yr` : ""}`;
+      return `\u2702\uFE0F SKIP: ${r.label.split(" \xB7 ").slice(1).join(" \xB7 ") || r.label}${save2 ? `${save2}/yr` : ""}`;
     default:
       return `${STAMP_ICON[r.stamp]} ${r.stamp}: ${r.label}`;
   }
@@ -1517,8 +1517,8 @@ function describeChanges(before, actorId) {
   }
   const bought = state.purchases.slice(before.purchases);
   for (const p of bought) {
-    const save = p.sticker && p.sticker > p.paid ? `, ${usd(p.sticker - p.paid)} under sticker` : "";
-    lines.push(`\u{1F9FE} ${first(nameOf(p.memberId))}'s ${p.label} was bought for ${usd(p.paid)}${save}.`);
+    const save2 = p.sticker && p.sticker > p.paid ? `, ${usd(p.sticker - p.paid)} under sticker` : "";
+    lines.push(`\u{1F9FE} ${first(nameOf(p.memberId))}'s ${p.label} was bought for ${usd(p.paid)}${save2}.`);
   }
   const gone = before.cartIds.filter((id) => !state.cart.some((i) => i.id === id));
   if (gone.length && !state.cart.length && !bought.length && gone.length > 1) {
@@ -2015,11 +2015,11 @@ function confirmClear(msg) {
 }
 
 // src/setup.ts
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 import { existsSync as existsSync3, readFileSync as readFileSync4, utimesSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { GoogleGenAI as GoogleGenAI2 } from "@google/genai";
-import { Router } from "express";
+import { Router as Router2 } from "express";
 
 // src/photonUsers.ts
 import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync3, statSync } from "node:fs";
@@ -2073,6 +2073,175 @@ async function addPhotonUser(name, handle2) {
   throw new Error(`Photon said ${res.status}: ${text.slice(0, 160)}`);
 }
 
+// src/auth.ts
+import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify as verifySig } from "node:crypto";
+import { Router } from "express";
+var SESSION_COOKIE = "cc_session";
+var SESSION_DAYS = 30;
+var APPLE_ISS = "https://appleid.apple.com";
+var GOOGLE_ISS = ["https://accounts.google.com", "accounts.google.com"];
+var JWKS = { google: "https://www.googleapis.com/oauth2/v3/certs", apple: "https://appleid.apple.com/auth/keys" };
+var load2 = () => get("accounts", { accounts: [], invited: [] });
+var save = (a) => put("accounts", a);
+var envOwners = () => (process.env.OWNER_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+var b64url = (s) => Buffer.from(s, "base64url");
+var keyCache = /* @__PURE__ */ new Map();
+async function keysFor(provider, refresh = false) {
+  const hit = keyCache.get(provider);
+  if (hit && !refresh && Date.now() - hit.at < 36e5) return hit.keys;
+  const r = await fetch(JWKS[provider], { signal: AbortSignal.timeout(8e3) });
+  if (!r.ok) throw new Error(`couldn't fetch ${provider} keys (${r.status})`);
+  const keys = (await r.json()).keys;
+  keyCache.set(provider, { at: Date.now(), keys });
+  return keys;
+}
+async function verifyIdToken(provider, token, clientId) {
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("not a JWT");
+  const header = JSON.parse(b64url(parts[0]).toString());
+  if (header.alg !== "RS256") throw new Error(`unexpected alg ${header.alg}`);
+  let jwk = (await keysFor(provider)).find((k) => k.kid === header.kid);
+  if (!jwk) jwk = (await keysFor(provider, true)).find((k) => k.kid === header.kid);
+  if (!jwk) throw new Error("unknown signing key");
+  const ok = verifySig("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), createPublicKey({ key: jwk, format: "jwk" }), b64url(parts[2]));
+  if (!ok) throw new Error("bad signature");
+  const c = JSON.parse(b64url(parts[1]).toString());
+  const issOk = provider === "google" ? GOOGLE_ISS.includes(c.iss) : c.iss === APPLE_ISS;
+  if (!issOk) throw new Error("wrong issuer");
+  if (!(Array.isArray(c.aud) ? c.aud : [c.aud]).includes(clientId)) throw new Error("token is for another app");
+  if (c.exp * 1e3 < Date.now() - 6e4) throw new Error("token expired");
+  return c;
+}
+var devSecret;
+function secret() {
+  const s = process.env.SESSION_SECRET || process.env.ADMIN_TOKEN;
+  if (s) return s;
+  return devSecret ??= randomBytes(32).toString("hex");
+}
+var sign = (body) => createHmac("sha256", secret()).update(body).digest("base64url");
+function readSession(req) {
+  const raw = (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
+  if (!raw) return void 0;
+  const [body, mac] = decodeURIComponent(raw).split(".");
+  if (!body || !mac) return void 0;
+  const want = Buffer.from(sign(body));
+  const got = Buffer.from(mac);
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return void 0;
+  const s = JSON.parse(Buffer.from(body, "base64url").toString());
+  return s.exp > Date.now() ? s : void 0;
+}
+function setSession(req, res, s) {
+  const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
+  if (!s) {
+    res.append("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`);
+    return;
+  }
+  const body = Buffer.from(JSON.stringify(s)).toString("base64url");
+  res.append("Set-Cookie", `${SESSION_COOKIE}=${encodeURIComponent(`${body}.${sign(body)}`)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure ? "; Secure" : ""}`);
+}
+function signedIn(req) {
+  const s = readSession(req);
+  if (!s) return void 0;
+  return load2().accounts.find((a) => a.provider === s.p && a.sub === s.sub);
+}
+function authConfig() {
+  const apple = process.env.APPLE_CLIENT_ID;
+  return {
+    google: process.env.GOOGLE_CLIENT_ID || null,
+    apple: apple ? { clientId: apple, redirectURI: process.env.APPLE_REDIRECT_URI || `${(process.env.PUBLIC_URL ?? "").replace(/\/+$/, "")}/login` } : null
+  };
+}
+var landing = () => savedMemberIds().length ? "/dashboard" : "/welcome";
+function authRouter(isAdmin2) {
+  const r = Router();
+  r.get("/api/auth/me", (req, res) => {
+    const a = signedIn(req);
+    res.json({
+      ...authConfig(),
+      user: a ? { name: a.name, email: a.email, provider: a.provider, owner: !!a.owner } : null,
+      admin: isAdmin2(req),
+      claimable: load2().accounts.length === 0 && savedMemberIds().length === 0,
+      next: landing()
+    });
+  });
+  r.post("/api/auth/:provider", async (req, res) => {
+    const provider = req.params.provider;
+    if (provider !== "google" && provider !== "apple") return res.status(404).json({ ok: false });
+    const clientId = provider === "google" ? process.env.GOOGLE_CLIENT_ID : process.env.APPLE_CLIENT_ID;
+    if (!clientId) return res.json({ ok: false, error: `Sign in with ${provider === "google" ? "Google" : "Apple"} isn't set up on this court yet.` });
+    const token = String(req.body?.credential ?? req.body?.id_token ?? "");
+    let c;
+    try {
+      c = await verifyIdToken(provider, token, clientId);
+    } catch (err) {
+      console.warn(`[auth] ${provider} sign-in rejected:`, err.message);
+      return res.json({ ok: false, error: "That sign-in didn't check out. Please try again." });
+    }
+    const verified = c.email_verified === true || c.email_verified === "true";
+    const email = verified ? c.email?.toLowerCase() : void 0;
+    const appleName = provider === "apple" ? [req.body?.user?.name?.firstName, req.body?.user?.name?.lastName].filter(Boolean).join(" ") : "";
+    const name = c.name || appleName || email?.split("@")[0];
+    const all = load2();
+    let account = all.accounts.find((a) => a.provider === provider && a.sub === c.sub);
+    let firstTime = false;
+    if (!account) {
+      const invited = !!email && (all.invited.includes(email) || envOwners().includes(email));
+      const claim2 = all.accounts.length === 0 && (savedMemberIds().length === 0 || isAdmin2(req));
+      if (!invited && !claim2) {
+        return res.json({
+          ok: false,
+          error: `This court already belongs to a family. Ask the parent who set it up to add ${email ?? "your email"} under Settings \u2192 Who can sign in.`
+        });
+      }
+      account = { provider, sub: c.sub, email, name, addedAt: (/* @__PURE__ */ new Date()).toISOString(), owner: claim2 || void 0 };
+      all.accounts.push(account);
+      if (email) all.invited = all.invited.filter((e) => e !== email);
+      save(all);
+      firstTime = true;
+      console.log(`[auth] ${claim2 ? "owner" : "invited parent"} signed in for the first time: ${email ?? provider}`);
+    }
+    setSession(req, res, { p: provider, sub: c.sub, email: account.email, name: account.name, exp: Date.now() + SESSION_DAYS * 864e5 });
+    res.json({ ok: true, firstTime, next: firstTime && !savedMemberIds().length ? "/welcome" : typeof req.body?.next === "string" && req.body.next.startsWith("/") && !req.body.next.startsWith("//") ? req.body.next : landing() });
+  });
+  r.post("/api/auth/logout", (req, res) => {
+    setSession(req, res, void 0);
+    res.json({ ok: true });
+  });
+  r.get("/api/auth/accounts", (req, res) => {
+    if (!isAdmin2(req)) return res.status(403).json({ ok: false });
+    const me = signedIn(req);
+    const a = load2();
+    res.json({
+      accounts: a.accounts.map((x) => ({ id: `${x.provider}:${x.sub}`, name: x.name, email: x.email, provider: x.provider, owner: !!x.owner, you: x === me || me && x.sub === me.sub && x.provider === me.provider })),
+      invited: a.invited,
+      fromEnv: envOwners()
+    });
+  });
+  r.post("/api/auth/invite", (req, res) => {
+    if (!isAdmin2(req)) return res.status(403).json({ ok: false });
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.json({ ok: false, error: "Enter an email address, like rosa@gmail.com." });
+    const a = load2();
+    if (a.accounts.some((x) => x.email === email)) return res.json({ ok: false, error: `${email} can already sign in.` });
+    if (!a.invited.includes(email)) a.invited.push(email);
+    save(a);
+    res.json({ ok: true, invited: a.invited });
+  });
+  r.post("/api/auth/remove", (req, res) => {
+    if (!isAdmin2(req)) return res.status(403).json({ ok: false });
+    const id = String(req.body?.id ?? "");
+    const email = String(req.body?.email ?? "").toLowerCase();
+    const a = load2();
+    const me = signedIn(req);
+    if (me && id === `${me.provider}:${me.sub}`) return res.json({ ok: false, error: "You can't remove yourself. Sign out instead." });
+    a.accounts = a.accounts.filter((x) => `${x.provider}:${x.sub}` !== id);
+    if (email) a.invited = a.invited.filter((e) => e !== email);
+    save(a);
+    res.json({ ok: true });
+  });
+  return r;
+}
+
 // src/setup.ts
 var envFile = fileURLToPath3(new URL("../.env", import.meta.url));
 var exampleFile = fileURLToPath3(new URL("../.env.example", import.meta.url));
@@ -2101,10 +2270,11 @@ function isLocal(req) {
   return loopback && (host === "localhost" || host === "127.0.0.1") && !forwarded;
 }
 var ADMIN_COOKIE = "cc_admin";
-var sameSecret = (a, b) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
+var sameSecret = (a, b) => timingSafeEqual2(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 var adminCookie = (req) => (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${ADMIN_COOKIE}=`))?.slice(ADMIN_COOKIE.length + 1);
 function isAdmin(req) {
   if (isLocal(req)) return true;
+  if (signedIn(req)) return true;
   const token = process.env.ADMIN_TOKEN;
   const cookie = adminCookie(req);
   return !!token && !!cookie && sameSecret(decodeURIComponent(cookie), token);
@@ -2122,12 +2292,27 @@ function adminLogin(req, res, next) {
 }
 function localOnly(req, res, next) {
   if (isAdmin(req)) return next();
+  if (req.method === "GET" && !req.originalUrl.startsWith("/api/") && req.accepts("html")) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
   res.status(403).send("This page only works on the computer running Cart Court (http://localhost:3000), or on a hosted court after opening its admin link (/?key=\u2026). The family's case file is at /cart.");
 }
 var mask = (v) => v ? `\u2022\u2022\u2022\u2022${v.slice(-4)}` : "";
-var setupRouter = Router();
+var setupRouter = Router2();
 setupRouter.use(adminLogin);
-setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo"], localOnly);
+setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo", "/welcome", "/welcome.html", "/api/guide"], localOnly);
+setupRouter.get("/api/guide", (_req, res) => {
+  const saved = savedMemberIds();
+  const members = world.household.members.filter((m) => saved.includes(m.id));
+  res.json({
+    household: { saved: members.length, withNumbers: members.filter((m) => m.handles.length).length, names: members.map((m) => m.name) },
+    budget: state.budget ?? null,
+    gemini: !!process.env.GEMINI_API_KEY,
+    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonStatus.state, line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
+    welcomed: members.filter((m) => m.handles.some((h) => welcomed.includes(h))).length,
+    database: backend
+  });
+});
 setupRouter.get("/api/setup", (_req, res) => {
   res.json({
     gemini: { configured: !!process.env.GEMINI_API_KEY, hint: mask(process.env.GEMINI_API_KEY), models: process.env.GEMINI_MODELS ?? "" },
@@ -2341,8 +2526,8 @@ setupRouter.post("/api/setup/mongodb", async (req, res) => {
 });
 
 // src/dashboard.ts
-import { Router as Router2 } from "express";
-var dashboardRouter = Router2();
+import { Router as Router3 } from "express";
+var dashboardRouter = Router3();
 dashboardRouter.get("/api/dashboard", (_req, res) => {
   const saved = savedMemberIds();
   res.json({
@@ -2449,6 +2634,7 @@ app2.post("/api/photon/webhook", express.raw({ type: "*/*", limit: "25mb" }), as
   }
 });
 app2.use(express.json({ limit: "12mb" }));
+app2.use(authRouter(isAdmin));
 app2.use(setupRouter);
 app2.use((req, _res, next) => {
   const host = req.headers.host ?? "";

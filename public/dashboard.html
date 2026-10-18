@@ -52,6 +52,8 @@
     details.card summary { cursor: pointer; font-family: var(--serif); font-size: 15px; }
     details.card .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     details.card button { border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+    .acct { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    .acct button { border: 0; background: none; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
     .file { max-width: none; padding: 0; }
     .file header { margin-top: 18px; }
   </style>
@@ -64,13 +66,15 @@
       <span class="chip no" id="cGemini">AI</span>
       <span class="chip no" id="cPhoton">iMessage</span>
       <a class="btn ghost small" href="/cart" target="_blank" rel="noopener">Phone view ↗</a>
-      <a class="btn small" href="/setup">⚙ Setup</a>
+      <a class="btn ghost small" href="/welcome">Guide</a>
+      <a class="btn small" href="/setup">⚙ Settings</a>
+      <span class="acct" id="acct" hidden></span>
     </div>
   </div>
 
   <div class="banner" id="banner" hidden>
     <span>👋 You're looking at an <b>example family</b>. Add your household's names and numbers and the court will text them.</span>
-    <a class="btn small" href="/setup">Set up your household →</a>
+    <a class="btn small" href="/welcome">Set up your household →</a>
   </div>
 
   <div class="layout">
@@ -253,6 +257,13 @@ document.querySelectorAll("details.card button").forEach((b) => b.onclick = asyn
 });
 loadDashboard();
 setInterval(loadDashboard, 8000);
+// Signed in with Google/Apple: show who, with a sign-out link.
+fetch("/api/auth/me").then((r) => r.json()).then((me) => {
+  if (!me.user) return;
+  $("acct").hidden = false;
+  $("acct").innerHTML = `${esc(me.user.name || me.user.email)} · <button id="signOut">Sign out</button>`;
+  $("signOut").onclick = async () => { await post("/api/auth/logout"); location.href = "/login"; };
+});
 </script>
 </body>
 </html>

@@ -8,6 +8,7 @@ import { forgetClaims, memberForHandle } from "./claims.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
 import { handleWebhook, photonStatus } from "./channels/photon.ts";
 import { isAdmin, setupRouter } from "./setup.ts";
+import { authRouter } from "./auth.ts";
 import { backend, flush, reload } from "./db.ts";
 import { background, keepAlive, serverless, settle } from "./runtime.ts";
 import { dashboardRouter } from "./dashboard.ts";
@@ -53,6 +54,7 @@ app.post("/api/photon/webhook", express.raw({ type: "*/*", limit: "25mb" }), asy
 });
 
 app.use(express.json({ limit: "12mb" }));
+app.use(authRouter(isAdmin)); // Sign in with Google / Apple for parents
 app.use(setupRouter); // before static files, so /setup stays local-only
 
 // Opening the app once through a tunnel (cloudflared/ngrok/localtunnel) or a host's default address teaches

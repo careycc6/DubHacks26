@@ -7,7 +7,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Collection } from "mongodb";
 
-const KEYS = ["household", "claims", "welcomed", "state"] as const;
+const KEYS = ["household", "claims", "welcomed", "state", "accounts"] as const;
 export type Key = (typeof KEYS)[number];
 
 // CART_COURT_DATA_DIR lets tests use a throwaway folder instead of your real household.

@@ -24,6 +24,7 @@
     .optional { font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; }
     .tip { background: var(--paper-2); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; margin-top: 10px; }
     .tip.ok { background: #e6efe5; color: #24543a; }
+    .linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; padding: 0; }
     .hint { font-size: 13px; color: var(--muted, #6b6457); line-height: 1.55; margin: 8px 0 0; }
 
     table.members { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
@@ -52,7 +53,7 @@
     </header>
 
     <div class="steps">
-      <section class="step">
+      <section class="step" id="gemini">
         <h2><span class="n">1</span> Gemini (the court's voice) <span class="chip no" id="gChip">checking…</span></h2>
         <p>Sign in with your Google account at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>, click <b>Create API key</b>, and paste it here.
           No key? The court still works in rules mode: the verdicts, prices and demo buttons need no AI.</p>
@@ -66,7 +67,7 @@
         <div class="msg" id="gMsg"></div>
       </section>
 
-      <section class="step">
+      <section class="step" id="photon">
         <h2><span class="n">2</span> Photon (a real iMessage number) <span class="optional">optional</span> <span class="chip no" id="pChip">checking…</span></h2>
         <p>At <a href="https://app.photon.codes" target="_blank" rel="noopener">app.photon.codes</a>, create a project and copy its <b>Project ID</b> and <b>Project Secret</b>.</p>
         <div class="row"><input id="pid" placeholder="Project ID" autocomplete="off" /><input id="psecret" type="password" placeholder="Project Secret" autocomplete="off" />
@@ -74,7 +75,7 @@
         <div class="msg" id="pMsg"></div>
       </section>
 
-      <section class="step">
+      <section class="step" id="household">
         <h2><span class="n">3</span> Your household <span class="optional">needs step 2 to text</span> <span class="chip no" id="hhChip"></span></h2>
         <p>The grey rows are an <b>example family</b>. Type over a row to make it a real person; rows you leave blank stay examples and are never saved or texted.
           Then <b>Text everyone</b> texts them all at once ("Welcome to the court, [name]! ⚖️"). Press it again after adding someone and only the new person gets texted. Photon's free plan gives each person their own 1:1 chat with the court (group chats need a paid dedicated line), and every chat shares the same family cart.</p>
@@ -86,8 +87,16 @@
         <p class="fine" style="margin-top:6px">Names and numbers are saved only on this computer (<code>data/household.local.json</code>, gitignored). Phone stats, prices and promos stay synthetic.
           Not sure which number an iPhone sends iMessages from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on that phone.</p>
       </section>
+
+      <section class="step" id="parents">
+        <h2><span class="n">4</span> Who can sign in <span class="optional">parents</span></h2>
+        <p>Parents sign in with Google or Apple to open this dashboard from any device. Add a co-parent's email and they can sign in too.</p>
+        <ul class="sub" id="accList"></ul>
+        <div class="row"><input id="invEmail" type="email" placeholder="co-parent's email" /><button class="btn ghost" id="invAdd">Allow sign-in</button></div>
+        <div class="msg" id="invMsg"></div>
+      </section>
     </div>
-    <p class="fine">Keys are saved only to <code>.env</code> on this computer (it's in .gitignore). This page only works on <code>localhost</code>.</p>
+    <p class="fine">Keys are saved only to <code>.env</code> on this computer (it's in .gitignore). On a hosted court, set them in the host's environment variables. Only signed-in parents can open this page.</p>
   </main>
 
 <script>
@@ -98,6 +107,24 @@ const say = (id, cls, text) => { $(id).className = `msg ${cls}`; $(id).textConte
 const cap = (s) => String(s ?? "").replace(/^./, (c) => c.toUpperCase());
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let photonConnected = false;
+
+async function accounts() {
+  const a = await fetch("/api/auth/accounts").then((r) => (r.ok ? r.json() : null));
+  if (!a) return;
+  const row = (label, sub, id, email) => `<li>${esc(label)} <span class="optional">${esc(sub)}</span>${id || email ? ` <button class="linkish" data-rm="${esc(id ?? "")}" data-email="${esc(email ?? "")}">remove</button>` : ""}</li>`;
+  $("accList").innerHTML = [
+    ...a.accounts.map((x) => row(x.name || x.email, `${x.provider === "apple" ? "Apple" : "Google"}${x.owner ? " · owner" : ""}${x.you ? " · you" : ""}`, x.you ? undefined : x.id)),
+    ...a.invited.map((e) => row(e, "invited, hasn't signed in yet", undefined, e)),
+    ...a.fromEnv.map((e) => `<li>${esc(e)} <span class="optional">from OWNER_EMAILS</span></li>`),
+  ].join("") || '<li class="optional">Nobody has signed in yet. The first parent to sign in on a new court becomes its owner.</li>';
+  document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { await post("/api/auth/remove", { id: b.dataset.rm, email: b.dataset.email }); accounts(); }));
+}
+$("invAdd").onclick = async () => {
+  const r = await post("/api/auth/invite", { email: $("invEmail").value });
+  r.ok ? (say("invMsg", "ok", "✓ They can sign in with that Google or Apple email."), ($("invEmail").value = "")) : say("invMsg", "err", r.error);
+  accounts();
+};
+accounts();
 
 async function refresh() {
   const s = await fetch("/api/setup").then((r) => r.json());
