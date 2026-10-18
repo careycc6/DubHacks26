@@ -39,9 +39,8 @@ export async function handle(msg: Incoming): Promise<string | null> {
   const reply = await respond(msg);
   // Family feed: changes made in a 1:1 chat get a one-line update in everyone else's chat.
   // Sent just after this reply so the person who acted hears back first.
-  if (!msg.isGroup && msg.memberId) {
-    setTimeout(() => broadcastChanges(before, msg.memberId, msg.spaceId).catch((e) => console.warn("[feed]", e)), 400);
-  }
+  // (Always logs to the dashboard; only 1:1 chats get relayed to the others.)
+  setTimeout(() => broadcastChanges(before, msg.memberId, msg.spaceId).catch((e) => console.warn("[feed]", e)), 400);
   return reply;
 }
 

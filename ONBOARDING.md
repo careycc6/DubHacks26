@@ -11,8 +11,8 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000/sim** and click **▶ Play the argument**. It works right away with no keys,
-running in rules mode.
+Open **http://localhost:3000**. That's the dashboard: the family's case file, the household, an activity feed,
+a **⚖️ Rule now** button and **⚙ Setup** in the top right. It works right away with no keys, in rules mode, using an example family.
 
 ## 2. Give the court a voice (1 min, free)
 

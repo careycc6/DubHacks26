@@ -27,7 +27,8 @@ export const photonSpaceIds = () => [...spaces.keys()].map((id) => `photon:${id}
 
 function lineOf(space: Space): string | undefined {
   try {
-    return (imessage as unknown as (s: Space) => { phone?: string })(space)?.phone;
+    const phone = (imessage as unknown as (s: Space) => { phone?: string })(space)?.phone;
+    return phone && /\d{7,}/.test(phone.replace(/\D/g, "")) ? phone : undefined; // shared plans report "shared", not a number
   } catch {
     return undefined;
   }

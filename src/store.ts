@@ -32,6 +32,7 @@ export interface State {
   chat: ChatLine[];
   groupSpaceId?: string; // where proactive "it's time" messages go
   exhibits: Exhibit[];
+  activity: { at: number; day: number; text: string }[]; // public one-liners for the dashboard
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
@@ -39,7 +40,7 @@ export interface State {
 export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
-const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], trialRuns: 0 });
+const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], trialRuns: 0 });
 export let state: State = fresh();
 
 let seq = 0;
@@ -64,6 +65,7 @@ export function publicState() {
     trial: state.trial,
     nest: state.nest,
     exhibits: state.exhibits.filter((e) => !e.private).map(({ private: _p, ...e }) => e),
+    activity: state.activity.slice(-40),
   };
 }
 
@@ -80,6 +82,13 @@ const BUDGET_WORDS = /\b(tight|budget|afford|broke|expensive|money|bills?)\b/i;
 /** Private DMs can shape rulings (never revealed): e.g. "money is tight" -> budget mode. */
 export function trialOpts(): TrialOptions {
   return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)) };
+}
+
+/** Add public one-liners to the dashboard activity log (never private DM content). */
+export function logActivity(lines: string[]) {
+  for (const text of lines) state.activity.push({ at: Date.now(), day: state.day, text });
+  if (state.activity.length > 200) state.activity.splice(0, state.activity.length - 200);
+  if (lines.length) changed();
 }
 
 export function refreshTrial() {

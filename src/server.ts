@@ -5,9 +5,11 @@ import { handle } from "./agent.ts";
 import { forgetClaims, memberForHandle } from "./claims.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
 import { photonSpaceIds, startPhoton } from "./channels/photon.ts";
-import { setupRouter } from "./setup.ts";
+import { isLocal, setupRouter } from "./setup.ts";
+import { dashboardRouter } from "./dashboard.ts";
+import { deliver } from "./feed.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
-import { addChat, bus, changed, publicState, reset, state, trialOpts, world } from "./store.ts";
+import { addChat, bus, changed, logActivity, publicState, reset, state, trialOpts, world } from "./store.ts";
 import { callTool } from "./tools.ts";
 
 const app = express();
@@ -26,8 +28,11 @@ app.use((req, _res, next) => {
   }
   next();
 });
+// Home: the dashboard on this computer; anyone else (a phone via the tunnel) gets the family's case file.
+app.get("/", (req, res) => (isLocal(req) ? res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url))) : res.redirect("/cart")));
+app.use(dashboardRouter);
 app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { extensions: ["html"] }));
-app.get("/", (_req, res) => res.redirect("/sim"));
+
 
 // ---- Live updates (Server-Sent Events) for the cart page + simulator
 app.get("/api/events", (req, res) => {
@@ -80,11 +85,13 @@ app.post("/api/demo/advance", async (req, res) => {
   state.day = newDay;
   state.trial = advanceTrial(world, state.cart, state.trial, newDay, trialOpts());
   changed();
-  // Shared Photon lines are 1:1 only, so tell everyone: the group (or simulator) plus every iMessage chat.
-  const targets = new Set([state.groupSpaceId ?? "sim:group", ...photonSpaceIds()]);
+  // Held items whose day has come: tell everyone (each person's iMessage chat, plus the simulator group).
   for (const r of due) {
-    const who = world.household.members.find((m) => m.id === r.memberId)?.name ?? "";
-    for (const target of targets) await sendTo(target, `⏳➡️✅ ${who}, it's time. Your held item (${r.proposed?.label}) is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. You saved ${usd(r.savings)} by waiting. Cart: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`);
+    const who = (world.household.members.find((m) => m.id === r.memberId)?.name ?? "").split(/s+/)[0];
+    const text = `⏳➡️✅ ${who}, it's time. Your ${r.proposed?.label} is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. Waiting saved ${usd(r.savings)}. Case file: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
+    logActivity([text]);
+    await deliver(text, undefined, "photon");
+    await sendTo(state.groupSpaceId ?? "sim:group", text);
   }
   res.json({ day: state.day, announced: due.length });
 });
@@ -140,7 +147,7 @@ app.post("/api/demo/reset", (_req, res) => {
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
-  console.log(`Cart Court on http://localhost:${port}  ·  setup: /setup  ·  simulator: /sim  ·  live cart: /cart`);
+  console.log(`Cart Court dashboard: http://localhost:${port}  ·  setup: /setup  ·  family case file: /cart`);
   console.log(process.env.GEMINI_API_KEY ? `[llm] Gemini (${process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || "gemini-3.8-flash + fallbacks"})` : "[llm] no GEMINI_API_KEY: rules-only mode");
 });
 startPhoton().catch((err) => console.error("[photon] failed to start:", err));

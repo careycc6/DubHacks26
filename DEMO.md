@@ -6,8 +6,8 @@
 ## Before judges walk up (60 seconds)
 
 - [ ] Server running: `npm run dev` (terminal shows `[llm] Gemini…` and `[photon] connected`)
-- [ ] **Screen A (projector / big monitor):** `http://localhost:3000/cart`, the case file
-- [ ] **Screen B (laptop):** `http://localhost:3000/sim`, the group chat (or a real phone in the iMessage group)
+- [ ] **Screen A (projector):** `http://localhost:3000`, the dashboard (case file + household + activity + Rule now + Demo tools)
+- [ ] **Screen B:** real phones texting the court. Backup if Wi-Fi or Photon fails: `http://localhost:3000/sim` (a simulated chat, not linked from the app)
 - [ ] Click **Reset** in the simulator
 - [ ] Backup video open in a tab, in case the Wi-Fi dies
 

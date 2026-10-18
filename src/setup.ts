@@ -30,19 +30,24 @@ function writeEnv(updates: Partial<Record<Key, string>>) {
 }
 
 /** Local-only: loopback address, a localhost Host header, and no proxy/tunnel forwarding headers. */
-function localOnly(req: Request, res: Response, next: NextFunction) {
+export function isLocal(req: Request) {
   const ip = req.socket.remoteAddress ?? "";
   const loopback = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
   const host = (req.headers.host ?? "").split(":")[0];
   const forwarded = req.headers["x-forwarded-for"] || req.headers["cf-connecting-ip"] || req.headers["forwarded"];
-  if (loopback && (host === "localhost" || host === "127.0.0.1") && !forwarded) return next();
-  res.status(403).send("Setup is only available on the computer running Cart Court (http://localhost:3000/setup).");
+  return loopback && (host === "localhost" || host === "127.0.0.1") && !forwarded;
+}
+
+export function localOnly(req: Request, res: Response, next: NextFunction) {
+  if (isLocal(req)) return next();
+  res.status(403).send("This page only works on the computer running Cart Court (http://localhost:3000). The family's case file is at /cart.");
 }
 
 const mask = (v?: string) => (v ? `••••${v.slice(-4)}` : "");
 
 export const setupRouter = Router();
-setupRouter.use(["/setup", "/setup.html", "/api/setup"], localOnly);
+// The dashboard, setup and demo controls are for the computer running the court. Phones only get /cart.
+setupRouter.use(["/setup", "/setup.html", "/api/setup", "/dashboard.html", "/api/dashboard", "/sim", "/sim.html", "/api/sim", "/api/demo"], localOnly);
 
 setupRouter.get("/api/setup", (_req, res) => {
   res.json({
@@ -195,6 +200,7 @@ setupRouter.post("/api/setup/household", (req, res) => {
 // Remembers who already got a welcome, so "Text everyone" after adding one person only texts that person.
 const welcomedFile = fileURLToPath(new URL("../data/welcomed.local.json", import.meta.url));
 const welcomed: string[] = existsSync(welcomedFile) ? JSON.parse(readFileSync(welcomedFile, "utf8")) : [];
+export const wasWelcomed = (handle: string) => welcomed.includes(handle);
 
 setupRouter.post("/api/setup/hello-all", async (req, res) => {
   const resend = req.body?.resend === true;

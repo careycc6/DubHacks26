@@ -16,7 +16,7 @@ DubHacks '26 · Title track: **Chef's Choice** · Side tracks: **T-Mobile** (pho
 ```bash
 npm install
 cp .env.example .env   # all keys optional
-npm run dev            # http://localhost:3000/sim  (simulator)  ·  /cart (live case file)
+npm run dev            # http://localhost:3000 (dashboard)  ·  /setup  ·  /cart (case file phones open)
 npm test               # pricing engine tests
 ```
 
@@ -32,7 +32,7 @@ npm test               # pricing engine tests
 ```
 iMessage / SMS (Photon) ─┐
                          ├─► agent.ts ── taste gate (speak only when addressed / sent links or photos; DMs always)
-Web simulator (/sim) ────┘      │
+Dashboard + /sim (backup) ┘     │
                                 ├─► Gemini + tools (tools.ts)   ← talks, reads photos, picks tools
                                 │        └─► engine.ts           ← ALL numbers: fit, storage, trade-in, promos, WAIT dates, plans
                                 └─► store.ts ──SSE──► /cart (live case file) · /checkout (mock store)

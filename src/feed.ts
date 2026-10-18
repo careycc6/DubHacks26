@@ -4,7 +4,7 @@
 import { usd } from "./engine.ts";
 import { sendTo } from "./channels/index.ts";
 import { photonReady, sendToHandle } from "./channels/photon.ts";
-import { state, world } from "./store.ts";
+import { logActivity, state, world } from "./store.ts";
 
 export interface Snapshot {
   cartIds: string[];
@@ -37,7 +37,7 @@ export function snapshot(): Snapshot {
 
 /** One short line per thing that changed since `before`, written for the people who weren't there. */
 export function describeChanges(before: Snapshot, actorId?: string): string[] {
-  const actor = first(nameOf(actorId));
+  const actor = actorId ? first(nameOf(actorId)) : "The family";
   const lines: string[] = [];
 
   const added = state.cart.filter((i) => !before.cartIds.includes(i.id));
@@ -61,7 +61,7 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
       .map((r) => `${first(nameOf(r.memberId))}: ${r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`)
       .join(", ");
     const url = process.env.PUBLIC_URL ?? "http://localhost:3000";
-    lines.push(`⚖️ ${actor} asked the court to rule. ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}. Case file: ${url}/cart`);
+    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}. Case file: ${url}/cart`);
   }
 
   if (state.nest && state.nest !== before.nest) {
@@ -71,25 +71,30 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
   return lines;
 }
 
+/** Send one update to everyone except `exceptId`, on real phones (Photon) or the simulator's 1:1 tabs. */
+export async function deliver(text: string, exceptId: string | undefined, channel: "photon" | "sim") {
+  const others = world.household.members.filter((m) => m.id !== exceptId);
+  if (channel === "photon") {
+    if (!photonReady()) return 0;
+    const sends = others.flatMap((m) =>
+      m.handles.map((h) => sendToHandle(h, text).then(() => 1, (e) => (console.warn(`[feed] couldn't update ${m.name}:`, (e as Error).message), 0))),
+    );
+    return (await Promise.all(sends)).reduce((a: number, b) => a + b, 0);
+  }
+  await Promise.all(others.map((m) => sendTo(`sim:dm:${m.id}`, text, true)));
+  return others.length;
+}
+
 /**
- * Tell everyone except the person who caused it. Goes out on the same channel the change came from:
- * real iPhones over Photon, or the simulator's 1:1 tabs.
+ * Log what changed to the dashboard, and, if it happened in someone's 1:1 chat, tell everyone else
+ * on the same channel it came from.
  */
 export async function broadcastChanges(before: Snapshot, actorId: string | undefined, sourceSpaceId: string) {
   const lines = describeChanges(before, actorId);
   if (!lines.length) return;
-  const text = lines.join("\n");
-  const others = world.household.members.filter((m) => m.id !== actorId);
-
-  if (sourceSpaceId.startsWith("photon:")) {
-    if (!photonReady()) return;
-    await Promise.all(
-      others.flatMap((m) =>
-        m.handles.map((h) => sendToHandle(h, text).catch((e) => console.warn(`[feed] couldn't update ${m.name}:`, (e as Error).message))),
-      ),
-    );
-  } else if (sourceSpaceId.startsWith("sim:dm:")) {
-    await Promise.all(others.map((m) => sendTo(`sim:dm:${m.id}`, text, true)));
-  }
-  console.log(`[feed] told ${others.length} others: ${lines[0].slice(0, 80)}`);
+  logActivity(lines);
+  const channel = sourceSpaceId.startsWith("photon:") ? "photon" : sourceSpaceId.startsWith("sim:dm:") ? "sim" : undefined;
+  if (!channel) return; // a real group chat already saw it
+  const n = await deliver(lines.join("\n"), actorId, channel);
+  console.log(`[feed] told ${n} others: ${lines[0].slice(0, 80)}`);
 }
