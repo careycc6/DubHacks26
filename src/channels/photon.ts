@@ -61,6 +61,7 @@ async function connect(): Promise<SpectrumApp | undefined> {
     await spaces.get(spaceId.slice("photon:".length))?.send(text);
   });
   photonStatus.state = "connected";
+  reconnectDelay = 2_000; // healthy again: next drop retries quickly
   return app;
 }
 
@@ -127,12 +128,38 @@ export async function startPhoton() {
     return;
   }
   const a = await connect();
-  if (!a || serverless) return;
+  if (!a) return scheduleReconnect(myGen); // couldn't connect (network blip?): try again shortly
+  if (serverless) return;
   console.log("[photon] connected, listening for messages");
-  for await (const [space, message] of a.messages) {
-    if (myGen !== generation) break;
-    await onInbound(space, message);
+  try {
+    for await (const [space, message] of a.messages) {
+      if (myGen !== generation) break;
+      await onInbound(space, message);
+    }
+    if (myGen === generation) throw new Error("message stream ended");
+  } catch (err) {
+    if (myGen !== generation) return; // a deliberate restart replaced this loop
+    // Don't keep claiming "connected" while nobody is listening: report it, then reconnect.
+    photonStatus.state = "error";
+    photonStatus.error = `Lost the iMessage connection (${(err as Error).message}). Reconnecting…`;
+    console.error("[photon]", photonStatus.error);
+    scheduleReconnect(myGen);
   }
+}
+
+let reconnectDelay = 2_000;
+let reconnectTimer: NodeJS.Timeout | undefined;
+/** Retry startPhoton with backoff (2s → 4s → … capped at 60s); a successful connect resets it. */
+function scheduleReconnect(fromGen: number) {
+  if (serverless || fromGen !== generation || reconnectTimer) return;
+  if (!process.env.PHOTON_PROJECT_ID || !process.env.PHOTON_PROJECT_SECRET) return;
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(reconnectDelay * 2, 60_000);
+  console.log(`[photon] reconnecting in ${Math.round(delay / 1000)}s`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    if (fromGen === generation) startPhoton().catch((err) => console.error("[photon] reconnect failed:", err));
+  }, delay);
 }
 
 /**

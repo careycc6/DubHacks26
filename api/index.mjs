@@ -1034,6 +1034,7 @@ async function connect2() {
     await spaces.get(spaceId.slice("photon:".length))?.send(text);
   });
   photonStatus.state = "connected";
+  reconnectDelay = 2e3;
   return app;
 }
 async function ensureApp() {
@@ -1090,12 +1091,35 @@ async function startPhoton() {
     return;
   }
   const a = await connect2();
-  if (!a || serverless) return;
+  if (!a) return scheduleReconnect(myGen);
+  if (serverless) return;
   console.log("[photon] connected, listening for messages");
-  for await (const [space, message] of a.messages) {
-    if (myGen !== generation) break;
-    await onInbound(space, message);
+  try {
+    for await (const [space, message] of a.messages) {
+      if (myGen !== generation) break;
+      await onInbound(space, message);
+    }
+    if (myGen === generation) throw new Error("message stream ended");
+  } catch (err) {
+    if (myGen !== generation) return;
+    photonStatus.state = "error";
+    photonStatus.error = `Lost the iMessage connection (${err.message}). Reconnecting\u2026`;
+    console.error("[photon]", photonStatus.error);
+    scheduleReconnect(myGen);
   }
+}
+var reconnectDelay = 2e3;
+var reconnectTimer;
+function scheduleReconnect(fromGen) {
+  if (serverless || fromGen !== generation || reconnectTimer) return;
+  if (!process.env.PHOTON_PROJECT_ID || !process.env.PHOTON_PROJECT_SECRET) return;
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(reconnectDelay * 2, 6e4);
+  console.log(`[photon] reconnecting in ${Math.round(delay / 1e3)}s`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = void 0;
+    if (fromGen === generation) startPhoton().catch((err) => console.error("[photon] reconnect failed:", err));
+  }, delay);
 }
 async function handleWebhook(body, headers) {
   const a = await ensureApp();
