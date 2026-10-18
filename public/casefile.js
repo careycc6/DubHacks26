@@ -74,7 +74,16 @@ function section(title, hint, rulings, names) {
   return `<h2 class="section-title">${title}<span>${hint}</span></h2><div class="rulings">${rulings.map((r) => rulingCard(r, names)).join("")}</div>`;
 }
 
+let lastRendered;
+/** Animate the verdict again (stamps + totals) without re-running the trial or texting anyone. */
+function replayStamps() {
+  if (!lastRendered) return;
+  seenStamps.clear(); shown.clear();
+  render(lastRendered);
+}
+
 function render(s) {
+  lastRendered = s;
   const names = Object.fromEntries(s.members.map((m) => [m.id, m.name]));
   $("caseno").textContent = `Case No. 26-${(s.household.split(" ")[1] ?? "FAM").slice(0, 3).toUpperCase()} · ${s.household}`;
   $("day").textContent = `Day ${s.day}`;

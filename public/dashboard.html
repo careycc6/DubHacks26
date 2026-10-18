@@ -104,6 +104,7 @@
         <dt>1 · 2 · 3</dt><dd>+41 days · +120 days · +2 years</dd>
         <dt>Shift+R</dt><dd>Reset cart (asks first)</dd>
         <dt>F</dt><dd>Case file full screen</dd>
+        <dt>P</dt><dd>Replay the verdict stamps (no texts)</dd>
         <dt>C</dt><dd>Show or hide the cue strip</dd>
         <dt>?</dt><dd>This list</dd>
       </dl>
@@ -178,6 +179,9 @@
           <button data-days="120" title="Shortcut: 2">+120 days</button>
           <button data-days="730" title="Shortcut: 3">+2 years</button>
           <button data-reset title="Shortcut: Shift+R">Reset cart</button>
+        </div>
+        <div class="row">
+          <button data-replay title="Shortcut: P">🔁 Replay stamps</button>
         </div>
         <div class="msg">The scene files the three demo phones and Kairui's private note, so a round starts at the trial. Nothing is texted.</div>
         <h3 class="tools-h">Checkpoints</h3>
@@ -262,6 +266,7 @@ $("demoTools").addEventListener("click", (e) => {
   if (d.days) demo.advance(Number(d.days));
   else if (d.reset !== undefined) demo.reset();
   else if (d.scene !== undefined) demo.scene();
+  else if (d.replay !== undefined) replayStamps();
   else if (d.save !== undefined) demo.save();
   else if (d.restore) demo.restore(d.restore);
   else if (d.forget) demo.forget(d.forget);
@@ -312,6 +317,7 @@ document.addEventListener("keydown", (e) => {
   if (k === "2") return demo.advance(120);
   if (k === "3") return demo.advance(730);
   if (k === "c") return toggleCue();
+  if (k === "p") return replayStamps();
   if (k === "f") {
     const file = document.querySelector("main.file");
     return document.fullscreenElement ? document.exitFullscreen() : file.requestFullscreen?.();
