@@ -49,28 +49,41 @@ const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhi
 // What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone.
 type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }> };
 
-function restore(): State {
-  const saved = get<Saved | undefined>("state", undefined);
+export type Snapshot = Saved;
+
+function fromSaved(saved: Saved | undefined): State {
   if (!saved) return fresh();
-  const { evidence = {}, ...rest } = saved;
+  const { evidence = {}, ...rest } = structuredClone(saved);
   for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
   return { ...fresh(), ...rest };
 }
-export let state: State = restore();
+export let state: State = fromSaved(get<Saved | undefined>("state", undefined));
 
-let lastSaved = "";
-function persist() {
+/** Everything a restart (or a demo checkpoint) needs to put the court back exactly where it was. */
+export function snapshot(): Snapshot {
   const { pendingImage: _p, ...rest } = state;
-  const saved: Saved = {
+  const saved: Saved = structuredClone({
     ...rest,
     chat: rest.chat.map(({ image: _i, ...line }) => line), // simulator photos are big and only matter live
     evidence: Object.fromEntries(world.household.members.map((m) => [m.id, { batteryHealth: m.device.batteryHealth, screenCracked: m.device.screenCracked }])),
-  };
-  let json = JSON.stringify(saved);
-  if (json.length > 12_000_000) {
+  });
+  if (JSON.stringify(saved).length > 12_000_000) {
     saved.exhibits = saved.exhibits.map(({ image: _i, ...e }) => e); // stay well under MongoDB's 16 MB document limit
-    json = JSON.stringify(saved);
   }
+  return saved;
+}
+
+/** Put the court back at a snapshot. Household setup (names, numbers) is untouched. */
+export function restoreSnapshot(snap: Snapshot) {
+  Object.assign(world, loadWorld()); // start from the pristine phones, then re-apply that moment's evidence
+  state = fromSaved(snap);
+  changed();
+}
+
+let lastSaved = "";
+function persist() {
+  const saved = snapshot();
+  const json = JSON.stringify(saved);
   if (json === lastSaved) return;
   lastSaved = json;
   put("state", saved);

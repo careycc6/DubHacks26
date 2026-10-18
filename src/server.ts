@@ -8,10 +8,10 @@ import { photonSpaceIds, photonStatus, startPhoton } from "./channels/photon.ts"
 import { isAdmin, setupRouter } from "./setup.ts";
 import { backend } from "./db.ts";
 import { dashboardRouter } from "./dashboard.ts";
+import { demoRouter, seedCart } from "./demo.ts";
 import { deliver } from "./feed.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
 import { addChat, bus, changed, logActivity, publicState, reset, state, trialOpts, world } from "./store.ts";
-import { callTool } from "./tools.ts";
 
 const app = express();
 app.use(express.json({ limit: "12mb" }));
@@ -36,6 +36,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, db: backend, photon: pho
 // Home: the dashboard for whoever runs the court; anyone else (a phone via the tunnel) gets the family's case file.
 app.get("/", (req, res) => (isAdmin(req) ? res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url))) : res.redirect("/cart")));
 app.use(dashboardRouter);
+app.use(demoRouter);
 app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { extensions: ["html"] }));
 
 
@@ -100,13 +101,6 @@ app.post("/api/demo/advance", async (req, res) => {
   }
   res.json({ day: state.day, announced: due.length });
 });
-
-// The "family argued all evening" cart for the demo.
-function seedCart() {
-  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17-pro-max", storageGB: 512, addedBy: "maya" });
-  callTool("add_phone_to_cart", { member: "marco", phone: "iphone-17-pro", storageGB: 256, addedBy: "marco" });
-  callTool("add_phone_to_cart", { member: "elena", phone: "pixel-10-pro", storageGB: 256, addedBy: "elena" });
-}
 
 app.post("/api/demo/seed", (_req, res) => {
   seedCart();

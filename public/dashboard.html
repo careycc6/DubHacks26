@@ -40,6 +40,12 @@
     details.card summary { cursor: pointer; font-family: var(--serif); font-size: 15px; }
     details.card .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     details.card button { border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+    .tools-h { font-family: var(--serif); font-size: 14px; margin: 14px 0 0; }
+    .checkpoints { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+    .checkpoints li { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; font-size: 13px; }
+    .checkpoints .when { font-family: var(--mono); font-size: 11px; color: var(--muted); display: block; }
+    .checkpoints .none { color: var(--muted); font-style: italic; display: block; }
+    details.card button.x { border-color: var(--rule); color: var(--muted); }
     .file { max-width: none; padding: 0; }
     .file header { margin-top: 18px; }
   </style>
@@ -107,15 +113,21 @@
         <ul class="feed" id="feed"><li class="empty-feed">Nothing yet. Text the court from a phone to get started.</li></ul>
       </section>
 
-      <details class="card">
+      <details class="card" id="demoTools" open>
         <summary>Demo tools</summary>
         <div class="row">
-          <button data-days="41">+41 days</button>
-          <button data-days="120">+120 days</button>
-          <button data-days="730">+2 years</button>
-          <button data-reset>Reset cart</button>
+          <button data-scene title="Shortcut: S">🎬 Load pre-trial scene</button>
         </div>
-        <div class="msg">Time skips show the court texting people when held phones are ready.</div>
+        <div class="row">
+          <button data-days="41" title="Shortcut: 1">+41 days</button>
+          <button data-days="120" title="Shortcut: 2">+120 days</button>
+          <button data-days="730" title="Shortcut: 3">+2 years</button>
+          <button data-reset title="Shortcut: Shift+R">Reset cart</button>
+        </div>
+        <div class="msg">The scene files the three demo phones and Kairui's private note, so a round starts at the trial. Nothing is texted.</div>
+        <h3 class="tools-h">Checkpoints</h3>
+        <div class="row"><button data-save>💾 Save checkpoint</button></div>
+        <ul class="checkpoints" id="checkpoints"></ul>
       </details>
     </aside>
   </div>
@@ -164,10 +176,38 @@ $("rule").onclick = async () => {
   $("ruleMsg").className = `msg ${r.ok ? "ok" : "err"}`;
   $("ruleMsg").textContent = r.ok ? (r.told ? `✓ Ruled. Texted ${r.told} ${r.told === 1 ? "person" : "people"} the verdict.` : "✓ Ruled. (Nobody's phone is connected yet, so no texts went out.)") : r.error;
 };
-document.querySelectorAll("details.card button").forEach((b) => b.onclick = async () => {
-  if (b.dataset.reset !== undefined) { if (confirm("Clear the cart, rulings and activity?")) await post("/api/demo/reset"); return; }
-  await post("/api/demo/advance", { days: Number(b.dataset.days) });
+// ---- Demo tools: time skips, reset, the pre-trial scene, checkpoints
+const demo = {
+  advance: (days) => post("/api/demo/advance", { days }),
+  reset: async () => { if (confirm("Clear the cart, rulings and activity? (People and numbers stay saved.)")) await post("/api/demo/reset"); },
+  scene: async () => { await post("/api/demo/scene/prefiled"); loadCheckpoints(); },
+  save: async () => {
+    const name = prompt("Name this checkpoint", "");
+    if (name === null) return;
+    await post("/api/demo/checkpoints", { name });
+    loadCheckpoints();
+  },
+  restore: (id) => post(`/api/demo/checkpoints/${id}/restore`),
+  forget: async (id) => { await fetch(`/api/demo/checkpoints/${id}`, { method: "DELETE" }); loadCheckpoints(); },
+};
+async function loadCheckpoints() {
+  const list = await fetch("/api/demo/checkpoints").then((r) => r.json());
+  $("checkpoints").innerHTML = list.length
+    ? list.map((c) => `<li><span>${esc(c.name)}<span class="when">day ${c.day} · ${c.cart} in cart${c.ruled ? " · ruled" : ""} · ${ago(c.at)}</span></span>
+        <button data-restore="${esc(c.id)}">Restore</button><button class="x" data-forget="${esc(c.id)}" title="Delete">✕</button></li>`).join("")
+    : `<li><span class="none">None yet. Save one right before the trial to replay it for the next judge.</span></li>`;
+}
+$("demoTools").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.days) demo.advance(Number(d.days));
+  else if (d.reset !== undefined) demo.reset();
+  else if (d.scene !== undefined) demo.scene();
+  else if (d.save !== undefined) demo.save();
+  else if (d.restore) demo.restore(d.restore);
+  else if (d.forget) demo.forget(d.forget);
 });
+loadCheckpoints();
 loadDashboard();
 setInterval(loadDashboard, 8000);
 </script>
