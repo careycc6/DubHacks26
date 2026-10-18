@@ -37,7 +37,7 @@ export function remember(spaceId: string, line: string) {
 /** Taste: in a group, only speak when addressed or handed shopping material. DMs always get a reply. */
 export function shouldRespond(msg: Incoming) {
   // After a 👎 the court asked "tell me why": the answer is for the court even without "court,".
-  return !msg.isGroup || !!msg.addressed || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image || continuesAppeal(msg);
+  return !msg.isGroup || !!msg.addressed || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image || continuesAppeal(msg) || answersUsage(msg);
 }
 
 export async function handle(msg: Incoming): Promise<string | null> {
@@ -206,6 +206,8 @@ async function reply_(msg: Incoming): Promise<string> {
   if (MONTHLY.test(msg.text) && !URLS.test(msg.text) && !msg.image && !accessoryType(msg.text)) return formatMonthly();
   if (OLD_PHONE.test(msg.text) && !msg.image) return formatOldPhone(msg.memberId);
   URLS.lastIndex = 0;
+  const usage = usageStep(msg);
+  if (usage) return usage;
   const cartEdit = CLEAR_CART.test(msg.text) || (REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text)) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || (BOUGHT.test(msg.text) && priceIn(msg.text) !== undefined);
   if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
@@ -223,6 +225,78 @@ async function reply_(msg: Incoming): Promise<string> {
 }
 
 type ToolRun = { name: string; result: any };
+
+// Before picking a phone, the court asks how the person actually uses one (camera and games, 1-5)
+// instead of assuming. Asked once per person; the answer is remembered and used for every pick after.
+const PHONE_ASK = /\b(what|which) (new )?phone\b|\b(recommend|suggest|pick)\b.*\bphone\b|\bneed a (new )?phone\b|\bphone (should|for) (i|me|we|she|he|they)\b/i;
+const SKIP_USAGE = /^\s*(skip|just pick|whatever|idk|i don'?t know|no idea|doesn'?t matter|any)\b/i;
+const USAGE_MS = 30 * 60_000;
+
+/** "camera 4, games 1" / "4 and 2" / "lots of photos, no games" -> scores 1-5 (undefined if it says neither). */
+export function parseUsage(text: string): { camera?: number; gaming?: number } | undefined {
+  const t = text.toLowerCase();
+  const word = (s: string) =>
+    /\b(never|none|no|don'?t|zero|not at all)\b/.test(s) ? 1 : /\b(rarely|barely|little|a bit|sometimes)\b/.test(s) ? 2
+    : /\b(some|ok|average|medium|normal)\b/.test(s) ? 3 : /\b(lots?|a lot|often|always|all the time|tons|constantly|every ?day|love)\b/.test(s) ? 5 : undefined;
+  const score = (re: RegExp) => {
+    const m = t.match(re);
+    if (!m) return undefined;
+    const n = m[0].match(/\b([1-5])\b/);
+    return n ? Number(n[1]) : word(m[0]);
+  };
+  const out = {
+    camera: score(/[^,;.]*\b(camera|photos?|pictures?|pics|selfies?|video)\b[^,;.]*/),
+    gaming: score(/[^,;.]*\b(gam(e|es|ing)|play)\b[^,;.]*/),
+  };
+  if (out.camera === undefined && out.gaming === undefined) {
+    const nums = [...t.matchAll(/\b([1-5])\b/g)].map((x) => Number(x[1]));
+    if (nums.length === 2) return { camera: nums[0], gaming: nums[1] };
+    return undefined;
+  }
+  return out;
+}
+
+const usagePending = (msg: Incoming) => {
+  const p = state.pendingUsage?.[msg.memberId ?? ""];
+  return p && p.until > Date.now() ? p : undefined;
+};
+const answersUsage = (msg: Incoming) => !!usagePending(msg) && (!!parseUsage(msg.text) || SKIP_USAGE.test(msg.text));
+
+function phonePicksFor(msg: Incoming, target: string, text: string, lead = ""): string {
+  const r = callTool("recommend_phones", { member: target, model: modelAsked(text) }) as PhonePicks;
+  const you = target === msg.memberId;
+  return lead + phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId));
+}
+
+/** Asks "how do you use your phone?" before the first phone picks, and turns the answer into picks. */
+function usageStep(msg: Incoming): string | null {
+  if (!msg.memberId || msg.image) return null;
+  const text = msg.text;
+  const pending = usagePending(msg);
+  if (pending) {
+    const said = parseUsage(text);
+    if (said || SKIP_USAGE.test(text)) {
+      delete state.pendingUsage![msg.memberId];
+      const m = world.household.members.find((x) => x.id === pending.forWhom);
+      if (!m) return null;
+      const usage = { camera: said?.camera ?? m.usage.camera, gaming: said?.gaming ?? m.usage.gaming };
+      (state.usage ??= {})[m.id] = usage;
+      Object.assign(m.usage, usage);
+      const whose = m.id === msg.memberId ? "you" : m.name.split(/\s+/)[0];
+      const lead = said ? `📝 Noted: camera ${usage.camera}/5, games ${usage.gaming}/5 for ${whose}.\n\n` : "";
+      return phonePicksFor(msg, m.id, "", lead);
+    }
+  }
+  // Only a plain "what phone should I get?": a model line, a wish (battery, budget…) or another product goes on as before.
+  if (!PHONE_ASK.test(text) || modelAsked(text) || hasPrefs(parsePrefs(text.replace(URLS, " "))) || (findCategory(world, text) && !/\bphones?\b/i.test(text))) return null;
+  if (/\b(grandma|grandmother|abuela)\b/i.test(text) && !memberByTitle(world, text)) return null; // rulesReply says she isn't in the family
+  const m = mentionedMember(text) ?? world.household.members.find((x) => x.id === msg.memberId);
+  if (!m || state.usage?.[m.id]) return null;
+  (state.pendingUsage ??= {})[msg.memberId] = { forWhom: m.id, until: Date.now() + USAGE_MS };
+  const you = m.id === msg.memberId;
+  const first = m.name.split(/\s+/)[0];
+  return `⚖️ Before the court picks${you ? "" : ` for ${first}`}: on a scale of 1 to 5, how much ${you ? "do you" : `does ${first}`} use the camera, and how much ${you ? "do you" : "do they"} play games?\nReply like "camera 4, games 1" (or "skip" and the court will go by ${you ? "your" : `${first}'s`} current phone).`;
+}
 
 /** Show as many reasons as wishes they stated (max 2), e.g. "33h battery…; 6.9-inch screen…". */
 const reasons = (why: string[], remembered: string) =>

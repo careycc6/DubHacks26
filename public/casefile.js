@@ -146,7 +146,6 @@ function rulingCard(r, names) {
     ${appealHtml(r, names)}
     <h3>${esc(item)}${changed ? ` <span class="arrow">→</span> <span class="to-inline">${esc(r.proposed.label)}</span>` : ""}</h3>
     <ul>${r.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(r.witnessOf ?? `${names[r.memberId]}'s current phone`)}</div>“${esc(r.witness)}”</blockquote>` : ""}
     ${r.memberId && r.track ? sparkline(r.track, r.stamp === "WAIT" ? r.holdUntilDay : undefined) : ""}
     ${shieldHtml(r.protection)}
     ${handMeDownHtml(r, names)}

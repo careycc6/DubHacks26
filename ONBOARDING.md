@@ -116,7 +116,7 @@ pre-approves emails. Nothing is stored except who may sign in; Google/Apple toke
 | Say or do | What happens |
 |---|---|
 | Paste a store link | 📎 Filed into the family cart |
-| "court, what phone should Grandma get?" | Top 3 picks for how she uses a phone |
+| "court, what phone should Grandma get?" | Asks how she uses the camera and games (1 to 5) the first time, then the top 3 picks |
 | Send a photo of a cracked screen or a battery-health screenshot | 🗂️ Exhibit A, and the ruling updates |
 | "court, rule" | The cart goes on trial: KEEP / SWAP / WAIT / CUT |
 | "court, Maya's leaving for college" | STAY on the family plan or LEAVE |

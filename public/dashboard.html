@@ -405,7 +405,7 @@ function cueFor(s) {
   if (!s.cart.length) return `${teen}, ${dad} and ${mom} paste their store links (or press <kbd>S</kbd> to load the scene)`;
   if (!s.trial) return `${mom} texts the court privately: <i>money is tight this month</i>. Then press <kbd>R</kbd> to rule`;
   const t = s.trial;
-  if (s.day < 41) return `Read it out: spend today <b>${usd(t.before)} → ${usd(t.now)}</b>, saved <b>${usd(t.savings)}</b>. Point at ${dad}'s witness statement. Then <kbd>1</kbd> (+41 days)`;
+  if (s.day < 41) return `Read it out: spend today <b>${usd(t.before)} → ${usd(t.now)}</b>, saved <b>${usd(t.savings)}</b>. Then <kbd>1</kbd> (+41 days)`;
   if (s.day < 730) return `"Waiting is part of buying." Optional: <kbd>2</kbd> (+120 days). Then <kbd>3</kbd> (+2 years)`;
   if (!s.nest) return `${mom} texts: <i>court, ${teen} is leaving for college in August</i>`;
   return `${teen} texts: <i>court, what phone should grandma get?</i> Then close, and click <b>Proceed to checkout</b>`;

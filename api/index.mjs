@@ -1180,6 +1180,7 @@ function fromSaved(saved) {
   const { evidence = {}, owned, ...rest } = structuredClone(saved);
   for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
   if (owned) world.household.owned = owned;
+  for (const m of world.household.members) Object.assign(m.usage, rest.usage?.[m.id] ?? {});
   return { ...fresh(), ...rest };
 }
 var state = fromSaved(get("state", void 0));
@@ -3198,7 +3199,7 @@ function remember(spaceId, line) {
   transcripts.set(spaceId, t);
 }
 function shouldRespond(msg) {
-  return !msg.isGroup || !!msg.addressed || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image || continuesAppeal(msg);
+  return !msg.isGroup || !!msg.addressed || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image || continuesAppeal(msg) || answersUsage(msg);
 }
 async function handle(msg) {
   return actor.run({ memberId: msg.memberId }, () => handleAs(msg));
@@ -3334,6 +3335,8 @@ async function reply_(msg) {
   if (MONTHLY.test(msg.text) && !URLS.test(msg.text) && !msg.image && !accessoryType(msg.text)) return formatMonthly();
   if (OLD_PHONE.test(msg.text) && !msg.image) return formatOldPhone(msg.memberId);
   URLS.lastIndex = 0;
+  const usage = usageStep(msg);
+  if (usage) return usage;
   const cartEdit = CLEAR_CART.test(msg.text) || REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || BOUGHT.test(msg.text) && priceIn(msg.text) !== void 0;
   if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== void 0 || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
@@ -3346,6 +3349,69 @@ async function reply_(msg) {
     Object.assign(llmStatus, { at: Date.now(), ok: false, model: "rules", billing: /"code":\s*402|prepayment credits|billing/i.test(text), error: text.slice(0, 160) });
     return summarizeRuns(applied) ?? rulesReply(msg);
   }
+}
+var PHONE_ASK = /\b(what|which) (new )?phone\b|\b(recommend|suggest|pick)\b.*\bphone\b|\bneed a (new )?phone\b|\bphone (should|for) (i|me|we|she|he|they)\b/i;
+var SKIP_USAGE = /^\s*(skip|just pick|whatever|idk|i don'?t know|no idea|doesn'?t matter|any)\b/i;
+var USAGE_MS = 30 * 6e4;
+function parseUsage(text) {
+  const t = text.toLowerCase();
+  const word = (s) => /\b(never|none|no|don'?t|zero|not at all)\b/.test(s) ? 1 : /\b(rarely|barely|little|a bit|sometimes)\b/.test(s) ? 2 : /\b(some|ok|average|medium|normal)\b/.test(s) ? 3 : /\b(lots?|a lot|often|always|all the time|tons|constantly|every ?day|love)\b/.test(s) ? 5 : void 0;
+  const score = (re) => {
+    const m = t.match(re);
+    if (!m) return void 0;
+    const n = m[0].match(/\b([1-5])\b/);
+    return n ? Number(n[1]) : word(m[0]);
+  };
+  const out = {
+    camera: score(/[^,;.]*\b(camera|photos?|pictures?|pics|selfies?|video)\b[^,;.]*/),
+    gaming: score(/[^,;.]*\b(gam(e|es|ing)|play)\b[^,;.]*/)
+  };
+  if (out.camera === void 0 && out.gaming === void 0) {
+    const nums = [...t.matchAll(/\b([1-5])\b/g)].map((x) => Number(x[1]));
+    if (nums.length === 2) return { camera: nums[0], gaming: nums[1] };
+    return void 0;
+  }
+  return out;
+}
+var usagePending = (msg) => {
+  const p = state.pendingUsage?.[msg.memberId ?? ""];
+  return p && p.until > Date.now() ? p : void 0;
+};
+var answersUsage = (msg) => !!usagePending(msg) && (!!parseUsage(msg.text) || SKIP_USAGE.test(msg.text));
+function phonePicksFor(msg, target, text, lead = "") {
+  const r = callTool("recommend_phones", { member: target, model: modelAsked(text) });
+  const you = target === msg.memberId;
+  return lead + phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId));
+}
+function usageStep(msg) {
+  if (!msg.memberId || msg.image) return null;
+  const text = msg.text;
+  const pending2 = usagePending(msg);
+  if (pending2) {
+    const said = parseUsage(text);
+    if (said || SKIP_USAGE.test(text)) {
+      delete state.pendingUsage[msg.memberId];
+      const m2 = world.household.members.find((x) => x.id === pending2.forWhom);
+      if (!m2) return null;
+      const usage = { camera: said?.camera ?? m2.usage.camera, gaming: said?.gaming ?? m2.usage.gaming };
+      (state.usage ??= {})[m2.id] = usage;
+      Object.assign(m2.usage, usage);
+      const whose = m2.id === msg.memberId ? "you" : m2.name.split(/\s+/)[0];
+      const lead = said ? `\u{1F4DD} Noted: camera ${usage.camera}/5, games ${usage.gaming}/5 for ${whose}.
+
+` : "";
+      return phonePicksFor(msg, m2.id, "", lead);
+    }
+  }
+  if (!PHONE_ASK.test(text) || modelAsked(text) || hasPrefs(parsePrefs(text.replace(URLS, " "))) || findCategory(world, text) && !/\bphones?\b/i.test(text)) return null;
+  if (/\b(grandma|grandmother|abuela)\b/i.test(text) && !memberByTitle(world, text)) return null;
+  const m = mentionedMember(text) ?? world.household.members.find((x) => x.id === msg.memberId);
+  if (!m || state.usage?.[m.id]) return null;
+  (state.pendingUsage ??= {})[msg.memberId] = { forWhom: m.id, until: Date.now() + USAGE_MS };
+  const you = m.id === msg.memberId;
+  const first4 = m.name.split(/\s+/)[0];
+  return `\u2696\uFE0F Before the court picks${you ? "" : ` for ${first4}`}: on a scale of 1 to 5, how much ${you ? "do you" : `does ${first4}`} use the camera, and how much ${you ? "do you" : "do they"} play games?
+Reply like "camera 4, games 1" (or "skip" and the court will go by ${you ? "your" : `${first4}'s`} current phone).`;
 }
 var reasons = (why, remembered) => why.slice(0, Math.max(1, Math.min(2, remembered ? remembered.split(/, | and /).length : 1))).join("; ");
 function pairsFor(memberId, phoneId) {

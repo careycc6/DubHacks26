@@ -44,7 +44,8 @@ test("a grandparent gets the short, plain version", () => {
 test("every example in the welcome does what it says", async () => {
   store.reset();
   assert.match((await say("maya", "battery health 79%"))!, /Battery health 79%/);
-  assert.match((await say("maya", "what phone should I get?"))!, /picks for/i);
+  assert.match((await say("maya", "what phone should I get?"))!, /how much do you use the camera/);
+  assert.match((await say("maya", "camera 4, games 1"))!, /picks for/i);
   assert.match((await say("rosa", "I want a phone that's easy to read"))!, /picks for/i);
   assert.match((await say("marco", "our phone budget is $2,000"))!, /budget set: \$2,000/);
   callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17-pro-max", storageGB: 512, addedBy: "maya" });

@@ -83,6 +83,8 @@ export interface State {
   appeals?: AppealRecord[]; // appeals, overrules and reinstatements, oldest first (public: they're about rulings)
   pendingAppeal?: Record<string, { until: number; about: string }>; // memberId -> the court asked "tell me why"
   requests?: CartRequest[]; // kids' adds waiting on a parent
+  usage?: Record<string, { camera: number; gaming: number }>; // memberId -> how they said they use a phone (1-5)
+  pendingUsage?: Record<string, { forWhom: string; until: number }>; // sender -> the court asked how someone uses a phone
 }
 
 export const world: World = loadWorld();
@@ -101,6 +103,7 @@ function fromSaved(saved: Saved | undefined): State {
   const { evidence = {}, owned, ...rest } = structuredClone(saved);
   for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
   if (owned) world.household.owned = owned;
+  for (const m of world.household.members) Object.assign(m.usage, rest.usage?.[m.id] ?? {}); // what they told the court
   return { ...fresh(), ...rest };
 }
 export let state: State = fromSaved(get<Saved | undefined>("state", undefined));

@@ -80,9 +80,8 @@ The stamps land on the projector. **Read the projector:**
 | Carey | **WAIT** until day 41 | Battery 89%, and a $312 trade-in promo starts in 41 days. **$1,100 → $408** |
 | Account | **CUT** ×2 | Protection on a dead tablet, plus Hotspot nobody used. **$336/yr** |
 
-> "Spend today: **$3,935 → $709**. The court saved this family **$2,248**, and Carey's old phone gets to testify."
+> "Spend today: **$3,935 → $709**. The court saved this family **$2,248**."
 
-Point at Carey's **witness statement** on the projector: *"I am Carey Chiu's iPhone 15 Pro… I'd like to be heard before I'm replaced."*
 
 ### 1:50, waiting is part of buying (Driver: **Demo tools → +41 days**)
 Every phone gets: *"⏳➡️✅ Carey, it's time. Your iPhone 17 Pro 256GB is ready at $408 instead of $1,100. Waiting saved $692."*
@@ -109,7 +108,7 @@ Click **Proceed to checkout →** on the dashboard to end on the mock store.
 | Judge asks | Do this |
 |---|---|
 | "What if her phone is actually broken?" | **Jaret** texts `court, my screen is cracked` (or sends a photo if Gemini is on). It's filed as Exhibit A, and the ruling becomes a **$129 screen repair today**, still WAIT on a new phone. |
-| "Can I try?" | Add the judge's number on `/setup` (step 3, the grey row) and press **Text everyone**. Only they get texted. (Their number must be under Users in Photon first, unless you ran the Photon login.) They reply with a link or "court, what phone should I get?" |
+| "Can I try?" | Add the judge's number on `/setup` (step 3, the grey row) and press **Text everyone**. Only they get texted. (Their number must be under Users in Photon first, unless you ran the Photon login.) They reply with a link or "court, what phone should I get?" (the court first asks how they use the camera and games, 1 to 5) |
 | "What does a family member see?" | Open the case-file link from any phone. It's the same ruling, read-only. |
 
 ---
