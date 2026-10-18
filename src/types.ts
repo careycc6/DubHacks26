@@ -26,6 +26,7 @@ export interface Accessory {
   brands: string[]; // phone brands it fits, or ["any"]
   price: number;
   note?: string;
+  url?: string; // a store page; without one the court links a shopping search for the name
 }
 
 export interface Member {
@@ -114,7 +115,8 @@ export interface Trial {
   now: number;
   held: number;
   savings: number;
-  budget?: number; // the family's budget for today, if set
+  planned?: number; // everything this cart will cost: bought now + held for later
+  budget?: number; // what's left of the family's phone budget (whole plan), if set
   overBudget?: boolean;
 }
 

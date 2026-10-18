@@ -1,6 +1,6 @@
 # ⚖️ Cart Court
 
-**An honest phone-shopping assistant that lives in your household's group chat.**
+**An honest phone-shopping assistant your household texts over iMessage.** Works one-on-one (no group chat needed): every chat shares one family cart, and parents hold the keys.
 Paste links, send screenshots, argue about phones. Cart Court builds one shared cart, puts it on trial before checkout
 (**KEEP / SWAP / WAIT / CUT / STAY**), and texts you back when a held item is actually worth buying.
 

@@ -151,3 +151,7 @@ a { color: inherit; }
 .budget-line.over { color: var(--cut); }
 .stamp.SWAP { color: var(--keep); }
 .mini.SWAP { color: var(--keep); }
+
+/* Accessories: buy it yourself */
+.shop-link { display: inline-block; margin: 6px 0 2px; font-size: 13px; font-weight: 600; color: var(--keep, #24543a); text-decoration: none; }
+.shop-link:hover { text-decoration: underline; }

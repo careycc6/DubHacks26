@@ -1,7 +1,7 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
   describePrefs, findPhone, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
-  priceTrack, protectionAdvice, recommendAccessories, findAccessory, phoneBrandFor,
+  priceTrack, protectionAdvice, recommendAccessories, findAccessory, phoneBrandFor, accessoryType,
   type Prefs,
 } from "./engine.ts";
 import { changed, newId, refreshTrial, remainingBudget, spent, state, trialOpts, world, type Purchase } from "./store.ts";
@@ -46,10 +46,12 @@ function rulingLine(r: Ruling, day: number, hasProtection = false) {
 }
 
 export function formatVerdict(t: Trial) {
+  // Family phone budget = the whole plan (now and later), minus what's already been bought.
+  const planned = t.planned ?? t.now + t.held;
   const budget =
     t.budget === undefined ? []
-    : t.overBudget ? [`💰 Budget ${usd(t.budget)}: still ${usd(t.now - t.budget)} over (everything left is a phone that can't wait)`]
-    : [`💰 Budget ${usd(t.budget)}: ${usd(t.budget - t.now)} left`];
+    : t.overBudget ? [`💰 Phone budget: this plan (${usd(planned)} now + later) is ${usd(planned - t.budget)} over what's left (${usd(t.budget)})`]
+    : [`💰 Phone budget: this plan uses ${usd(planned)} (now + later), leaving ${usd(t.budget - planned)}`];
   return [
     "⚖️ THE COURT RULES",
     ...t.rulings.map((r) => rulingLine(r, t.day, t.rulings.some((x) => x.memberId === r.memberId && x.label.includes("Protection")))),
@@ -218,7 +220,7 @@ export const tools = {
     },
   },
   set_budget: {
-    description: "Set the FAMILY's budget for this round of shopping (what can be spent today), e.g. 'our budget is $1500'. A personal limit ('under $600 for me') goes to recommend_phones instead.",
+    description: "Set the FAMILY's phone budget: the money set aside for phones over the whole plan (now and later, can span years), e.g. 'our budget is $3000'. A personal limit ('under $600 for me') goes to recommend_phones instead.",
     params: { amount: { type: "number", description: "USD; 0 clears it" } },
     required: ["amount"],
     run: (a: { amount: number }) => {
@@ -226,7 +228,7 @@ export const tools = {
       refreshTrial();
       changed();
       const t = state.trial;
-      return { budget: state.budget ?? "none", spendToday: t?.now, overBudget: t?.overBudget ?? false };
+      return { budget: state.budget ?? "none", spent: spent(), planned: t?.planned, left: t?.planned !== undefined && t.budget !== undefined ? t.budget - t.planned : remainingBudget(), overBudget: t?.overBudget ?? false };
     },
   },
   add_protection: {
@@ -296,17 +298,19 @@ export const tools = {
   },
   record_purchase: {
     description:
-      "Someone actually bought a phone (they said so, or sent a receipt / order confirmation). Records what they paid, takes it out of the cart, and tells the family how it compares. Only use a price that the person or the receipt actually states.",
+      "Someone actually bought a phone or an accessory (they said so, or sent a receipt / order confirmation). Records what they paid, takes it out of the cart, and tells the family how it compares. Only use a price that the person or the receipt actually states.",
     params: {
       member: { type: "string", description: "who it was for" },
       paid: { type: "number", description: "total paid in USD" },
       phone: { type: "string", description: "what they bought, if stated (defaults to their cart phone)" },
+      accessory: { type: "string", description: "set instead of phone when they bought an accessory: its name or type (case, charger…)" },
       fromReceipt: { type: "boolean", description: "true if read from a receipt / order confirmation" },
     },
     required: ["member", "paid"],
-    run: (a: { member: string; paid: number; phone?: string; fromReceipt?: boolean }) => {
+    run: (a: { member: string; paid: number; phone?: string; accessory?: string; fromReceipt?: boolean; itemId?: string }) => {
       const m = resolveMember(a.member);
       if (!(a.paid > 0) || a.paid > 20_000) throw new Error("That price doesn't look right");
+      if (a.accessory || a.itemId) return recordAccessory(m.id, a);
       const inCart = findCartItems({ member: m.id, phone: a.phone }).find((i) => i.kind === "device") ?? findCartItems({ member: m.id }).find((i) => i.kind === "device");
       const named = a.phone ? world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone) : undefined;
       const ph = named ?? (inCart?.phoneId ? phone(world, inCart.phoneId) : undefined);
@@ -327,17 +331,54 @@ export const tools = {
       };
       state.purchases.push(purchase);
       // Bought: the phone (and its add-ons like protection) leave the cart.
-      if (inCart) state.cart = state.cart.filter((i) => !(i.memberId === m.id && (i.id === inCart.id || i.kind === "addon")));
+      if (inCart) {
+        const gone = (i: (typeof state.cart)[number]) => i.memberId === m.id && (i.id === inCart.id || i.kind === "addon");
+        purchase.fromCart = state.cart.filter(gone); // so "this is for Maya" can put them back
+        state.cart = state.cart.filter((i) => !gone(i));
+      }
       if (!state.cart.length) state.trial = undefined;
       refreshTrial();
       changed();
       return {
-        recorded: `${m.name}: ${purchase.label} for ${usd(purchase.paid)}`,
+        recorded: `${m.name}: ${purchase.label} for ${usd(purchase.paid)}`, forWhom: m.name, label: purchase.label, isPhone: !purchase.accessoryId,
         savedVsSticker: purchase.sticker ? purchase.sticker - purchase.paid : undefined,
         vsCourtPrice: purchase.courtPrice !== undefined ? purchase.paid - purchase.courtPrice : undefined,
         spentSoFar: spent(),
         budgetLeft: remainingBudget(),
       };
+    },
+  },
+  reassign_purchase: {
+    description:
+      "A parent says the purchase just logged was really for someone else (\"this is for Maya\"). Moves the most recent purchase (or purchaseId) to that member: their matching cart phone leaves the cart and anything removed by mistake goes back.",
+    params: {
+      member: { type: "string", description: "who it was really for" },
+      purchaseId: { type: "string", description: "optional; defaults to the most recent purchase" },
+    },
+    required: ["member"],
+    run: (a: { member: string; purchaseId?: string }) => {
+      const m = resolveMember(a.member);
+      const p = a.purchaseId ? state.purchases.find((x) => x.id === a.purchaseId) : state.purchases.at(-1);
+      if (!p) throw new Error("There's no purchase to move yet");
+      if (p.memberId === m.id) return { recorded: `${m.name}: ${p.label}`, unchanged: true };
+      const was = resolveMember(p.memberId).name;
+      // Undo what the first logging took out of the wrong person's cart…
+      if (p.fromCart?.length) state.cart.push(...p.fromCart.filter((i) => !state.cart.some((c) => c.id === i.id)));
+      // …and take the new owner's matching item out instead.
+      const theirs = state.cart.filter((i) => i.memberId === m.id);
+      const match = p.accessoryId
+        ? theirs.find((i) => i.accessoryId === p.accessoryId)
+        : theirs.find((i) => i.kind === "device" && i.phoneId === p.phoneId) ?? theirs.find((i) => i.kind === "device");
+      const gone = (i: (typeof state.cart)[number]) => !!match && i.memberId === m.id && (i.id === match.id || (!p.accessoryId && i.kind === "addon"));
+      p.fromCart = state.cart.filter(gone);
+      state.cart = state.cart.filter((i) => !gone(i));
+      p.memberId = m.id;
+      const ruling = match ? state.trial?.rulings.find((r) => r.itemId === match.id) : undefined;
+      p.courtPrice = ruling ? (ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost) : undefined;
+      if (!state.cart.length) state.trial = undefined;
+      refreshTrial();
+      changed();
+      return { recorded: `${m.name}: ${p.label} for ${usd(p.paid)}`, movedFrom: was, tookFromCart: match ? cartItemLabel(match) : undefined };
     },
   },
   view_cart: {
@@ -382,7 +423,47 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
   }
 }
 
-export { resolveMember, caseFileUrl, STAMP_ICON };
+export { resolveMember, caseFileUrl, STAMP_ICON, findCartItems };
+
+/** An accessory was bought (by text, or with the dashboard's Bought… button). */
+function recordAccessory(memberId: string, a: { paid: number; accessory?: string; fromReceipt?: boolean; itemId?: string }) {
+  const m = resolveMember(memberId);
+  const accs = world.catalog.accessories ?? [];
+  const mine = state.cart.filter((i) => i.kind === "accessory" && i.memberId === m.id);
+  const type = a.accessory ? accessoryType(a.accessory) : undefined;
+  const named = a.accessory ? accs.find((x) => x.id === a.accessory) ?? findAccessory(world, a.accessory) : undefined;
+  const inCart = a.itemId
+    ? state.cart.find((i) => i.id === a.itemId)
+    : mine.find((i) => i.accessoryId === named?.id) ?? mine.find((i) => accs.find((x) => x.id === i.accessoryId)?.type === type);
+  const acc = accs.find((x) => x.id === inCart?.accessoryId) ?? named;
+  const ruling = inCart ? state.trial?.rulings.find((r) => r.itemId === inCart.id) : undefined;
+  const purchase: Purchase = {
+    id: newId("p"),
+    memberId: m.id,
+    label: acc?.name ?? a.accessory ?? "an accessory",
+    accessoryId: acc?.id,
+    paid: Math.round(a.paid * 100) / 100,
+    sticker: acc?.price,
+    courtPrice: ruling ? (ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost) : undefined,
+    day: state.day,
+    at: Date.now(),
+    source: a.fromReceipt ? "receipt" : "text",
+  };
+  state.purchases.push(purchase);
+  if (inCart) {
+    purchase.fromCart = [inCart];
+    state.cart = state.cart.filter((i) => i.id !== inCart.id);
+  }
+  if (!state.cart.length) state.trial = undefined;
+  refreshTrial();
+  changed();
+  return {
+    recorded: `${m.name}: ${purchase.label} for ${usd(purchase.paid)}`, forWhom: m.name, label: purchase.label, isPhone: false,
+    savedVsSticker: purchase.sticker ? purchase.sticker - purchase.paid : undefined,
+    spentSoFar: spent(),
+    budgetLeft: remainingBudget(),
+  };
+}
 
 /** Cart items matching a member and/or a loose phone name (or an exact id). */
 function findCartItems(q: { member?: string; phone?: string; itemId?: string; addonsToo?: boolean }) {

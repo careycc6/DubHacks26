@@ -24,6 +24,7 @@
     .optional { font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; }
     .tip { background: var(--paper-2); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; margin-top: 10px; }
     .tip.ok { background: #e6efe5; color: #24543a; }
+    .hint { font-size: 13px; color: var(--muted, #6b6457); line-height: 1.55; margin: 8px 0 0; }
 
     table.members { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
     table.members th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 4px 6px; }
@@ -78,6 +79,7 @@
         <p>The grey rows are an <b>example family</b>. Type over a row to make it a real person; rows you leave blank stay examples and are never saved or texted.
           Then <b>Text everyone</b> texts them all at once ("Welcome to the court, [name]! ⚖️"). Press it again after adding someone and only the new person gets texted. Photon's free plan gives each person their own 1:1 chat with the court (group chats need a paid dedicated line), and every chat shares the same family cart.</p>
         <table class="members" id="members"></table>
+        <p class="hint"><b>Battery health %</b> is how much charge the battery still holds compared to new (not today's charge). Find it on <b>iPhone</b>: Settings → Battery → Battery Health (Maximum Capacity) · <b>Pixel</b>: Settings → Battery → Battery health · <b>Galaxy</b>: Samsung Members app → Phone diagnostics → Battery status. Don't know it? Leave it blank: the welcome text asks, and people can reply "battery health 85%".</p>
         <div class="row"><button class="btn ghost" id="hhSave">Save household</button><button class="btn" id="hhHello">Text everyone</button><button class="btn ghost" id="hhResend" hidden>Resend to all</button></div>
         <div class="tip" id="usersTip"></div>
         <div class="msg" id="hhMsg"></div>
@@ -151,7 +153,7 @@ async function loadHousehold() {
   document.body.insertAdjacentHTML("beforeend", `<datalist id="phoneList">${h.phones.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>`);
   const saved = h.members.filter((m) => m.saved).length;
   chip("hhChip", saved ? "ok" : "no", saved ? `${saved} saved` : "example family");
-  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th class="c-batt">Battery %</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => `
+  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th class="c-batt" title="Battery health, not today's charge">Battery health %</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => `
     <tr data-id="${m.id}" class="${m.saved ? "saved" : "example"}">
       <td><input class="m-name" placeholder="e.g. ${esc(m.example.name)}" value="${esc(m.name)}" /></td>
       <td class="c-role"><select class="m-role">
@@ -159,7 +161,7 @@ async function loadHousehold() {
         ${roles.map((r) => `<option value="${r}" ${r === (m.role || (m.saved ? m.example.role : "")) ? "selected" : ""}>${cap(r)}</option>`).join("")}
       </select></td>
       <td class="c-phone"><input class="m-model" list="phoneList" placeholder="e.g. ${esc(m.example.phoneModel)}" value="${esc(m.phoneModel)}" /></td>
-      <td class="c-batt"><input class="m-batt" type="number" min="1" max="100" placeholder="e.g. ${m.example.batteryHealth}" value="${m.batteryHealth ?? ""}" title="Settings → Battery → Battery Health" /></td>
+      <td class="c-batt"><input class="m-batt" type="number" min="1" max="100" placeholder="e.g. ${m.example.batteryHealth}" value="${m.batteryHealth ?? ""}" title="iPhone: Settings → Battery → Battery Health. Pixel: Settings → Battery → Battery health. Galaxy: Samsung Members → Phone diagnostics → Battery status." /></td>
       <td><input class="m-phone" placeholder="e.g. +1 206 555 0123" value="${esc(m.handle)}" /></td>
       <td><span class="tag">${m.saved ? "saved" : "example"}</span></td>
     </tr>`).join("");

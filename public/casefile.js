@@ -69,6 +69,10 @@ function shieldHtml(p) {
   return `<div class="shield ${p.verdict}"><b>${label}.</b> ${esc(p.reason)}</div>`;
 }
 
+// itemId -> store link for accessories, so people can buy it themselves
+let shopLinks = {};
+const shopHtml = (id) => shopLinks[id] ? `<a class="shop-link" href="${esc(shopLinks[id])}" target="_blank" rel="noopener">Shop it yourself ↗</a>` : "";
+
 function rulingCard(r, names) {
   const who = r.memberId ? names[r.memberId] : "Account";
   const item = r.label.includes(" · ") ? r.label.split(" · ").slice(1).join(" · ") : r.label;
@@ -85,6 +89,7 @@ function rulingCard(r, names) {
     ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(names[r.memberId])}'s current phone</div>“${esc(r.witness)}”</blockquote>` : ""}
     ${r.memberId && r.track ? sparkline(r.track, r.stamp === "WAIT" ? r.holdUntilDay : undefined) : ""}
     ${shieldHtml(r.protection)}
+    ${r.stamp !== "CUT" ? shopHtml(r.itemId) : ""}
     <div class="money">${money}${r.savings > 0 ? `<b>you save ${usd(r.savings)}</b>` : ""}</div>
   </article>`;
 }
@@ -96,6 +101,7 @@ function section(title, hint, rulings, names) {
 
 function render(s) {
   const names = Object.fromEntries(s.members.map((m) => [m.id, m.name]));
+  shopLinks = Object.fromEntries(s.cart.filter((i) => i.shopUrl).map((i) => [i.id, i.shopUrl]));
   $("caseno").textContent = `Case No. 26-${(s.household.split(" ")[1] ?? "FAM").slice(0, 3).toUpperCase()} · ${s.household}`;
   $("day").textContent = `Day ${s.day}`;
   $("textline").innerHTML = s.courtNumber ? `Text the court<b>${esc(s.courtNumber)}</b>` : "";
@@ -112,6 +118,7 @@ function render(s) {
           <article class="ruling pending"><span class="stamp PENDING">PENDING<small>awaiting trial</small></span>
             <div class="who-row"><span class="avatar">${initials(names[i.memberId])}</span><span class="who-name">${esc(names[i.memberId])}</span></div>
             <h3>${esc(i.label)}</h3>
+            ${shopHtml(i.id)}
             <div class="money">${usd(i.price)}${i.kind === "addon" ? "/yr" : ""}</div></article>`).join("")}</div>`
       : `<div class="empty"><div class="empty-gavel">⚖️</div>The docket is empty.<br>Text the court from your phone: paste a store link, send a photo, or ask <b>"court, what phone should I get?"</b></div>`;
     $("timelineWrap").innerHTML = "";
@@ -122,7 +129,7 @@ function render(s) {
     const cut = t.rulings.filter((r) => r.stamp === "CUT");
     $("subtitle").textContent = `Ruled on day ${t.day} · ${buy.length} to buy now · ${held.length} held · ${cut.length} struck`;
     $("totals").innerHTML = `
-      <div class="total"><div class="label">Spend today</div><div class="value"><s>${usd(t.before)}</s><span id="tNow"></span></div>${t.budget !== undefined && t.budget !== null ? `<div class="budget-line ${t.overBudget ? "over" : ""}">💰 Budget ${usd(t.budget)} · ${t.overBudget ? `${usd(t.now - t.budget)} over` : `${usd(t.budget - t.now)} left`}</div>` : ""}</div>
+      <div class="total"><div class="label">Spend today</div><div class="value"><s>${usd(t.before)}</s><span id="tNow"></span></div>${t.budget !== undefined && t.budget !== null ? `<div class="budget-line ${t.overBudget ? "over" : ""}">💰 Phone budget · plan ${usd(t.planned ?? t.now)} (now + later) · ${t.overBudget ? `${usd((t.planned ?? t.now) - t.budget)} over` : `${usd(t.budget - (t.planned ?? t.now))} left`}</div>` : ""}</div>
       <div class="total"><div class="label">Held for the right moment</div><div class="value" id="tHeld"></div></div>
       <div class="total savings"><div class="label">You save</div><div class="value" id="tSaved"></div></div>`;
     countUp("tNow", t.now); countUp("tHeld", t.held); countUp("tSaved", t.savings);

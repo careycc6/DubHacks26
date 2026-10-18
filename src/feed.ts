@@ -13,6 +13,7 @@ export interface Snapshot {
   nest?: object;
   cartLabels: Record<string, string>;
   purchases: number;
+  owners: Record<string, string>; // purchase id -> member (to notice "this is for Maya")
 }
 
 const nameOf = (id?: string) => world.household.members.find((m) => m.id === id)?.name ?? "Someone";
@@ -35,6 +36,7 @@ export function snapshot(): Snapshot {
     nest: state.nest,
     cartLabels: Object.fromEntries(state.cart.map((i) => [i.id, cartLabel(i.id)])),
     purchases: state.purchases.length,
+    owners: Object.fromEntries(state.purchases.map((p) => [p.id, p.memberId])),
   };
 }
 
@@ -42,6 +44,12 @@ export function snapshot(): Snapshot {
 export function describeChanges(before: Snapshot, actorId?: string): string[] {
   const actor = actorId ? first(nameOf(actorId)) : "The family";
   const lines: string[] = [];
+
+  // A parent moved a purchase to someone else: one line, not the cart shuffling it caused.
+  const moved = state.purchases.filter((p) => before.owners?.[p.id] && before.owners[p.id] !== p.memberId);
+  if (moved.length) {
+    return moved.map((p) => `🧾 ${actor} confirmed the ${p.label} is ${first(nameOf(p.memberId))}'s, not ${first(nameOf(before.owners[p.id]))}'s.`);
+  }
 
   const added = state.cart.filter((i) => !before.cartIds.includes(i.id));
   for (const i of added) {
@@ -80,7 +88,7 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
       .map((r) => `${first(nameOf(r.memberId))}: ${VERDICT[r.stamp]?.word ?? r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`)
       .join(", ");
     const url = process.env.PUBLIC_URL ?? "http://localhost:3000";
-    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== undefined ? ` Budget ${usd(t.budget)}: ${t.overBudget ? "still over" : `${usd(t.budget - t.now)} left`}.` : ""} Case file: ${url}/cart`);
+    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== undefined ? ` Phone budget: ${t.overBudget ? "over" : `${usd(t.budget - (t.planned ?? t.now))} left`} after this plan.` : ""} Case file: ${url}/cart`);
   }
 
   if (state.nest && state.nest !== before.nest) {

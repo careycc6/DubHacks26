@@ -63,8 +63,10 @@ export interface TrialOptions {
   tightBudget?: boolean;
   /** What each person said they care about (battery, screen, camera…), by member id. */
   prefs?: Record<string, Prefs>;
-  /** The family's budget for this round of shopping (what can be spent today). */
+  /** What's left of the money the family set aside for phones (the whole plan: now and later). */
   budget?: number;
+  /** Internal: trim flagships to mid tier to fit the budget (set when the first pass is over budget). */
+  trimForBudget?: boolean;
 }
 
 // ---------------------------------------------------------------- plain-English verdicts
@@ -156,11 +158,17 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
 
   // 1b. Budget pressure (from a private DM): if this phone is being bought now anyway, go one tier down
   //     when it still covers how they use a phone. The reason never says who asked.
-  if (opts.tightBudget && target === picked && picked.tier === "flagship" && m.device.batteryHealth < LOW_BATTERY) {
+  if ((opts.tightBudget && m.device.batteryHealth < LOW_BATTERY || opts.trimForBudget) && target === picked && picked.tier === "flagship") {
     const mid = world.catalog.phones.find((p) => p.brand === picked.brand && p.tier === "mid");
-    if (mid && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
+    const wants = opts.prefs?.[m.id] ?? {};
+    const keepsWhatTheyWant = !!mid && !(wants.bigScreen && mid.screenIn < picked.screenIn) && !(wants.camera && mid.camera < picked.camera);
+    if (mid && keepsWhatTheyWant && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
       target = mid;
-      reasons.push(`Keeping this month's total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`);
+      reasons.push(
+        opts.trimForBudget
+          ? `To fit the family's phone budget: the ${mid.name} covers how ${m.name.split(/s+/)[0]} uses a phone`
+          : `Keeping the total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`,
+      );
     }
   }
 
@@ -301,24 +309,13 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
   };
   holdAddonsWithPhones();
 
-  // Family budget: if today's spend is over it, hold the purchases that can most afford to wait
-  // (healthiest current phone first). Phones that are failing are never held for budget.
-  if (opts.budget !== undefined && sum((r) => r.nowCost) > opts.budget) {
-    const canWait = rulings
-      .filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.proposed)
-      .map((r) => ({ r, m: member(world, r.memberId!) }))
-      .filter(({ m }) => m.device.batteryHealth >= 75 && !m.device.screenCracked)
-      .sort((a, b) => b.m.device.batteryHealth - a.m.device.batteryHealth);
-    for (const { r } of canWait) {
-      if (sum((x) => x.nowCost) <= opts.budget) break;
-      r.stamp = "WAIT";
-      r.holdUntilDay = day + 30;
-      r.heldCost = r.nowCost;
-      r.nowCost = 0;
-      r.reasons.unshift(`Over the family's ${usd(opts.budget)} budget for now: this one can wait a month`);
-    }
+  // Family budget = the money set aside for phones over the whole plan (it may stretch over years), so it
+  // covers what's bought now AND what's held for later. Over it? Try again with flagships trimmed to the
+  // mid-tier model where that still covers how the person uses a phone.
+  const planned = sum((r) => r.nowCost + r.heldCost);
+  if (opts.budget !== undefined && planned > opts.budget && !opts.trimForBudget) {
+    return runTrial(world, cart, day, { ...opts, trimForBudget: true });
   }
-  holdAddonsWithPhones(); // a phone held for budget takes its protection plan with it
   const now = sum((r) => r.nowCost);
   return {
     day,
@@ -327,8 +324,9 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
     now,
     held: sum((r) => r.heldCost),
     savings: sum((r) => r.savings),
+    planned: sum((r) => r.nowCost + r.heldCost),
     budget: opts.budget,
-    overBudget: opts.budget !== undefined && now > opts.budget,
+    overBudget: opts.budget !== undefined && sum((r) => r.nowCost + r.heldCost) > opts.budget,
   };
 }
 
@@ -555,6 +553,11 @@ export function accessoryType(text: string): Accessory["type"] | undefined {
   return ACCESSORY_TYPE_WORDS.find(([, re]) => re.test(text))?.[0];
 }
 
+/** Where to buy it: the catalog's own link if it has one, else a shopping search for the exact name. */
+export function shopUrl(a: Accessory) {
+  return a.url ?? `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(a.name).replace(/%20/g, "+")}`;
+}
+
 /** Loose name match against the accessory catalog ("airpods", "rugged case", "magsafe"). */
 export function findAccessory(world: World, query: string): Accessory | undefined {
   const q = query.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
@@ -594,7 +597,8 @@ export function recommendAccessories(world: World, memberId: string, opts: { typ
     name: a.name,
     type: a.type,
     price: a.price,
-    why: [a.note ?? (a.brands.includes(brand) ? `made for ${({ Apple: "iPhone", Google: "Pixel phones", Samsung: "Galaxy phones" } as Record<string, string>)[brand] ?? "your phone"}` : "works with any phone")],
+    shopUrl: shopUrl(a),
+    why: [a.note ??(a.brands.includes(brand) ? `made for ${({ Apple: "iPhone", Google: "Pixel phones", Samsung: "Galaxy phones" } as Record<string, string>)[brand] ?? "your phone"}` : "works with any phone")],
   }));
 }
 

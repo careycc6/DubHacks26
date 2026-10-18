@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onReload, onShutdown, put } from "./db.ts";
-import { runTrial, type Prefs, type TrialOptions } from "./engine.ts";
+import { runTrial, shopUrl, type Prefs, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
 export interface ChatLine {
@@ -32,12 +32,14 @@ export interface Purchase {
   label: string; // "iPhone 17 Pro 256GB"
   phoneId?: string;
   storageGB?: number;
+  accessoryId?: string;
   paid: number;
   sticker?: number; // the store price of what they'd put in the cart
   courtPrice?: number; // what the court said it should cost (after trade-in / promos), if it had ruled
   day: number;
   at: number;
   source: "text" | "receipt" | "dashboard";
+  fromCart?: CartItem[]; // what left the cart when it was logged (restored if it was for someone else)
 }
 
 export interface State {
@@ -56,6 +58,7 @@ export interface State {
   seenIds: string[]; // Photon message ids already handled (delivery is at-least-once)
   purchases: Purchase[];
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
+  pendingClear?: Record<string, number>; // memberId -> when their "cart clear" confirmation expires (ms)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
 
@@ -124,7 +127,7 @@ export function publicState() {
       const p = world.catalog.phones.find((x) => x.id === i.phoneId);
       const a = world.catalog.addons.find((x) => x.id === i.addonId);
       const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
-      if (acc) return { ...i, label: acc.name, price: acc.price };
+      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc) };
       return { ...i, label: p ? `${p.name} ${i.storageGB}GB` : a?.name, price: p ? p.prices[String(i.storageGB)] : (a?.monthly ?? 0) * 12 };
     }),
     trial: state.trial,

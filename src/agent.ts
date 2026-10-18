@@ -3,7 +3,7 @@
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
 import { accessoryType, familyBudget, findAccessory, findPhone, hasPrefs, mergePrefs, parsePrefs, recommendAccessories, usd } from "./engine.ts";
 import { state, world } from "./store.ts";
-import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
+import { callTool, caseFileUrl, findCartItems, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
 import { broadcastChanges, snapshot } from "./feed.ts";
 import { later } from "./runtime.ts";
@@ -67,6 +67,11 @@ async function respond(msg: Incoming): Promise<string | null> {
   const said = parsePrefs(msg.text.replace(URLS, " "));
   const about = mentionedMember(msg.text)?.id ?? msg.memberId;
   if (about && hasPrefs(said)) state.prefs[about] = mergePrefs(state.prefs[about], said);
+  const confirmed = confirmClear(msg);
+  if (confirmed) {
+    remember(msg.spaceId, `Cart Court: ${confirmed}`);
+    return confirmed;
+  }
   if (!shouldRespond(msg)) return null;
 
   // "Close your tabs": store links are filed deterministically (instant, no LLM quota).
@@ -100,13 +105,20 @@ function fileLinks(msg: Incoming): string | null {
 const PROTECTION_ASK = /\badd (?:device |phone )?(?:protection|insurance)\b/i;
 const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 // Cart editing and purchases (deterministic: instant, no LLM needed).
-// "clear the cart", "court, clear", "clear everything", "empty it", "start over", "remove everything"
-const CLEAR_CART =
-  /^\W*(court\W*)?(please\s+)?(clear|empty|wipe|reset)(\s+(it|this|that|out|all|everything|the cart|our cart|my cart|cart)(\s+(out|please))?)?\W*$|\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\b(cart|everything|it all|all of it)\b|\bstart (over|fresh|again)\b|\b(remove|delete|take out)\s+(everything|it all|all of it|all items|all the items)\b/i;
+// Clearing must name the cart ("cart clear", "clear the cart"), so a stray "clear" or "start over" never wipes it.
+// It then asks for a YES before anything is removed.
+const CLEAR_CART = /\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\bcart\b|\bcart\s+(clear|empty|wipe|reset)\b/i;
+const CONFIRM_YES = /^\W*(yes|yep|yeah|y|confirm|confirmed|do it)\W*$/i;
+const CONFIRM_MS = 2 * 60_000;
+// In a 1:1 chat, "battery health 82%" / "my battery is at 79% health" is evidence without saying "court".
+const batteryReport = (msg: Incoming) => !msg.isGroup && /\bbattery\b/i.test(msg.text) && /\b\d{2,3}\s*%/.test(msg.text) && !/\b(phone|pick|recommend)s?\b.*\?/i.test(msg.text);
 const REMOVE_ITEM = /\b(remove|delete|take out|scratch)\b/i; // not "drop": "when does the price drop?"
 const CHANGE_ITEM = /\b(change|switch|swap|make)\b[^.?!]*\b(\d{3,4}\s*gb|to (the |a )?(iphone|pixel|galaxy))/i;
 const BOUGHT = /\b(bought|purchased|ordered|picked up|just got|paid)\b/i;
-const PRICE = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)|\b(\d[\d,]{2,}(?:\.\d{1,2})?)\s*(?:dollars|bucks|usd)\b/i;
+// "this is for Maya" (about the purchase just logged). Not "add the case, it's for Maya".
+const REASSIGN_WORDS = /\b(this|that|it)(?: one)?(?:'s|\s+is|\s+was)\s+(?:actually\s+|really\s+)?for\s+\w+/i;
+const REASSIGN = { test: (t: string) => REASSIGN_WORDS.test(t) && !/\b(add|get|buy|want)\b/i.test(t) && priceIn(t) === undefined };
+const PRICE =/\$\s?(\d[\d,]*(?:\.\d{1,2})?)|\b(\d[\d,]{2,}(?:\.\d{1,2})?)\s*(?:dollars|bucks|usd)\b/i;
 const priceIn = (text: string) => {
   const m = text.match(PRICE);
   return m ? Number((m[1] ?? m[2]).replace(/,/g, "")) : undefined;
@@ -115,7 +127,8 @@ const priceIn = (text: string) => {
 async function reply_(msg: Incoming): Promise<string> {
   // The verdict is pure engine output: skip the LLM (instant, deterministic, costs no quota).
   // Verdicts, budgets and protection are pure engine work: answer instantly, no LLM.
-  const cartEdit = CLEAR_CART.test(msg.text) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || (BOUGHT.test(msg.text) && priceIn(msg.text) !== undefined);
+  if (batteryReport(msg)) return rulesReply(msg);
+  const cartEdit = CLEAR_CART.test(msg.text) || (REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text)) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || (BOUGHT.test(msg.text) && priceIn(msg.text) !== undefined);
   if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
   const applied: ToolRun[] = [];
@@ -220,7 +233,7 @@ Hard rules:
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
-- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; "clear the cart" / "start over" -> clear_cart.
+- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove/change other people's items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly.
 - Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it.
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
@@ -259,7 +272,10 @@ async function llmReply(msg: Incoming, applied: ToolRun[] = []): Promise<string>
     contents.push({
       role: "user",
       parts: calls.map((c) => {
-        const result = callTool(c.name!, c.args ?? {});
+        const denied = c.name === "clear_cart"
+          ? (canManage(msg.memberId) ? `To clear the whole cart, text "cart clear" and confirm with YES.` : ONLY_PARENTS("clear the family cart"))
+          : guard(msg.memberId, c.name!, c.args ?? {});
+        const result = denied ? { error: denied } : callTool(c.name!, c.args ?? {});
         applied.push({ name: c.name!, result });
         return { functionResponse: { id: c.id, name: c.name, response: { result } } };
       }),
@@ -286,8 +302,8 @@ function rulesReply(msg: Incoming): string {
 
   const batt = text.match(/(\d{2,3})\s*%/);
   const cracked = /\b(crack(ed)?|shattered|smashed)\b/i.test(text);
-  if (msg.image || (ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt))) {
-    if (!batt && !cracked) return `🗂️ Exhibit received. Tell the court what it shows, like "cracked screen" or "battery 76%".`;
+  if (msg.image || (ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt)) || batteryReport(msg)) {
+    if (!batt && !cracked) return `🗂️ Exhibit received. Tell the court what it shows, like "cracked screen" or "battery health 76%".`;
     const finding = [cracked && "Cracked screen", batt && `Battery health ${batt[1]}%`].filter(Boolean).join(", ");
     const r = callTool("enter_evidence", { member: target, batteryHealth: batt ? Number(batt[1]) : undefined, screenCracked: cracked, finding }) as {
       exhibit: string; updatedRuling: { stamp: string; reasons: string[] } | string;
@@ -315,23 +331,47 @@ function rulesReply(msg: Incoming): string {
   // "add the first one" / "add #2" after a recommendation
   // ---- Editing the cart
   if (CLEAR_CART.test(text)) {
-    const r = callTool("clear_cart", {}) as { cleared: number };
-    return `🧹 Cart cleared (${r.cleared} item${r.cleared === 1 ? "" : "s"}). Start fresh: paste a store link or ask "court, what phone should I get?"`;
+    if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")} You can take out your own things, like "remove my phone".`;
+    if (!state.cart.length) return "The family cart is already empty.";
+    (state.pendingClear ??= {})[msg.memberId!] = Date.now() + CONFIRM_MS;
+    const n = state.cart.length;
+    return `⚠️ This empties the whole family cart (${n} item${n === 1 ? "" : "s"}). Purchases already recorded stay. Reply YES in the next 2 minutes to clear it.`;
+  }
+  // A parent fixes who the last purchase was for: "this is for Maya" / "that one was for grandma"
+  const forWho = REASSIGN.test(text) && state.purchases.length ? mentionedMember(text) : undefined;
+  if (forWho) {
+    const denied = guard(msg.memberId, "reassign_purchase", {});
+    if (denied) return `Objection: ${denied}`;
+    const r = callTool("reassign_purchase", { member: forWho.id }) as { recorded?: string; movedFrom?: string; tookFromCart?: string; unchanged?: boolean; error?: string };
+    if (r.error) return `Objection: ${r.error}`;
+    if (r.unchanged) return `🧾 Already logged for ${forWho.name}: ${r.recorded!.split(": ").slice(1).join(": ")}.`;
+    return `🧾 Fixed: that purchase is ${forWho.name}'s, not ${r.movedFrom!.split(/\s+/)[0]}'s (${r.recorded!.split(": ").slice(1).join(": ")}).${r.tookFromCart ? ` Took ${r.tookFromCart} out of the cart.` : ""}`;
   }
   // "I bought my iPhone 17 Pro for $899" / "Jaret's phone was ordered, paid $629"
   const paid = priceIn(text);
   if (BOUGHT.test(text) && paid !== undefined) {
-    const named = findPhone(world, text);
-    const r = callTool("record_purchase", { member: target, paid, phone: named?.id, fromReceipt: !!msg.image }) as {
-      recorded?: string; savedVsSticker?: number; vsCourtPrice?: number; budgetLeft?: number; error?: string;
+    // "bought the rugged case for $35" is an accessory; "bought my iPhone for $899" is a phone.
+    const accBought = /\bin case\b/i.test(text) ? undefined : accessoryType(text);
+    const named = accBought ? undefined : findPhone(world, text);
+    // Whose is it? Someone named in the text; else whoever has that phone in the cart; else the sender.
+    const mentioned = mentionedMember(text)?.id;
+    const holders = named ? state.cart.filter((i) => i.kind === "device" && i.phoneId === named.id).map((i) => i.memberId) : [];
+    const owner = mentioned ?? (holders.includes(msg.memberId ?? "") ? msg.memberId : holders[0]) ?? target;
+    const matched = !mentioned && owner !== msg.memberId && holders.includes(owner);
+    const r = callTool("record_purchase", { member: owner, paid, phone: named?.id, accessory: accBought ? (findAccessory(world, text)?.id ?? accBought) : undefined, fromReceipt: !!msg.image }) as {
+      recorded?: string; forWhom?: string; label?: string; isPhone?: boolean; savedVsSticker?: number; vsCourtPrice?: number; budgetLeft?: number; error?: string;
     };
     if (r.error) return `Objection: ${r.error}`;
-    const lines = [`🧾 Recorded: ${r.recorded}.`];
+    const first = (r.forWhom ?? "").split(/\s+/)[0];
+    const lines = [r.isPhone
+      ? `🧾 Confirmed: this is ${first}'s new phone, ${r.label} for ${usd(paid)}.${matched ? ` (It matched the one in ${first}'s cart.)` : ""}`
+      : `🧾 Recorded for ${first}: ${r.label}, ${usd(paid)}.`];
     if (r.savedVsSticker && r.savedVsSticker > 0) lines.push(`That's ${usd(r.savedVsSticker)} under sticker.`);
     if (r.vsCourtPrice !== undefined) {
       lines.push(r.vsCourtPrice <= 0 ? `Even better than the court's price. 👏` : `The court's price was ${usd(paid - r.vsCourtPrice)} (with trade-in and promos), ${usd(r.vsCourtPrice)} less.`);
     }
-    if (r.budgetLeft !== undefined) lines.push(`💰 Family budget left: ${usd(r.budgetLeft)}.`);
+    if (r.budgetLeft !== undefined) lines.push(`💰 Phone budget left: ${usd(r.budgetLeft)}.`);
+    if (r.isPhone) lines.push(`\nNot ${first}'s? A parent can text "this is for <name>".`);
     return lines.join(" ");
   }
   if (BOUGHT.test(text) && msg.image) return "🧾 Got the receipt. What was the total? (e.g. \"paid $899\")";
@@ -340,6 +380,8 @@ function rulesReply(msg: Incoming): string {
     const gb = Number(text.match(/(\d{3,4})\s*gb/i)?.[1]) || undefined;
     const after = text.split(/\bto\b/i).slice(1).join(" to ");
     const newPhone = after ? findPhone(world, after)?.id : undefined;
+    const denied = guard(msg.memberId, "change_cart_item", { member: target });
+    if (denied) return `Objection: ${denied}`;
     const r = callTool("change_cart_item", { member: target, newPhone, storageGB: gb }) as { from?: string; to?: string; price?: number; storageNote?: string; error?: string };
     return r.error ? `Objection: ${r.error}` : `✏️ Changed ${r.from} → ${r.to} (${usd(r.price ?? 0)}).${r.storageNote ? ` ${r.storageNote}.` : ""}`;
   }
@@ -353,7 +395,10 @@ function rulesReply(msg: Incoming): string {
         ? state.cart.find((i) => i.kind === "accessory" && i.memberId === target && world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.type === accType)?.id
         : undefined;
     const named = protection || accType ? undefined : findPhone(world, text);
-    const r = callTool("remove_from_cart", itemId ? { itemId } : { member: named ? undefined : target, phone: named?.id }) as { removed?: string[]; error?: string };
+    const args = itemId ? { itemId } : { member: named ? undefined : target, phone: named?.id };
+    const denied = guard(msg.memberId, "remove_from_cart", args);
+    if (denied) return `Objection: ${denied}`;
+    const r = callTool("remove_from_cart", args) as { removed?: string[]; error?: string };
     return r.error ? `Objection: ${r.error}` : `🗑️ Removed ${r.removed!.join(", ")} from the family cart.`;
   }
 
@@ -367,22 +412,25 @@ function rulesReply(msg: Incoming): string {
       return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added} (${usd(r.price ?? 0)}).`;
     }
     const r = callTool("recommend_accessories", { member: target, type: accType }) as {
-      forWhom: string; phoneBrand: string; picks: { name: string; price: number; why: string[] }[]; error?: string;
+      forWhom: string; phoneBrand: string; picks: { name: string; price: number; why: string[]; shopUrl: string }[]; error?: string;
     };
     if (r.error) return `Objection: ${r.error}`;
     const whoFor = target === msg.memberId ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`;
     const phoneWord = r.phoneBrand === "Apple" ? "iPhone" : r.phoneBrand === "any" ? "phone" : `${r.phoneBrand} phone`;
-    return `🎧 Picks for ${whoFor} ${phoneWord}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}`).join("\n")}\nSay "add the first one" to put it in the family cart.`;
+    return `🎧 Picks for ${whoFor} ${phoneWord}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}\n   ${p.shopUrl}`).join("\n")}\nSay "add the first one" to put it in the family cart, or shop the link yourself and text "bought the case for $35".`;
   }
 
   // "Our budget is $1500"
   const fb = familyBudget(text);
   if (fb !== undefined) {
-    const r = callTool("set_budget", { amount: fb }) as { spendToday?: number; overBudget?: boolean };
-    const status = r.spendToday === undefined ? "I'll hold the cart to it when the court rules."
-      : r.overBudget ? `Today's spend is ${usd(r.spendToday)}, still over: everything left is a phone that can't wait.`
-      : `Today's spend is ${usd(r.spendToday)}, ${usd(fb - r.spendToday)} under.`;
-    return `💰 Family budget set: ${usd(fb)}. ${status}`;
+    const denied = guard(msg.memberId, "set_budget", {});
+    if (denied) return `Objection: ${denied}`;
+    const r = callTool("set_budget", { amount: fb }) as { planned?: number; left?: number; spent?: number; overBudget?: boolean };
+    const status = r.planned === undefined
+      ? "I'll fit the plan to it when the court rules."
+      : r.overBudget ? `This plan (${usd(r.planned)} now and later) is still over, even with cheaper picks.`
+      : `This plan uses ${usd(r.planned)} (now and later), leaving ${usd(r.left ?? 0)}.`;
+    return `💰 Family phone budget set: ${usd(fb)} for the whole plan, now and later. ${status}`;
   }
   // "add protection" / "add device protection for Jaret"
   if (PROTECTION_ASK.test(text)) {
@@ -426,7 +474,52 @@ function rulesReply(msg: Incoming): string {
     "• Paste a store link to add it to the family cart",
     "• Ask \"what phone should I get?\" (say what matters: battery, big screen, camera, budget)",
     "• Ask for a case, charger, screen protector or earbuds",
-    "• Say \"remove my phone\", \"clear the cart\", or \"bought it for $899\"",
+    "• Say \"remove my phone\", \"cart clear\" (parents), or \"bought it for $899\"",
     "• Say \"court, rule\" when the family is ready to check out",
   ].join("\n");
+}
+
+// ---------------------------------------------------------------- who may do what
+// Without a group chat everyone talks to the court 1:1, so the court enforces the house rules itself:
+// parents (and partners) run the cart; everyone else can add things and edit only their own items.
+// The dashboard is always allowed (it's the admin view).
+
+const MANAGERS = new Set(["parent", "partner"]);
+const ONLY_PARENTS = (what: string) => `Only a parent can ${what}.`;
+
+export function canManage(memberId?: string) {
+  if (!memberId) return false;
+  const members = world.household.members;
+  // A household with no parents (roommates, a couple) runs itself: everyone may manage.
+  if (!members.some((m) => MANAGERS.has(m.role))) return members.some((m) => m.id === memberId);
+  return MANAGERS.has(members.find((m) => m.id === memberId)?.role ?? "");
+}
+
+/** Why this person can't run this tool, or null if they can. */
+export function guard(memberId: string | undefined, name: string, args: Record<string, unknown>): string | null {
+  if (canManage(memberId)) return null;
+  if (name === "clear_cart") return ONLY_PARENTS("clear the family cart");
+  if (name === "reassign_purchase") return ONLY_PARENTS("change who a purchase was for");
+  if (name === "set_budget") return ONLY_PARENTS("set the family budget");
+  if (name === "remove_from_cart" || name === "change_cart_item") {
+    const hits = findCartItems(args as { member?: string; phone?: string; itemId?: string });
+    if (hits.some((i) => i.memberId !== memberId)) {
+      return `${ONLY_PARENTS(`${name === "remove_from_cart" ? "remove" : "change"} someone else's items`)} You can edit your own.`;
+    }
+  }
+  return null;
+}
+
+/** A "YES" right after "cart clear" (same person, within 2 minutes) empties the cart. */
+function confirmClear(msg: Incoming): string | null {
+  const until = msg.memberId ? state.pendingClear?.[msg.memberId] : undefined;
+  if (!until) return null;
+  const no = /^\W*(no|nope|nah|cancel|stop|never ?mind|don'?t)\W*$/i.test(msg.text);
+  if (!no && !CONFIRM_YES.test(msg.text)) return null;
+  delete state.pendingClear![msg.memberId!];
+  if (no) return "👍 Okay, the cart stays as it is.";
+  if (Date.now() > until) return `That clear request timed out, so the cart is untouched. Text "cart clear" again if you still want to.`;
+  if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")}`;
+  const r = callTool("clear_cart", {}) as { cleared: number };
+  return `🧹 Cart cleared (${r.cleared} item${r.cleared === 1 ? "" : "s"}). Start fresh: paste a store link or ask "court, what phone should I get?"`;
 }

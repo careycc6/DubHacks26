@@ -141,18 +141,22 @@ test("someone who asked for a great camera keeps their Pro phone", () => {
   assert.equal(withPrefs.proposed?.phoneId, "iphone-17-pro-max");
 });
 
-test("family budget holds the purchases that can wait, never a failing phone", async () => {
+test("family budget covers the whole plan (now + later) and trims flagships to fit", async () => {
   const { familyBudget } = await import("../src/engine.ts");
   assert.equal(familyBudget("our budget is $1,500"), 1500);
   assert.equal(familyBudget("I want something under $600"), undefined);
   const cart: CartItem[] = [
-    { id: "a", kind: "device", memberId: "elena", phoneId: "pixel-10", storageGB: 256 }, // battery 71%: needs it now
-    { id: "b", kind: "device", memberId: "marco", phoneId: "pixel-10", storageGB: 256 }, // healthy 89%
+    { id: "a", kind: "device", memberId: "elena", phoneId: "pixel-10-pro", storageGB: 256 },
+    { id: "b", kind: "device", memberId: "marco", phoneId: "iphone-17-pro", storageGB: 256 },
   ];
-  const t = runTrial(world, cart, 50, { budget: 600 }); // past the promos, so nothing is waiting on a sale
-  assert.equal(t.rulings.find((r) => r.itemId === "a")!.stamp !== "WAIT", true);
-  assert.equal(t.rulings.find((r) => r.itemId === "b")!.stamp, "WAIT");
-  assert.ok(t.now <= 600 || t.overBudget);
+  const free = runTrial(world, cart, 0);
+  const tight = runTrial(world, cart, 0, { budget: (free.planned ?? 0) - 100 });
+  assert.ok((tight.planned ?? 0) < (free.planned ?? 0)); // trimmed to cheaper phones
+  assert.equal(tight.rulings.find((r) => r.itemId === "a")!.proposed?.phoneId, "pixel-10");
+  assert.ok(tight.rulings.some((r) => r.reasons.some((x) => /phone budget/.test(x))));
+  const huge = runTrial(world, cart, 0, { budget: 100_000 });
+  assert.equal(huge.overBudget, false);
+  assert.equal(runTrial(world, cart, 0, { budget: 10 }).overBudget, true); // can't fit: flagged, not hidden
 });
 
 test("protection advice: worth it for a teen's $1,199 phone, skip for a $399 one", async () => {

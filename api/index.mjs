@@ -109,11 +109,15 @@ function reviewDevice(world2, item, day, opts = {}) {
       reasons2.push(`Pro features ${m.name} won't use (camera ${m.usage.camera}/5, gaming ${m.usage.gaming}/5), so the ${mid.name} is the better fit`);
     }
   }
-  if (opts.tightBudget && target === picked && picked.tier === "flagship" && m.device.batteryHealth < LOW_BATTERY) {
+  if ((opts.tightBudget && m.device.batteryHealth < LOW_BATTERY || opts.trimForBudget) && target === picked && picked.tier === "flagship") {
     const mid = world2.catalog.phones.find((p) => p.brand === picked.brand && p.tier === "mid");
-    if (mid && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
+    const wants = opts.prefs?.[m.id] ?? {};
+    const keepsWhatTheyWant = !!mid && !(wants.bigScreen && mid.screenIn < picked.screenIn) && !(wants.camera && mid.camera < picked.camera);
+    if (mid && keepsWhatTheyWant && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
       target = mid;
-      reasons2.push(`Keeping this month's total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`);
+      reasons2.push(
+        opts.trimForBudget ? `To fit the family's phone budget: the ${mid.name} covers how ${m.name.split(/s+/)[0]} uses a phone` : `Keeping the total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`
+      );
     }
   }
   const myBudget = opts.prefs?.[m.id]?.budget;
@@ -259,18 +263,10 @@ function runTrial(world2, cart, day, opts = {}) {
     }
   };
   holdAddonsWithPhones();
-  if (opts.budget !== void 0 && sum((r) => r.nowCost) > opts.budget) {
-    const canWait = rulings.filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.proposed).map((r) => ({ r, m: member(world2, r.memberId) })).filter(({ m }) => m.device.batteryHealth >= 75 && !m.device.screenCracked).sort((a, b) => b.m.device.batteryHealth - a.m.device.batteryHealth);
-    for (const { r } of canWait) {
-      if (sum((x) => x.nowCost) <= opts.budget) break;
-      r.stamp = "WAIT";
-      r.holdUntilDay = day + 30;
-      r.heldCost = r.nowCost;
-      r.nowCost = 0;
-      r.reasons.unshift(`Over the family's ${usd(opts.budget)} budget for now: this one can wait a month`);
-    }
+  const planned = sum((r) => r.nowCost + r.heldCost);
+  if (opts.budget !== void 0 && planned > opts.budget && !opts.trimForBudget) {
+    return runTrial(world2, cart, day, { ...opts, trimForBudget: true });
   }
-  holdAddonsWithPhones();
   const now = sum((r) => r.nowCost);
   return {
     day,
@@ -279,8 +275,9 @@ function runTrial(world2, cart, day, opts = {}) {
     now,
     held: sum((r) => r.heldCost),
     savings: sum((r) => r.savings),
+    planned: sum((r) => r.nowCost + r.heldCost),
     budget: opts.budget,
-    overBudget: opts.budget !== void 0 && now > opts.budget
+    overBudget: opts.budget !== void 0 && sum((r) => r.nowCost + r.heldCost) > opts.budget
   };
 }
 function advanceTrial(world2, cart, old, day, opts = {}) {
@@ -447,6 +444,9 @@ var ACCESSORY_TYPE_WORDS = [
 function accessoryType(text) {
   return ACCESSORY_TYPE_WORDS.find(([, re]) => re.test(text))?.[0];
 }
+function shopUrl(a) {
+  return a.url ?? `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(a.name).replace(/%20/g, "+")}`;
+}
 function findAccessory(world2, query) {
   const q = query.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
   const words = q.split(/\s+/).filter((w) => w.length > 2);
@@ -479,6 +479,7 @@ function recommendAccessories(world2, memberId, opts = {}) {
     name: a.name,
     type: a.type,
     price: a.price,
+    shopUrl: shopUrl(a),
     why: [a.note ?? (a.brands.includes(brand) ? `made for ${{ Apple: "iPhone", Google: "Pixel phones", Samsung: "Galaxy phones" }[brand] ?? "your phone"}` : "works with any phone")]
   }));
 }
@@ -684,7 +685,7 @@ function publicState() {
       const p = world.catalog.phones.find((x) => x.id === i.phoneId);
       const a = world.catalog.addons.find((x) => x.id === i.addonId);
       const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
-      if (acc) return { ...i, label: acc.name, price: acc.price };
+      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc) };
       return { ...i, label: p ? `${p.name} ${i.storageGB}GB` : a?.name, price: p ? p.prices[String(i.storageGB)] : (a?.monthly ?? 0) * 12 };
     }),
     trial: state.trial,
@@ -758,7 +759,8 @@ function rulingLine(r, day, hasProtection = false) {
   }
 }
 function formatVerdict(t) {
-  const budget = t.budget === void 0 ? [] : t.overBudget ? [`\u{1F4B0} Budget ${usd(t.budget)}: still ${usd(t.now - t.budget)} over (everything left is a phone that can't wait)`] : [`\u{1F4B0} Budget ${usd(t.budget)}: ${usd(t.budget - t.now)} left`];
+  const planned = t.planned ?? t.now + t.held;
+  const budget = t.budget === void 0 ? [] : t.overBudget ? [`\u{1F4B0} Phone budget: this plan (${usd(planned)} now + later) is ${usd(planned - t.budget)} over what's left (${usd(t.budget)})`] : [`\u{1F4B0} Phone budget: this plan uses ${usd(planned)} (now + later), leaving ${usd(t.budget - planned)}`];
   return [
     "\u2696\uFE0F THE COURT RULES",
     ...t.rulings.map((r) => rulingLine(r, t.day, t.rulings.some((x) => x.memberId === r.memberId && x.label.includes("Protection")))),
@@ -924,7 +926,7 @@ var tools = {
     }
   },
   set_budget: {
-    description: "Set the FAMILY's budget for this round of shopping (what can be spent today), e.g. 'our budget is $1500'. A personal limit ('under $600 for me') goes to recommend_phones instead.",
+    description: "Set the FAMILY's phone budget: the money set aside for phones over the whole plan (now and later, can span years), e.g. 'our budget is $3000'. A personal limit ('under $600 for me') goes to recommend_phones instead.",
     params: { amount: { type: "number", description: "USD; 0 clears it" } },
     required: ["amount"],
     run: (a) => {
@@ -932,7 +934,7 @@ var tools = {
       refreshTrial();
       changed();
       const t = state.trial;
-      return { budget: state.budget ?? "none", spendToday: t?.now, overBudget: t?.overBudget ?? false };
+      return { budget: state.budget ?? "none", spent: spent(), planned: t?.planned, left: t?.planned !== void 0 && t.budget !== void 0 ? t.budget - t.planned : remainingBudget(), overBudget: t?.overBudget ?? false };
     }
   },
   add_protection: {
@@ -1001,17 +1003,19 @@ var tools = {
     }
   },
   record_purchase: {
-    description: "Someone actually bought a phone (they said so, or sent a receipt / order confirmation). Records what they paid, takes it out of the cart, and tells the family how it compares. Only use a price that the person or the receipt actually states.",
+    description: "Someone actually bought a phone or an accessory (they said so, or sent a receipt / order confirmation). Records what they paid, takes it out of the cart, and tells the family how it compares. Only use a price that the person or the receipt actually states.",
     params: {
       member: { type: "string", description: "who it was for" },
       paid: { type: "number", description: "total paid in USD" },
       phone: { type: "string", description: "what they bought, if stated (defaults to their cart phone)" },
+      accessory: { type: "string", description: "set instead of phone when they bought an accessory: its name or type (case, charger\u2026)" },
       fromReceipt: { type: "boolean", description: "true if read from a receipt / order confirmation" }
     },
     required: ["member", "paid"],
     run: (a) => {
       const m = resolveMember(a.member);
       if (!(a.paid > 0) || a.paid > 2e4) throw new Error("That price doesn't look right");
+      if (a.accessory || a.itemId) return recordAccessory(m.id, a);
       const inCart = findCartItems({ member: m.id, phone: a.phone }).find((i) => i.kind === "device") ?? findCartItems({ member: m.id }).find((i) => i.kind === "device");
       const named = a.phone ? world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone) : void 0;
       const ph = named ?? (inCart?.phoneId ? phone(world, inCart.phoneId) : void 0);
@@ -1031,17 +1035,52 @@ var tools = {
         source: a.fromReceipt ? "receipt" : "text"
       };
       state.purchases.push(purchase);
-      if (inCart) state.cart = state.cart.filter((i) => !(i.memberId === m.id && (i.id === inCart.id || i.kind === "addon")));
+      if (inCart) {
+        const gone = (i) => i.memberId === m.id && (i.id === inCart.id || i.kind === "addon");
+        purchase.fromCart = state.cart.filter(gone);
+        state.cart = state.cart.filter((i) => !gone(i));
+      }
       if (!state.cart.length) state.trial = void 0;
       refreshTrial();
       changed();
       return {
         recorded: `${m.name}: ${purchase.label} for ${usd(purchase.paid)}`,
+        forWhom: m.name,
+        label: purchase.label,
+        isPhone: !purchase.accessoryId,
         savedVsSticker: purchase.sticker ? purchase.sticker - purchase.paid : void 0,
         vsCourtPrice: purchase.courtPrice !== void 0 ? purchase.paid - purchase.courtPrice : void 0,
         spentSoFar: spent(),
         budgetLeft: remainingBudget()
       };
+    }
+  },
+  reassign_purchase: {
+    description: 'A parent says the purchase just logged was really for someone else ("this is for Maya"). Moves the most recent purchase (or purchaseId) to that member: their matching cart phone leaves the cart and anything removed by mistake goes back.',
+    params: {
+      member: { type: "string", description: "who it was really for" },
+      purchaseId: { type: "string", description: "optional; defaults to the most recent purchase" }
+    },
+    required: ["member"],
+    run: (a) => {
+      const m = resolveMember(a.member);
+      const p = a.purchaseId ? state.purchases.find((x) => x.id === a.purchaseId) : state.purchases.at(-1);
+      if (!p) throw new Error("There's no purchase to move yet");
+      if (p.memberId === m.id) return { recorded: `${m.name}: ${p.label}`, unchanged: true };
+      const was = resolveMember(p.memberId).name;
+      if (p.fromCart?.length) state.cart.push(...p.fromCart.filter((i) => !state.cart.some((c) => c.id === i.id)));
+      const theirs = state.cart.filter((i) => i.memberId === m.id);
+      const match = p.accessoryId ? theirs.find((i) => i.accessoryId === p.accessoryId) : theirs.find((i) => i.kind === "device" && i.phoneId === p.phoneId) ?? theirs.find((i) => i.kind === "device");
+      const gone = (i) => !!match && i.memberId === m.id && (i.id === match.id || !p.accessoryId && i.kind === "addon");
+      p.fromCart = state.cart.filter(gone);
+      state.cart = state.cart.filter((i) => !gone(i));
+      p.memberId = m.id;
+      const ruling = match ? state.trial?.rulings.find((r) => r.itemId === match.id) : void 0;
+      p.courtPrice = ruling ? ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost : void 0;
+      if (!state.cart.length) state.trial = void 0;
+      refreshTrial();
+      changed();
+      return { recorded: `${m.name}: ${p.label} for ${usd(p.paid)}`, movedFrom: was, tookFromCart: match ? cartItemLabel(match) : void 0 };
     }
   },
   view_cart: {
@@ -1078,6 +1117,45 @@ function callTool(name, args) {
   } catch (e) {
     return { error: e.message };
   }
+}
+function recordAccessory(memberId, a) {
+  const m = resolveMember(memberId);
+  const accs = world.catalog.accessories ?? [];
+  const mine = state.cart.filter((i) => i.kind === "accessory" && i.memberId === m.id);
+  const type = a.accessory ? accessoryType(a.accessory) : void 0;
+  const named = a.accessory ? accs.find((x) => x.id === a.accessory) ?? findAccessory(world, a.accessory) : void 0;
+  const inCart = a.itemId ? state.cart.find((i) => i.id === a.itemId) : mine.find((i) => i.accessoryId === named?.id) ?? mine.find((i) => accs.find((x) => x.id === i.accessoryId)?.type === type);
+  const acc = accs.find((x) => x.id === inCart?.accessoryId) ?? named;
+  const ruling = inCart ? state.trial?.rulings.find((r) => r.itemId === inCart.id) : void 0;
+  const purchase = {
+    id: newId("p"),
+    memberId: m.id,
+    label: acc?.name ?? a.accessory ?? "an accessory",
+    accessoryId: acc?.id,
+    paid: Math.round(a.paid * 100) / 100,
+    sticker: acc?.price,
+    courtPrice: ruling ? ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost : void 0,
+    day: state.day,
+    at: Date.now(),
+    source: a.fromReceipt ? "receipt" : "text"
+  };
+  state.purchases.push(purchase);
+  if (inCart) {
+    purchase.fromCart = [inCart];
+    state.cart = state.cart.filter((i) => i.id !== inCart.id);
+  }
+  if (!state.cart.length) state.trial = void 0;
+  refreshTrial();
+  changed();
+  return {
+    recorded: `${m.name}: ${purchase.label} for ${usd(purchase.paid)}`,
+    forWhom: m.name,
+    label: purchase.label,
+    isPhone: false,
+    savedVsSticker: purchase.sticker ? purchase.sticker - purchase.paid : void 0,
+    spentSoFar: spent(),
+    budgetLeft: remainingBudget()
+  };
 }
 function findCartItems(q) {
   if (q.itemId) return state.cart.filter((i) => i.id === q.itemId);
@@ -1148,7 +1226,16 @@ function welcomeQuestion() {
 }
 function welcome(memberId) {
   const m = world.household.members.find((x) => x.id === memberId);
-  return `Welcome to the court, ${m.name}! \u2696\uFE0F`;
+  const known = loadHouseholdLocal().members[memberId]?.batteryHealth;
+  if (known) return `Welcome to the court, ${m.name}! \u2696\uFE0F`;
+  return `Welcome to the court, ${m.name}! \u2696\uFE0F
+One quick thing: what's your battery health? ${batteryHowTo(m.device.model)}, then reply like "battery health 85%".`;
+}
+function batteryHowTo(model = "") {
+  if (/iphone/i.test(model)) return "On iPhone: Settings \u2192 Battery \u2192 Battery Health (Maximum Capacity)";
+  if (/pixel/i.test(model)) return "On Pixel: Settings \u2192 Battery \u2192 Battery health";
+  if (/galaxy|samsung/i.test(model)) return "On Galaxy: Samsung Members app \u2192 Support \u2192 Phone diagnostics \u2192 Battery status";
+  return "iPhone: Settings \u2192 Battery \u2192 Battery Health. Android: Settings \u2192 Battery \u2192 Battery health (Galaxy: Samsung Members \u2192 Phone diagnostics)";
 }
 function claimedHandles(memberId) {
   return Object.entries(claims).filter(([h, id]) => id === memberId && h !== SIM_HANDLE).map(([h]) => h);
@@ -1375,12 +1462,17 @@ function snapshot() {
     exhibits: state.exhibits.length,
     nest: state.nest,
     cartLabels: Object.fromEntries(state.cart.map((i) => [i.id, cartLabel(i.id)])),
-    purchases: state.purchases.length
+    purchases: state.purchases.length,
+    owners: Object.fromEntries(state.purchases.map((p) => [p.id, p.memberId]))
   };
 }
 function describeChanges(before, actorId) {
   const actor = actorId ? first(nameOf(actorId)) : "The family";
   const lines = [];
+  const moved = state.purchases.filter((p) => before.owners?.[p.id] && before.owners[p.id] !== p.memberId);
+  if (moved.length) {
+    return moved.map((p) => `\u{1F9FE} ${actor} confirmed the ${p.label} is ${first(nameOf(p.memberId))}'s, not ${first(nameOf(before.owners[p.id]))}'s.`);
+  }
   const added = state.cart.filter((i) => !before.cartIds.includes(i.id));
   for (const i of added) {
     const forWhom = i.memberId === actorId ? "" : ` for ${first(nameOf(i.memberId))}`;
@@ -1411,7 +1503,7 @@ function describeChanges(before, actorId) {
     const t = state.trial;
     const stamps = t.rulings.filter((r) => r.memberId && !r.label.includes("Protection")).map((r) => `${first(nameOf(r.memberId))}: ${VERDICT[r.stamp]?.word ?? r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`).join(", ");
     const url = process.env.PUBLIC_URL ?? "http://localhost:3000";
-    lines.push(`\u2696\uFE0F ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} \u2192 ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== void 0 ? ` Budget ${usd(t.budget)}: ${t.overBudget ? "still over" : `${usd(t.budget - t.now)} left`}.` : ""} Case file: ${url}/cart`);
+    lines.push(`\u2696\uFE0F ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} \u2192 ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== void 0 ? ` Phone budget: ${t.overBudget ? "over" : `${usd(t.budget - (t.planned ?? t.now))} left`} after this plan.` : ""} Case file: ${url}/cart`);
   }
   if (state.nest && state.nest !== before.nest) {
     const n = state.nest;
@@ -1481,6 +1573,11 @@ async function respond(msg) {
   const said = parsePrefs(msg.text.replace(URLS, " "));
   const about = mentionedMember(msg.text)?.id ?? msg.memberId;
   if (about && hasPrefs(said)) state.prefs[about] = mergePrefs(state.prefs[about], said);
+  const confirmed = confirmClear(msg);
+  if (confirmed) {
+    remember(msg.spaceId, `Cart Court: ${confirmed}`);
+    return confirmed;
+  }
   if (!shouldRespond(msg)) return null;
   const filed = fileLinks(msg);
   if (filed) {
@@ -1507,17 +1604,23 @@ function fileLinks(msg) {
 }
 var PROTECTION_ASK = /\badd (?:device |phone )?(?:protection|insurance)\b/i;
 var TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
-var CLEAR_CART = /^\W*(court\W*)?(please\s+)?(clear|empty|wipe|reset)(\s+(it|this|that|out|all|everything|the cart|our cart|my cart|cart)(\s+(out|please))?)?\W*$|\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\b(cart|everything|it all|all of it)\b|\bstart (over|fresh|again)\b|\b(remove|delete|take out)\s+(everything|it all|all of it|all items|all the items)\b/i;
+var CLEAR_CART = /\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\bcart\b|\bcart\s+(clear|empty|wipe|reset)\b/i;
+var CONFIRM_YES = /^\W*(yes|yep|yeah|y|confirm|confirmed|do it)\W*$/i;
+var CONFIRM_MS = 2 * 6e4;
+var batteryReport = (msg) => !msg.isGroup && /\bbattery\b/i.test(msg.text) && /\b\d{2,3}\s*%/.test(msg.text) && !/\b(phone|pick|recommend)s?\b.*\?/i.test(msg.text);
 var REMOVE_ITEM = /\b(remove|delete|take out|scratch)\b/i;
 var CHANGE_ITEM = /\b(change|switch|swap|make)\b[^.?!]*\b(\d{3,4}\s*gb|to (the |a )?(iphone|pixel|galaxy))/i;
 var BOUGHT = /\b(bought|purchased|ordered|picked up|just got|paid)\b/i;
+var REASSIGN_WORDS = /\b(this|that|it)(?: one)?(?:'s|\s+is|\s+was)\s+(?:actually\s+|really\s+)?for\s+\w+/i;
+var REASSIGN = { test: (t) => REASSIGN_WORDS.test(t) && !/\b(add|get|buy|want)\b/i.test(t) && priceIn(t) === void 0 };
 var PRICE = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)|\b(\d[\d,]{2,}(?:\.\d{1,2})?)\s*(?:dollars|bucks|usd)\b/i;
 var priceIn = (text) => {
   const m = text.match(PRICE);
   return m ? Number((m[1] ?? m[2]).replace(/,/g, "")) : void 0;
 };
 async function reply_(msg) {
-  const cartEdit = CLEAR_CART.test(msg.text) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || BOUGHT.test(msg.text) && priceIn(msg.text) !== void 0;
+  if (batteryReport(msg)) return rulesReply(msg);
+  const cartEdit = CLEAR_CART.test(msg.text) || REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || BOUGHT.test(msg.text) && priceIn(msg.text) !== void 0;
   if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== void 0 || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
   const applied = [];
@@ -1606,7 +1709,7 @@ Hard rules:
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
-- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; "clear the cart" / "start over" -> clear_cart.
+- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove/change other people's items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly.
 - Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it.
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
@@ -1647,7 +1750,8 @@ Reply to ${nameOf2(msg.memberId)}'s latest message.` }];
     contents.push({
       role: "user",
       parts: calls.map((c) => {
-        const result = callTool(c.name, c.args ?? {});
+        const denied = c.name === "clear_cart" ? canManage(msg.memberId) ? `To clear the whole cart, text "cart clear" and confirm with YES.` : ONLY_PARENTS("clear the family cart") : guard(msg.memberId, c.name, c.args ?? {});
+        const result = denied ? { error: denied } : callTool(c.name, c.args ?? {});
         applied.push({ name: c.name, result });
         return { functionResponse: { id: c.id, name: c.name, response: { result } } };
       })
@@ -1665,8 +1769,8 @@ function rulesReply(msg) {
   const target = mentionedMember(text)?.id ?? msg.memberId ?? "marco";
   const batt = text.match(/(\d{2,3})\s*%/);
   const cracked = /\b(crack(ed)?|shattered|smashed)\b/i.test(text);
-  if (msg.image || ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt)) {
-    if (!batt && !cracked) return `\u{1F5C2}\uFE0F Exhibit received. Tell the court what it shows, like "cracked screen" or "battery 76%".`;
+  if (msg.image || ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt) || batteryReport(msg)) {
+    if (!batt && !cracked) return `\u{1F5C2}\uFE0F Exhibit received. Tell the court what it shows, like "cracked screen" or "battery health 76%".`;
     const finding = [cracked && "Cracked screen", batt && `Battery health ${batt[1]}%`].filter(Boolean).join(", ");
     const r = callTool("enter_evidence", { member: target, batteryHealth: batt ? Number(batt[1]) : void 0, screenCracked: cracked, finding });
     const u = r.updatedRuling;
@@ -1688,20 +1792,40 @@ function rulesReply(msg) {
     return "error" in r ? `Objection: ${r.error}` : `\u{1F4E5} Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
   }
   if (CLEAR_CART.test(text)) {
-    const r = callTool("clear_cart", {});
-    return `\u{1F9F9} Cart cleared (${r.cleared} item${r.cleared === 1 ? "" : "s"}). Start fresh: paste a store link or ask "court, what phone should I get?"`;
+    if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")} You can take out your own things, like "remove my phone".`;
+    if (!state.cart.length) return "The family cart is already empty.";
+    (state.pendingClear ??= {})[msg.memberId] = Date.now() + CONFIRM_MS;
+    const n = state.cart.length;
+    return `\u26A0\uFE0F This empties the whole family cart (${n} item${n === 1 ? "" : "s"}). Purchases already recorded stay. Reply YES in the next 2 minutes to clear it.`;
+  }
+  const forWho = REASSIGN.test(text) && state.purchases.length ? mentionedMember(text) : void 0;
+  if (forWho) {
+    const denied = guard(msg.memberId, "reassign_purchase", {});
+    if (denied) return `Objection: ${denied}`;
+    const r = callTool("reassign_purchase", { member: forWho.id });
+    if (r.error) return `Objection: ${r.error}`;
+    if (r.unchanged) return `\u{1F9FE} Already logged for ${forWho.name}: ${r.recorded.split(": ").slice(1).join(": ")}.`;
+    return `\u{1F9FE} Fixed: that purchase is ${forWho.name}'s, not ${r.movedFrom.split(/\s+/)[0]}'s (${r.recorded.split(": ").slice(1).join(": ")}).${r.tookFromCart ? ` Took ${r.tookFromCart} out of the cart.` : ""}`;
   }
   const paid = priceIn(text);
   if (BOUGHT.test(text) && paid !== void 0) {
-    const named = findPhone(world, text);
-    const r = callTool("record_purchase", { member: target, paid, phone: named?.id, fromReceipt: !!msg.image });
+    const accBought = /\bin case\b/i.test(text) ? void 0 : accessoryType(text);
+    const named = accBought ? void 0 : findPhone(world, text);
+    const mentioned = mentionedMember(text)?.id;
+    const holders = named ? state.cart.filter((i) => i.kind === "device" && i.phoneId === named.id).map((i) => i.memberId) : [];
+    const owner = mentioned ?? (holders.includes(msg.memberId ?? "") ? msg.memberId : holders[0]) ?? target;
+    const matched = !mentioned && owner !== msg.memberId && holders.includes(owner);
+    const r = callTool("record_purchase", { member: owner, paid, phone: named?.id, accessory: accBought ? findAccessory(world, text)?.id ?? accBought : void 0, fromReceipt: !!msg.image });
     if (r.error) return `Objection: ${r.error}`;
-    const lines = [`\u{1F9FE} Recorded: ${r.recorded}.`];
+    const first2 = (r.forWhom ?? "").split(/\s+/)[0];
+    const lines = [r.isPhone ? `\u{1F9FE} Confirmed: this is ${first2}'s new phone, ${r.label} for ${usd(paid)}.${matched ? ` (It matched the one in ${first2}'s cart.)` : ""}` : `\u{1F9FE} Recorded for ${first2}: ${r.label}, ${usd(paid)}.`];
     if (r.savedVsSticker && r.savedVsSticker > 0) lines.push(`That's ${usd(r.savedVsSticker)} under sticker.`);
     if (r.vsCourtPrice !== void 0) {
       lines.push(r.vsCourtPrice <= 0 ? `Even better than the court's price. \u{1F44F}` : `The court's price was ${usd(paid - r.vsCourtPrice)} (with trade-in and promos), ${usd(r.vsCourtPrice)} less.`);
     }
-    if (r.budgetLeft !== void 0) lines.push(`\u{1F4B0} Family budget left: ${usd(r.budgetLeft)}.`);
+    if (r.budgetLeft !== void 0) lines.push(`\u{1F4B0} Phone budget left: ${usd(r.budgetLeft)}.`);
+    if (r.isPhone) lines.push(`
+Not ${first2}'s? A parent can text "this is for <name>".`);
     return lines.join(" ");
   }
   if (BOUGHT.test(text) && msg.image) return '\u{1F9FE} Got the receipt. What was the total? (e.g. "paid $899")';
@@ -1709,6 +1833,8 @@ function rulesReply(msg) {
     const gb = Number(text.match(/(\d{3,4})\s*gb/i)?.[1]) || void 0;
     const after = text.split(/\bto\b/i).slice(1).join(" to ");
     const newPhone = after ? findPhone(world, after)?.id : void 0;
+    const denied = guard(msg.memberId, "change_cart_item", { member: target });
+    if (denied) return `Objection: ${denied}`;
     const r = callTool("change_cart_item", { member: target, newPhone, storageGB: gb });
     return r.error ? `Objection: ${r.error}` : `\u270F\uFE0F Changed ${r.from} \u2192 ${r.to} (${usd(r.price ?? 0)}).${r.storageNote ? ` ${r.storageNote}.` : ""}`;
   }
@@ -1717,7 +1843,10 @@ function rulesReply(msg) {
     const accType2 = accessoryType(text);
     const itemId = protection ? state.cart.find((i) => i.kind === "addon" && i.memberId === target && i.addonId === "protection-360")?.id : accType2 ? state.cart.find((i) => i.kind === "accessory" && i.memberId === target && world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.type === accType2)?.id : void 0;
     const named = protection || accType2 ? void 0 : findPhone(world, text);
-    const r = callTool("remove_from_cart", itemId ? { itemId } : { member: named ? void 0 : target, phone: named?.id });
+    const args = itemId ? { itemId } : { member: named ? void 0 : target, phone: named?.id };
+    const denied = guard(msg.memberId, "remove_from_cart", args);
+    if (denied) return `Objection: ${denied}`;
+    const r = callTool("remove_from_cart", args);
     return r.error ? `Objection: ${r.error}` : `\u{1F5D1}\uFE0F Removed ${r.removed.join(", ")} from the family cart.`;
   }
   const accType = /\bin case\b/i.test(text) ? void 0 : accessoryType(text);
@@ -1732,14 +1861,17 @@ function rulesReply(msg) {
     const whoFor = target === msg.memberId ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`;
     const phoneWord = r.phoneBrand === "Apple" ? "iPhone" : r.phoneBrand === "any" ? "phone" : `${r.phoneBrand} phone`;
     return `\u{1F3A7} Picks for ${whoFor} ${phoneWord}:
-${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}`).join("\n")}
-Say "add the first one" to put it in the family cart.`;
+${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}
+   ${p.shopUrl}`).join("\n")}
+Say "add the first one" to put it in the family cart, or shop the link yourself and text "bought the case for $35".`;
   }
   const fb = familyBudget(text);
   if (fb !== void 0) {
+    const denied = guard(msg.memberId, "set_budget", {});
+    if (denied) return `Objection: ${denied}`;
     const r = callTool("set_budget", { amount: fb });
-    const status = r.spendToday === void 0 ? "I'll hold the cart to it when the court rules." : r.overBudget ? `Today's spend is ${usd(r.spendToday)}, still over: everything left is a phone that can't wait.` : `Today's spend is ${usd(r.spendToday)}, ${usd(fb - r.spendToday)} under.`;
-    return `\u{1F4B0} Family budget set: ${usd(fb)}. ${status}`;
+    const status = r.planned === void 0 ? "I'll fit the plan to it when the court rules." : r.overBudget ? `This plan (${usd(r.planned)} now and later) is still over, even with cheaper picks.` : `This plan uses ${usd(r.planned)} (now and later), leaving ${usd(r.left ?? 0)}.`;
+    return `\u{1F4B0} Family phone budget set: ${usd(fb)} for the whole plan, now and later. ${status}`;
   }
   if (PROTECTION_ASK.test(text)) {
     const r = callTool("add_protection", { member: target });
@@ -1776,9 +1908,42 @@ Say "add the first one" to put it in the family cart.`;
     "\u2022 Paste a store link to add it to the family cart",
     '\u2022 Ask "what phone should I get?" (say what matters: battery, big screen, camera, budget)',
     "\u2022 Ask for a case, charger, screen protector or earbuds",
-    '\u2022 Say "remove my phone", "clear the cart", or "bought it for $899"',
+    '\u2022 Say "remove my phone", "cart clear" (parents), or "bought it for $899"',
     '\u2022 Say "court, rule" when the family is ready to check out'
   ].join("\n");
+}
+var MANAGERS = /* @__PURE__ */ new Set(["parent", "partner"]);
+var ONLY_PARENTS = (what) => `Only a parent can ${what}.`;
+function canManage(memberId) {
+  if (!memberId) return false;
+  const members = world.household.members;
+  if (!members.some((m) => MANAGERS.has(m.role))) return members.some((m) => m.id === memberId);
+  return MANAGERS.has(members.find((m) => m.id === memberId)?.role ?? "");
+}
+function guard(memberId, name, args) {
+  if (canManage(memberId)) return null;
+  if (name === "clear_cart") return ONLY_PARENTS("clear the family cart");
+  if (name === "reassign_purchase") return ONLY_PARENTS("change who a purchase was for");
+  if (name === "set_budget") return ONLY_PARENTS("set the family budget");
+  if (name === "remove_from_cart" || name === "change_cart_item") {
+    const hits = findCartItems(args);
+    if (hits.some((i) => i.memberId !== memberId)) {
+      return `${ONLY_PARENTS(`${name === "remove_from_cart" ? "remove" : "change"} someone else's items`)} You can edit your own.`;
+    }
+  }
+  return null;
+}
+function confirmClear(msg) {
+  const until = msg.memberId ? state.pendingClear?.[msg.memberId] : void 0;
+  if (!until) return null;
+  const no = /^\W*(no|nope|nah|cancel|stop|never ?mind|don'?t)\W*$/i.test(msg.text);
+  if (!no && !CONFIRM_YES.test(msg.text)) return null;
+  delete state.pendingClear[msg.memberId];
+  if (no) return "\u{1F44D} Okay, the cart stays as it is.";
+  if (Date.now() > until) return `That clear request timed out, so the cart is untouched. Text "cart clear" again if you still want to.`;
+  if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")}`;
+  const r = callTool("clear_cart", {});
+  return `\u{1F9F9} Cart cleared (${r.cleared} item${r.cleared === 1 ? "" : "s"}). Start fresh: paste a store link or ask "court, what phone should I get?"`;
 }
 
 // src/setup.ts
@@ -2118,7 +2283,8 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
     publicUrl: process.env.PUBLIC_URL ?? "",
     setUp: saved.length > 0,
     budget: state.budget ?? null,
-    spendToday: state.trial?.now ?? null,
+    spent: state.purchases.reduce((t, p) => t + p.paid, 0),
+    planned: state.trial?.planned ?? null,
     overBudget: state.trial?.overBudget ?? false,
     // Price tracker: every phone in the cart, now vs the lowest price coming up (synthetic store prices).
     tracker: state.cart.filter((i) => i.kind === "device" && i.phoneId).map((i) => {
@@ -2175,7 +2341,7 @@ dashboardRouter.post("/api/dashboard/cart/bought", async (req, res) => {
   const item = state.cart.find((i) => i.id === req.body?.itemId);
   if (!item) return res.json({ error: "That item isn't in the cart anymore." });
   const before = snapshot();
-  const r = callTool("record_purchase", { member: item.memberId, paid: Number(req.body?.paid), phone: item.phoneId });
+  const r = callTool("record_purchase", item.kind === "accessory" ? { member: item.memberId, paid: Number(req.body?.paid), itemId: item.id } : { member: item.memberId, paid: Number(req.body?.paid), phone: item.phoneId });
   if (!r.error) state.purchases[state.purchases.length - 1].source = "dashboard";
   res.json({ ...r, told: await announce(before) });
 });

@@ -20,7 +20,8 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
     publicUrl: process.env.PUBLIC_URL ?? "",
     setUp: saved.length > 0,
     budget: state.budget ?? null,
-    spendToday: state.trial?.now ?? null,
+    spent: state.purchases.reduce((t, p) => t + p.paid, 0),
+    planned: state.trial?.planned ?? null,
     overBudget: state.trial?.overBudget ?? false,
     // Price tracker: every phone in the cart, now vs the lowest price coming up (synthetic store prices).
     tracker: state.cart
@@ -91,7 +92,9 @@ dashboardRouter.post("/api/dashboard/cart/bought", async (req, res) => {
   const item = state.cart.find((i) => i.id === req.body?.itemId);
   if (!item) return res.json({ error: "That item isn't in the cart anymore." });
   const before = snapshot();
-  const r = callTool("record_purchase", { member: item.memberId, paid: Number(req.body?.paid), phone: item.phoneId });
+  const r = callTool("record_purchase", item.kind === "accessory"
+    ? { member: item.memberId, paid: Number(req.body?.paid), itemId: item.id }
+    : { member: item.memberId, paid: Number(req.body?.paid), phone: item.phoneId });
   if (!(r as { error?: string }).error) state.purchases[state.purchases.length - 1].source = "dashboard";
   res.json({ ...(r as object), told: await announce(before) });
 });

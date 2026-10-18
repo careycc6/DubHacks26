@@ -46,9 +46,28 @@ links that number for good.
 
 **Good to know about Photon's free plan:**
 - Each person chats with the court one-on-one. All of those chats share one family cart.
-- Group chats need Photon's paid dedicated line.
+- Group chats need Photon's paid dedicated line. Cart Court is built to work without one (see below).
 - Only numbers added under **Users** can text the court.
 - If your texts aren't arriving, iMessage may be sending from your email instead of your number. Open **debug.photon.codes** on your iPhone to see which handle it uses, and add that one.
+
+### No group chat? The court runs the house rules itself
+
+Everyone texts the court one-on-one, and it keeps the family in sync:
+
+- **Family feed:** when someone adds, buys or removes something, everyone else gets a one-line update in their own chat.
+- **Parents run the cart.** Only people saved as **Parent** (or **Partner**) can clear the cart, set the family budget,
+  remove or change someone else's items, or fix who a purchase was for. Kids and teens can add things, ask for picks,
+  and edit or remove their own items. (A household with no parents, like roommates, lets everyone do it.)
+- **Clearing takes two texts:** text `cart clear` (it must say "cart"), then reply **YES** within 2 minutes.
+- **Anyone can report a purchase:** "bought my iPhone 17 for $799" or a photo of the receipt. The court confirms who it's
+  for ("this is Maya's new phone"), matching the model to whoever has it in the cart. If that's wrong, a parent texts
+  **"this is for Rosa"** and the court moves it (and puts back anything it took out of the wrong cart).
+- **Battery health:** if setup left it blank, the welcome text asks for it (iPhone: Settings → Battery → Battery Health;
+  Pixel: Settings → Battery → Battery health; Galaxy: Samsung Members → Phone diagnostics). People reply "battery health 85%".
+- **Accessories:** picks come with a shop link. Add one to the cart, or buy it yourself and text "bought the case for $35"
+  (or tap **Bought…** on the dashboard).
+- **The family budget** is the money set aside for phones over the whole plan, now and later (it can cover a couple of
+  years). The court counts what's bought, what's in the cart, and what's held for later, and picks cheaper fits if it runs over.
 
 ## 4. For whoever runs the server: MongoDB Atlas (5 min, free)
 
