@@ -36,6 +36,7 @@
 <script src="/live.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+const cap = (s) => String(s ?? "").replace(/^./, (c) => c.toUpperCase());
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let members = [], lines = [], tab = "sim:group", pendingImage = null;
 
@@ -82,7 +83,7 @@ live({
   onState: (s) => {
   if (!members.length) {
     members = s.members;
-    $("who").innerHTML = members.map((m) => `<option value="${m.id}">${esc(m.name)} (${esc(m.role)})</option>`).join("") + `<option value="new:+15555550199">📱 New phone (unknown)</option>`;
+    $("who").innerHTML = members.map((m) => `<option value="${m.id}">${esc(m.name)} (${esc(cap(m.role))})</option>`).join("") + `<option value="new:+15555550199">📱 New phone (unknown)</option>`;
     renderTabs();
   }
   },

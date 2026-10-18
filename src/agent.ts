@@ -1,7 +1,7 @@
 // Cart Court's brain: decides WHEN to speak (taste), then talks via Gemini + tools.
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
-import { familyBudget, findPhone, hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
+import { accessoryType, familyBudget, findAccessory, findPhone, hasPrefs, mergePrefs, parsePrefs, recommendAccessories, usd } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
@@ -100,7 +100,9 @@ function fileLinks(msg: Incoming): string | null {
 const PROTECTION_ASK = /\badd (?:device |phone )?(?:protection|insurance)\b/i;
 const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 // Cart editing and purchases (deterministic: instant, no LLM needed).
-const CLEAR_CART = /\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\bcart\b|\bstart (over|fresh)\b/i;
+// "clear the cart", "court, clear", "clear everything", "empty it", "start over", "remove everything"
+const CLEAR_CART =
+  /^\W*(court\W*)?(please\s+)?(clear|empty|wipe|reset)(\s+(it|this|that|out|all|everything|the cart|our cart|my cart|cart)(\s+(out|please))?)?\W*$|\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\b(cart|everything|it all|all of it)\b|\bstart (over|fresh|again)\b|\b(remove|delete|take out)\s+(everything|it all|all of it|all items|all the items)\b/i;
 const REMOVE_ITEM = /\b(remove|delete|take out|scratch)\b/i; // not "drop": "when does the price drop?"
 const CHANGE_ITEM = /\b(change|switch|swap|make)\b[^.?!]*\b(\d{3,4}\s*gb|to (the |a )?(iphone|pixel|galaxy))/i;
 const BOUGHT = /\b(bought|purchased|ordered|picked up|just got|paid)\b/i;
@@ -217,6 +219,7 @@ Hard rules:
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
+- Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
 - Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; "clear the cart" / "start over" -> clear_cart.
 - Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it.
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
@@ -343,10 +346,33 @@ function rulesReply(msg: Incoming): string {
   // "remove my phone" / "take out the pixel" / "remove Jaret's protection"
   if (REMOVE_ITEM.test(text)) {
     const protection = /\b(protection|insurance)\b/i.test(text);
-    const itemId = protection ? state.cart.find((i) => i.kind === "addon" && i.memberId === target && i.addonId === "protection-360")?.id : undefined;
-    const named = protection ? undefined : findPhone(world, text);
+    const accType = accessoryType(text);
+    const itemId = protection
+      ? state.cart.find((i) => i.kind === "addon" && i.memberId === target && i.addonId === "protection-360")?.id
+      : accType
+        ? state.cart.find((i) => i.kind === "accessory" && i.memberId === target && world.catalog.accessories?.find((a) => a.id === i.accessoryId)?.type === accType)?.id
+        : undefined;
+    const named = protection || accType ? undefined : findPhone(world, text);
     const r = callTool("remove_from_cart", itemId ? { itemId } : { member: named ? undefined : target, phone: named?.id }) as { removed?: string[]; error?: string };
     return r.error ? `Objection: ${r.error}` : `🗑️ Removed ${r.removed!.join(", ")} from the family cart.`;
+  }
+
+  // ---- Accessories: "what case should I get?", "add the rugged case", "any earbuds for my Pixel?"
+  const accType = /\bin case\b/i.test(text) ? undefined : accessoryType(text);
+  if (accType || /\baccessor(y|ies)\b/i.test(text)) {
+    const named = findAccessory(world, text);
+    // "add the rugged case" / "buy airpods" adds; "what case should I get?" only asks.
+    if (/\b(add|buy)\b/i.test(text) && named && accType) {
+      const r = callTool("add_accessory_to_cart", { member: target, accessory: named.id }) as { added?: string; price?: number; error?: string };
+      return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added} (${usd(r.price ?? 0)}).`;
+    }
+    const r = callTool("recommend_accessories", { member: target, type: accType }) as {
+      forWhom: string; phoneBrand: string; picks: { name: string; price: number; why: string[] }[]; error?: string;
+    };
+    if (r.error) return `Objection: ${r.error}`;
+    const whoFor = target === msg.memberId ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`;
+    const phoneWord = r.phoneBrand === "Apple" ? "iPhone" : r.phoneBrand === "any" ? "phone" : `${r.phoneBrand} phone`;
+    return `🎧 Picks for ${whoFor} ${phoneWord}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}`).join("\n")}\nSay "add the first one" to put it in the family cart.`;
   }
 
   // "Our budget is $1500"
@@ -382,11 +408,25 @@ function rulesReply(msg: Incoming): string {
     const drop = (p: Pick) => (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "");
     const top = r.picks[0];
     const shield = top ? `\n🛡️ Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.` : "";
-    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}\nSay "add the first one" to put it in the family cart.`;
+    // Accessories that fit the top pick (as if it were in the cart).
+    const pairs = top
+      ? recommendAccessories(world, target, { cart: [{ id: "preview", kind: "device", memberId: target, phoneId: (top as Pick & { phoneId: string }).phoneId }] })
+          .slice(0, 2)
+          .map((a) => `${a.name} (${usd(a.price)})`)
+      : [];
+    const pairLine = pairs.length ? `\n🎧 Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.` : "";
+    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}\nSay "add the first one" to put it in the family cart.`;
   }
   // A private aside ("money's tight, don't tell the kids"): acknowledge, never repeat it.
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
     return "Noted. That stays between us, and the court will keep it in mind. ⚖️";
   }
-  return `⚖️ The court is listening. Try: paste a store link, "court, add the iPhone 17 Pro 256GB for me", "court, what phone should Grandma get?", or "court, rule".`;
+  return [
+    "⚖️ The court is listening. You can:",
+    "• Paste a store link to add it to the family cart",
+    "• Ask \"what phone should I get?\" (say what matters: battery, big screen, camera, budget)",
+    "• Ask for a case, charger, screen protector or earbuds",
+    "• Say \"remove my phone\", \"clear the cart\", or \"bought it for $899\"",
+    "• Say \"court, rule\" when the family is ready to check out",
+  ].join("\n");
 }

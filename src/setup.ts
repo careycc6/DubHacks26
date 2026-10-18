@@ -184,10 +184,11 @@ setupRouter.get("/api/setup/household", (_req, res) => {
       return {
         id: m.id,
         saved: !!s,
-        example: { name: ex.name, role: ex.role, phoneModel: ex.device.model },
+        example: { name: ex.name, role: ex.role, phoneModel: ex.device.model, batteryHealth: ex.device.batteryHealth },
         name: s?.name ?? "",
         role: s?.role ?? "",
         phoneModel: s?.phoneModel ?? "",
+        batteryHealth: s?.batteryHealth ?? null,
         handle: s?.handles?.[0] ?? claimedHandles(m.id)[0] ?? "",
       };
     }),
@@ -195,7 +196,7 @@ setupRouter.get("/api/setup/household", (_req, res) => {
 });
 
 setupRouter.post("/api/setup/household", (req, res) => {
-  const input = (req.body?.members ?? []) as { id: string; name?: string; phone?: string; role?: string; phoneModel?: string }[];
+  const input = (req.body?.members ?? []) as { id: string; name?: string; phone?: string; role?: string; phoneModel?: string; batteryHealth?: number | string }[];
   const local = loadHouseholdLocal();
   const problems: string[] = [];
   for (const row of input) {
@@ -217,6 +218,10 @@ setupRouter.post("/api/setup/household", (req, res) => {
       handles: handle ? [handle] : (local.members[row.id]?.handles ?? []),
       role: ROLES.includes(row.role ?? "") ? row.role : undefined,
       phoneModel: (row.phoneModel ?? "").trim() || undefined,
+      batteryHealth: (() => {
+        const b = Math.round(Number(row.batteryHealth));
+        return b >= 1 && b <= 100 ? b : undefined;
+      })(),
     };
   }
   saveHouseholdLocal(local);
@@ -228,6 +233,7 @@ setupRouter.post("/api/setup/household", (req, res) => {
     m.role = f.role;
     m.handles = f.handles;
     m.device.model = f.device.model;
+    m.device.batteryHealth = f.device.batteryHealth;
   }
   changed();
   res.json({ ok: problems.length === 0, problems, saved: Object.keys(local.members).length });

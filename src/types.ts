@@ -19,6 +19,15 @@ export interface Addon {
   monthly: number;
 }
 
+export interface Accessory {
+  id: string;
+  name: string;
+  type: "case" | "screen" | "charger" | "battery" | "earbuds";
+  brands: string[]; // phone brands it fits, or ["any"]
+  price: number;
+  note?: string;
+}
+
 export interface Member {
   id: string;
   name: string;
@@ -63,18 +72,19 @@ export interface Offers {
 }
 
 export interface World {
-  catalog: { phones: Phone[]; addons: Addon[] };
+  catalog: { phones: Phone[]; addons: Addon[]; accessories?: Accessory[] };
   household: Household;
   offers: Offers;
 }
 
 export interface CartItem {
   id: string;
-  kind: "device" | "addon";
+  kind: "device" | "addon" | "accessory";
   memberId: string;
   phoneId?: string;
   storageGB?: number;
   addonId?: string;
+  accessoryId?: string;
   addedBy?: string;
 }
 

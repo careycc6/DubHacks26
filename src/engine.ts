@@ -1,6 +1,6 @@
 // The pricing engine. Deterministic and LLM-free: every number the agent says comes from here.
 import type {
-  CartItem, Member, NestRuling, Phone, Promo, Recommendation, Ruling, Trial, World,
+  Accessory, CartItem, Member, NestRuling, Phone, Promo, Recommendation, Ruling, Trial, World,
 } from "./types.ts";
 
 const LOW_BATTERY = 80; // below this, upgrading now is justified
@@ -273,7 +273,7 @@ function reviewAddon(world: World, item: CartItem, cart: CartItem[] = []): Rulin
 
 /** Put the whole cart (plus the account's dead weight) on trial. */
 export function runTrial(world: World, cart: CartItem[], day: number, opts: TrialOptions = {}): Trial {
-  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day, opts) : reviewAddon(world, item, cart)));
+  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day, opts) : item.kind === "accessory" ? reviewAccessory(world, item, cart) : reviewAddon(world, item, cart)));
   for (const a of world.household.accountAddons) {
     if (a.usedInLast12Months) continue;
     const yearly = a.monthly * 12;
@@ -288,14 +288,15 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
   // Protection follows its phone: if the phone waits, so does the plan.
   const holdAddonsWithPhones = () => {
     for (const r of rulings) {
-      if (r.stamp !== "KEEP" || !r.label.includes("Protection") || !r.memberId) continue;
+      // Add-ons and accessories bought for a phone that has to wait, wait with it.
+      if (r.stamp !== "KEEP" || r.proposed || !r.memberId || r.itemId.startsWith("account:")) continue;
       const phoneRuling = rulings.find((x) => x.memberId === r.memberId && x.proposed && x.stamp === "WAIT");
       if (!phoneRuling) continue;
       r.stamp = "WAIT";
       r.holdUntilDay = phoneRuling.holdUntilDay;
       r.heldCost = r.nowCost;
       r.nowCost = 0;
-      r.reasons.unshift("Starts the day the new phone does");
+      r.reasons.unshift(r.label.includes("Protection") ? "Starts the day the new phone does" : "Buy it together with the new phone");
     }
   };
   holdAddonsWithPhones();
@@ -537,4 +538,78 @@ export function familyBudget(text: string): number | undefined {
   if (!/\b(our|family|household|total|we have|we can spend|we've got)\b/.test(t)) return undefined;
   const m = t.match(/(?:budget|spend|have|got)[^$\d]{0,20}\$?\s*(\d{3,5})/) ?? t.match(/\$\s*(\d{3,5})/);
   return m ? Number(m[1]) : undefined;
+}
+
+// ---------------------------------------------------------------- accessories
+
+const ACCESSORY_TYPE_WORDS: [Accessory["type"], RegExp][] = [
+  ["case", /\bcases?\b/i],
+  ["screen", /\b(screen protector|protector|glass)\b/i],
+  ["charger", /\b(charger|charging|magsafe)\b/i],
+  ["battery", /\b(power ?bank|battery pack|portable charger)\b/i],
+  ["earbuds", /\b(earbuds|airpods|buds|headphones|earphones)\b/i],
+];
+
+/** "a case", "airpods", "screen protector" -> accessory type (undefined if none mentioned). */
+export function accessoryType(text: string): Accessory["type"] | undefined {
+  return ACCESSORY_TYPE_WORDS.find(([, re]) => re.test(text))?.[0];
+}
+
+/** Loose name match against the accessory catalog ("airpods", "rugged case", "magsafe"). */
+export function findAccessory(world: World, query: string): Accessory | undefined {
+  const q = query.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
+  const words = q.split(/\s+/).filter((w) => w.length > 2);
+  const scored = (world.catalog.accessories ?? []).map((a) => {
+    const name = a.name.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
+    return { a, score: words.filter((w) => name.includes(w)).length };
+  });
+  const best = scored.sort((x, y) => y.score - x.score)[0];
+  return best && best.score > 0 ? best.a : undefined;
+}
+
+/** Brand of the phone someone will be using: the one in the cart, else their current phone. */
+export function phoneBrandFor(world: World, memberId: string, cart: CartItem[] = []): string {
+  const inCart = cart.find((i) => i.kind === "device" && i.memberId === memberId && i.phoneId);
+  if (inCart) return phone(world, inCart.phoneId!).brand;
+  const model = member(world, memberId).device.model.toLowerCase();
+  return /iphone/.test(model) ? "Apple" : /pixel/.test(model) ? "Google" : /galaxy|samsung/.test(model) ? "Samsung" : "any";
+}
+
+const fits = (a: Accessory, brand: string) => a.brands.includes("any") || brand === "any" || a.brands.includes(brand);
+
+/** Accessory picks for someone's phone: one type ("a case"), or the essentials (case, screen, charger). */
+export function recommendAccessories(world: World, memberId: string, opts: { type?: Accessory["type"]; cart?: CartItem[] } = {}) {
+  const m = member(world, memberId);
+  const brand = phoneBrandFor(world, memberId, opts.cart);
+  const young = m.age < 20 || ["teen", "kid"].includes(m.role);
+  const pool = (world.catalog.accessories ?? []).filter((a) => fits(a, brand) && (!opts.type || a.type === opts.type));
+  const rank = (a: Accessory) =>
+    (a.brands.includes(brand) ? 0 : 1) * 1000 + // made for their phone first
+    (a.id === "rugged-case" && young ? -2000 : 0) + // teens: the drop-proof case
+    a.price;
+  const sorted = pool.sort((x, y) => rank(x) - rank(y));
+  const picks = opts.type ? sorted.slice(0, 3) : (["case", "screen", "charger"] as const).map((t) => sorted.find((a) => a.type === t)).filter(Boolean) as Accessory[];
+  return picks.map((a) => ({
+    accessoryId: a.id,
+    name: a.name,
+    type: a.type,
+    price: a.price,
+    why: [a.note ?? (a.brands.includes(brand) ? `made for ${({ Apple: "iPhone", Google: "Pixel phones", Samsung: "Galaxy phones" } as Record<string, string>)[brand] ?? "your phone"}` : "works with any phone")],
+  }));
+}
+
+function reviewAccessory(world: World, item: CartItem, cart: CartItem[]): Ruling {
+  const m = member(world, item.memberId);
+  const a = (world.catalog.accessories ?? []).find((x) => x.id === item.accessoryId);
+  if (!a) throw new Error(`Unknown accessory "${item.accessoryId}"`);
+  const brand = phoneBrandFor(world, m.id, cart);
+  const label = `${m.name} · ${a.name}`;
+  if ((a.type === "case" || a.type === "charger") && !fits(a, brand)) {
+    return { itemId: item.id, memberId: m.id, label, stamp: "CUT", reasons: [`Doesn't fit ${m.name.split(/\s+/)[0]}'s ${brand} phone`], originalCost: a.price, nowCost: 0, heldCost: 0, savings: a.price };
+  }
+  const sameType = cart.filter((i) => i.kind === "accessory" && i.memberId === m.id && (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId)?.type === a.type);
+  if (sameType.length > 1 && sameType[0].id !== item.id) {
+    return { itemId: item.id, memberId: m.id, label, stamp: "CUT", reasons: [`Already getting a ${a.type === "screen" ? "screen protector" : a.type}`], originalCost: a.price, nowCost: 0, heldCost: 0, savings: a.price };
+  }
+  return { itemId: item.id, memberId: m.id, label, stamp: "KEEP", reasons: [a.note ? `Worth it: ${a.note}` : `Fits ${m.name.split(/\s+/)[0]}'s ${brand === "Apple" ? "iPhone" : brand + " phone"}`], originalCost: a.price, nowCost: a.price, heldCost: 0, savings: 0 };
 }

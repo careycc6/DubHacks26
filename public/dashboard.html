@@ -155,6 +155,7 @@
 <script src="/casefile.js"></script>
 <script src="/live.js"></script>
 <script>
+const cap = (s) => String(s ?? "").replace(/^./, (c) => c.toUpperCase());
 const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
 const chip = (id, cls, text) => { $(id).className = `chip ${cls}`; $(id).textContent = text; };
 const ago = (t) => { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
@@ -177,7 +178,7 @@ async function loadDashboard() {
   $("people").innerHTML = d.members.map((m) => `
     <div class="person">
       <span class="avatar">${esc(m.name.slice(0, 1))}</span>
-      <div><div class="nm">${esc(m.name)}</div><div class="sub">${esc(m.role)} · ${esc(m.phone)} · ${m.battery}% battery<br>${m.linked ? (m.welcomed ? "📱 texting the court" : "📱 number saved") : "no phone linked"}</div></div>
+      <div><div class="nm">${esc(m.name)}</div><div class="sub">${esc(cap(m.role))} · ${esc(m.phone)} · ${m.battery}% battery</div></div>
       ${m.ruling ? `<span class="mini ${m.ruling.stamp}">${({ KEEP: "BUY", SWAP: "BUY", WAIT: "WAIT", CUT: "SKIP" })[m.ruling.stamp] ?? m.ruling.stamp}</span>` : ""}
     </div>`).join("");
 }

@@ -23,7 +23,8 @@ function cartLabel(itemId: string): string {
   if (!i) return "an item";
   const p = world.catalog.phones.find((x) => x.id === i.phoneId);
   const a = world.catalog.addons.find((x) => x.id === i.addonId);
-  return p ? `${p.name} ${i.storageGB}GB` : a?.name ?? "an add-on";
+  const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
+  return p ? `${p.name} ${i.storageGB}GB` : acc?.name ?? a?.name ?? "an add-on";
 }
 
 export function snapshot(): Snapshot {

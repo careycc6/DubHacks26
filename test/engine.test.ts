@@ -170,3 +170,20 @@ test("price tracker finds the promo dip", async () => {
   assert.equal(t.now, 1099);
   assert.deepEqual(t.lowest, { day: 41, price: 1099 - 312 });
 });
+
+test("accessories match the phone and wait with it", async () => {
+  const { recommendAccessories, accessoryType, findAccessory } = await import("../src/engine.ts");
+  assert.equal(accessoryType("what case should I get?"), "case");
+  assert.equal(accessoryType("any good earbuds?"), "earbuds");
+  assert.equal(findAccessory(world, "add the rugged case")?.id, "rugged-case");
+  const cart: CartItem[] = [{ id: "p", kind: "device", memberId: "maya", phoneId: "iphone-17-pro-max", storageGB: 512 }];
+  const cases = recommendAccessories(world, "maya", { type: "case", cart });
+  assert.equal(cases[0].accessoryId, "rugged-case"); // teen: drop-proof first
+  assert.ok(cases.every((c) => c.accessoryId !== "pixel-case" && c.accessoryId !== "galaxy-case"));
+  const withCase: CartItem[] = [...cart, { id: "c", kind: "accessory", memberId: "maya", accessoryId: "clear-case-magsafe" }];
+  const t = runTrial(world, withCase, 0);
+  assert.equal(t.rulings.find((r) => r.itemId === "p")!.stamp, "WAIT");
+  assert.equal(t.rulings.find((r) => r.itemId === "c")!.stamp, "WAIT"); // buy it with the phone
+  const wrong: CartItem[] = [...cart, { id: "g", kind: "accessory", memberId: "maya", accessoryId: "galaxy-case" }];
+  assert.equal(runTrial(world, wrong, 0).rulings.find((r) => r.itemId === "g")!.stamp, "CUT"); // doesn't fit an iPhone
+});

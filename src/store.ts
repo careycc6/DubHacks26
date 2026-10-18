@@ -51,7 +51,7 @@ export interface State {
   exhibits: Exhibit[];
   activity: { at: number; day: number; text: string }[]; // public one-liners for the dashboard
   prefs: Record<string, Prefs>; // what each person said they care about (battery, screen, camera…)
-  lastRecs: Record<string, { phoneId: string; storageGB: number }[]>; // so "add the first one" works
+  lastRecs: Record<string, ({ phoneId: string; storageGB: number } | { accessoryId: string })[]>; // so "add the first one" works
   budget?: number; // the family's budget for this round of shopping
   seenIds: string[]; // Photon message ids already handled (delivery is at-least-once)
   purchases: Purchase[];
@@ -123,6 +123,8 @@ export function publicState() {
     cart: state.cart.map((i) => {
       const p = world.catalog.phones.find((x) => x.id === i.phoneId);
       const a = world.catalog.addons.find((x) => x.id === i.addonId);
+      const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
+      if (acc) return { ...i, label: acc.name, price: acc.price };
       return { ...i, label: p ? `${p.name} ${i.storageGB}GB` : a?.name, price: p ? p.prices[String(i.storageGB)] : (a?.monthly ?? 0) * 12 };
     }),
     trial: state.trial,

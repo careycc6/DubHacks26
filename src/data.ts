@@ -9,7 +9,7 @@ const load = (file: string) => JSON.parse(readFileSync(dataDir + file, "utf8"));
 // Real names and phone numbers entered on /setup are saved by db.ts (MongoDB or data/household.local.json), never in git.
 export interface HouseholdLocal {
   /** Only people actually entered on /setup are here; the rest of household.json is example data. */
-  members: Record<string, { name?: string; handles?: string[]; role?: string; phoneModel?: string }>;
+  members: Record<string, { name?: string; handles?: string[]; role?: string; phoneModel?: string; batteryHealth?: number }>;
 }
 
 export function loadHouseholdLocal(): HouseholdLocal {
@@ -34,6 +34,7 @@ export function loadWorld(opts: { local?: boolean } = {}): World {
     if (o?.handles?.length) m.handles = o.handles;
     if (o?.role) m.role = o.role;
     if (o?.phoneModel) m.device.model = o.phoneModel;
+    if (o?.batteryHealth) m.device.batteryHealth = o.batteryHealth; // from Settings → Battery → Battery Health
   }
   return world;
 }

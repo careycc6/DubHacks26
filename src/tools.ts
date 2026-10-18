@@ -1,11 +1,11 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
   describePrefs, findPhone, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
-  priceTrack, protectionAdvice,
+  priceTrack, protectionAdvice, recommendAccessories, findAccessory, phoneBrandFor,
   type Prefs,
 } from "./engine.ts";
 import { changed, newId, refreshTrial, remainingBudget, spent, state, trialOpts, world, type Purchase } from "./store.ts";
-import type { Ruling, Stamp, Trial } from "./types.ts";
+import type { Accessory, Ruling, Stamp, Trial } from "./types.ts";
 
 const caseFileUrl = () => `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
 
@@ -110,14 +110,43 @@ export const tools = {
     },
   },
   add_recommended: {
-    description: "Add one of the phones just recommended to the cart: 'add the first one' = pick 1.",
+    description: "Add one of the phones or accessories just recommended to the cart: 'add the first one' = pick 1.",
     params: { member: { type: "string" }, pick: { type: "number", description: "1, 2 or 3" } },
     required: ["member", "pick"],
     run: (a: { member: string; pick: number }): unknown => {
       const m = resolveMember(a.member);
       const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(3, a.pick)) - 1];
       if (!r) throw new Error(`No recent picks for ${m.name}. Ask the court for a recommendation first.`);
+      if ("accessoryId" in r) return callTool("add_accessory_to_cart", { member: m.id, accessory: r.accessoryId });
       return callTool("add_phone_to_cart", { member: m.id, phone: r.phoneId, storageGB: r.storageGB, addedBy: m.id });
+    },
+  },
+  recommend_accessories: {
+    description: "Accessories that fit someone's phone (the one in the cart, else their current one): a case, screen protector, charger, power bank or earbuds. Leave type empty for the essentials.",
+    params: {
+      member: { type: "string" },
+      type: { type: "string", enum: ["case", "screen", "charger", "battery", "earbuds"], description: "optional" },
+    },
+    required: ["member"],
+    run: (a: { member: string; type?: Accessory["type"] }) => {
+      const m = resolveMember(a.member);
+      const picks = recommendAccessories(world, m.id, { type: a.type, cart: state.cart });
+      state.lastRecs[m.id] = picks.map((p) => ({ accessoryId: p.accessoryId }));
+      return { forWhom: m.name, phoneBrand: phoneBrandFor(world, m.id, state.cart), picks };
+    },
+  },
+  add_accessory_to_cart: {
+    description: "Add an accessory (case, screen protector, charger, power bank, earbuds) to the cart for someone. Accepts an id or a loose name like 'rugged case'.",
+    params: { member: { type: "string" }, accessory: { type: "string" } },
+    required: ["member", "accessory"],
+    run: (a: { member: string; accessory: string }) => {
+      const m = resolveMember(a.member);
+      const acc = (world.catalog.accessories ?? []).find((x) => x.id === a.accessory) ?? findAccessory(world, a.accessory);
+      if (!acc) throw new Error(`No accessory matching "${a.accessory}"`);
+      state.cart.push({ id: newId("c"), kind: "accessory", memberId: m.id, accessoryId: acc.id, addedBy: m.id });
+      refreshTrial();
+      changed();
+      return { added: `${acc.name} for ${m.name}`, price: acc.price };
     },
   },
   add_phone_to_cart: {
@@ -317,7 +346,7 @@ export const tools = {
     run: () =>
       state.cart.map((i) => i.kind === "device"
         ? { itemId: i.id, who: member(world, i.memberId).name, item: `${phone(world, i.phoneId!).name} ${i.storageGB}GB`, price: phone(world, i.phoneId!).prices[String(i.storageGB)] }
-        : { itemId: i.id, who: member(world, i.memberId).name, item: i.addonId }),
+        : { itemId: i.id, who: member(world, i.memberId).name, item: cartItemLabel(i) }),
   },
   run_trial: {
     description: "Put the cart on trial before checkout. Returns rulings (KEEP/SWAP/WAIT/CUT) with exact numbers plus a ready-to-send verdict text. Use whenever someone wants to check out, asks 'should we buy', or asks the court to rule.",
@@ -367,8 +396,9 @@ function findCartItems(q: { member?: string; phone?: string; itemId?: string; ad
   });
 }
 
-function cartItemLabel(i: { kind: string; memberId: string; phoneId?: string; storageGB?: number; addonId?: string }) {
+function cartItemLabel(i: { kind: string; memberId: string; phoneId?: string; storageGB?: number; addonId?: string; accessoryId?: string }) {
   const who = member(world, i.memberId).name.split(/\s+/)[0];
   if (i.kind === "device" && i.phoneId) return `${who}'s ${phone(world, i.phoneId).name} ${i.storageGB}GB`;
+  if (i.kind === "accessory") return `${who}'s ${(world.catalog.accessories ?? []).find((a) => a.id === i.accessoryId)?.name ?? "accessory"}`;
   return `${who}'s ${world.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "add-on"}`;
 }

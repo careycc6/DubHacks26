@@ -34,7 +34,8 @@
     table.members tr.example input::placeholder { color: #a99f8f; font-style: italic; }
     table.members tr .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
     table.members tr.saved .tag { color: var(--keep); }
-    @media (max-width: 700px) { table.members .c-role, table.members .c-phone { display: none; } }
+    @media (max-width: 700px) { table.members .c-role, table.members .c-phone, table.members .c-batt { display: none; } }
+    table.members .m-batt { width: 70px; }
     ol.sub { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: #3d362d; }
   </style>
 </head>
@@ -92,6 +93,7 @@ const $ = (id) => document.getElementById(id);
 const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
 const chip = (id, cls, text) => { $(id).className = `chip ${cls}`; $(id).textContent = text; };
 const say = (id, cls, text) => { $(id).className = `msg ${cls}`; $(id).textContent = text; };
+const cap = (s) => String(s ?? "").replace(/^./, (c) => c.toUpperCase());
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let photonConnected = false;
 
@@ -149,14 +151,15 @@ async function loadHousehold() {
   document.body.insertAdjacentHTML("beforeend", `<datalist id="phoneList">${h.phones.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>`);
   const saved = h.members.filter((m) => m.saved).length;
   chip("hhChip", saved ? "ok" : "no", saved ? `${saved} saved` : "example family");
-  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => `
+  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th class="c-batt">Battery %</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => `
     <tr data-id="${m.id}" class="${m.saved ? "saved" : "example"}">
       <td><input class="m-name" placeholder="e.g. ${esc(m.example.name)}" value="${esc(m.name)}" /></td>
       <td class="c-role"><select class="m-role">
-        ${m.saved ? "" : `<option value="">e.g. ${esc(m.example.role)}</option>`}
-        ${roles.map((r) => `<option value="${r}" ${r === (m.role || (m.saved ? m.example.role : "")) ? "selected" : ""}>${r}</option>`).join("")}
+        ${m.saved ? "" : `<option value="">e.g. ${esc(cap(m.example.role))}</option>`}
+        ${roles.map((r) => `<option value="${r}" ${r === (m.role || (m.saved ? m.example.role : "")) ? "selected" : ""}>${cap(r)}</option>`).join("")}
       </select></td>
       <td class="c-phone"><input class="m-model" list="phoneList" placeholder="e.g. ${esc(m.example.phoneModel)}" value="${esc(m.phoneModel)}" /></td>
+      <td class="c-batt"><input class="m-batt" type="number" min="1" max="100" placeholder="e.g. ${m.example.batteryHealth}" value="${m.batteryHealth ?? ""}" title="Settings → Battery → Battery Health" /></td>
       <td><input class="m-phone" placeholder="e.g. +1 206 555 0123" value="${esc(m.handle)}" /></td>
       <td><span class="tag">${m.saved ? "saved" : "example"}</span></td>
     </tr>`).join("");
@@ -175,6 +178,7 @@ async function saveHousehold() {
     phone: tr.querySelector(".m-phone").value,
     role: tr.querySelector(".m-role").value,
     phoneModel: tr.querySelector(".m-model").value,
+    batteryHealth: tr.querySelector(".m-batt").value,
   }));
   const r = await post("/api/setup/household", { members });
   await loadHousehold();
