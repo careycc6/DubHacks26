@@ -3,6 +3,7 @@
 // ("I'm Maya") and the claim is saved (db.ts: MongoDB or data/claims.local.json) so it survives restarts.
 import { savedMemberIds } from "./data.ts";
 import { get, onReload, put } from "./db.ts";
+import { memberByTitle } from "./engine.ts";
 import { world } from "./store.ts";
 
 const claims = get<Record<string, string>>("claims", {});
@@ -43,13 +44,7 @@ export function introducedAs(text: string): string | undefined {
   const word = (w: string) => new RegExp(`\\b${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t);
   const byName = world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0])); // "I'm Jaret" or "Jaret Zhang"
   if (byName) return byName.id;
-  const roles: [RegExp, (m: { role: string; id: string }) => boolean][] = [
-    [/\b(dad|father)\b/, (m) => m.id === "marco"],
-    [/\b(mom|mum|mother)\b/, (m) => m.id === "elena"],
-    [/\b(grandma|grandmother|abuela)\b/, (m) => m.role === "grandparent"],
-  ];
-  for (const [re, pick] of roles) if (re.test(t)) return world.household.members.find(pick)?.id;
-  return undefined;
+  return memberByTitle(world, t)?.id;
 }
 
 /** Ask once per handle in a group; always ask in a DM until they answer. */

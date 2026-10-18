@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onReload, onShutdown, put } from "./db.ts";
-import { runTrial, shopLinks, shopUrl, type Prefs, type TrialOptions } from "./engine.ts";
+import { managers, runTrial, shopLinks, shopUrl, type Prefs, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
 export interface ChatLine {
@@ -161,7 +161,11 @@ export const remainingBudget = () => (state.budget === undefined ? undefined : M
 
 /** Private DMs can shape rulings (never revealed): e.g. "money is tight" -> budget mode. */
 export function trialOpts(): TrialOptions {
-  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs, budget: remainingBudget() };
+  // Only the people paying get to say money is tight: a teen calling a phone "expensive" isn't a budget.
+  const payers = new Set(managers(world).map((m) => m.id));
+  const anyone = payers.size === 0; // no parents (roommates): everyone pays their share
+  const tightBudget = Object.entries(state.privateNotes).some(([id, notes]) => (anyone || payers.has(id)) && notes.some((n) => BUDGET_WORDS.test(n)));
+  return { tightBudget, prefs: state.prefs, budget: remainingBudget() };
 }
 
 /** Add public one-liners to the dashboard activity log (never private DM content). */

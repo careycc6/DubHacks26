@@ -1,6 +1,6 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
-  describePrefs, findPhone, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
+  describePrefs, findPhone, memberByTitle, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
   priceTrack, protectionAdvice, recommendAccessories, findAccessory, phoneBrandFor, accessoryType,
   type Prefs,
 } from "./engine.ts";
@@ -12,8 +12,8 @@ const caseFileUrl = () => `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/
 function resolveMember(nameOrId: string) {
   const q = String(nameOrId).toLowerCase().trim();
   const m = world.household.members.find(
-    (x) => x.id === q || x.name.toLowerCase() === q || x.role === q || (q === "dad" && x.id === "marco") || (q === "mom" && x.id === "elena") || (q === "grandma" && x.role === "grandparent"),
-  );
+    (x) => x.id === q || x.name.toLowerCase() === q || x.role === q,
+  ) ?? memberByTitle(world, q);
   if (!m) throw new Error(`No household member "${nameOrId}". Members: ${world.household.members.map((x) => x.name).join(", ")}`);
   return m;
 }
@@ -102,7 +102,7 @@ export const tools = {
         forWhom: m.name,
         remembered: describePrefs(prefs),
         picks: recs.map((r) => {
-          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90);
+          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, m);
           return {
             ...r,
             protection: protectionAdvice(m, r.price),

@@ -27,9 +27,10 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
     tracker: state.cart
       .filter((i) => i.kind === "device" && i.phoneId)
       .map((i) => {
-        const t = priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120);
+        const who = world.household.members.find((m) => m.id === i.memberId);
+        const t = priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120, who);
         const p = world.catalog.phones.find((x) => x.id === i.phoneId)!;
-        return { who: world.household.members.find((m) => m.id === i.memberId)?.name ?? "", label: `${p.name} ${i.storageGB}GB`, now: t.now, lowest: t.lowest };
+        return { who: who?.name ?? "", label: `${p.name} ${i.storageGB}GB`, now: t.now, lowest: t.lowest };
       }),
     members: world.household.members
       .filter((m) => !saved.length || saved.includes(m.id))
