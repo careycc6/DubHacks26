@@ -93,6 +93,8 @@ export interface Ruling {
   holdUntilDay?: number;
   proposed?: { phoneId: string; storageGB: number; label: string };
   witness?: string; // the old phone's statement, for WAIT rulings
+  // The engine's receipt: lines that add up to nowCost (heldCost for WAIT), so the case file can show its work.
+  math?: { label: string; amount: number }[];
 }
 
 export interface Trial {

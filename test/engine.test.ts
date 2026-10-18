@@ -140,3 +140,26 @@ test("someone who asked for a great camera keeps their Pro phone", () => {
   assert.equal(plain.proposed?.phoneId, "iphone-17");
   assert.equal(withPrefs.proposed?.phoneId, "iphone-17-pro-max");
 });
+
+test("every ruling's math adds up to what the family pays", () => {
+  const cracked = loadWorld({ local: false });
+  cracked.household.members.find((m) => m.id === "maya")!.device.screenCracked = true;
+  const lowBattery = loadWorld({ local: false });
+  for (const m of lowBattery.household.members) m.device.batteryHealth = 70; // nobody waits: SWAP/KEEP paths
+  const trials = [
+    runTrial(world, demoCart, 0),
+    runTrial(world, demoCart, 0, { tightBudget: true }),
+    runTrial(world, demoCart, 41),
+    runTrial(world, demoCart, 120),
+    runTrial(cracked, demoCart, 0),
+    runTrial(lowBattery, demoCart, 0),
+  ];
+  for (const t of trials) {
+    for (const r of t.rulings) {
+      assert.ok(r.math?.length, `${r.label} has no math`);
+      const total = r.math!.reduce((s, l) => s + l.amount, 0);
+      assert.equal(total, r.stamp === "WAIT" ? r.heldCost : r.nowCost, `${r.label} (${r.stamp}, day ${t.day})`);
+      assert.equal(r.math![0].amount, r.originalCost, `${r.label} starts from what was argued`);
+    }
+  }
+});

@@ -26,6 +26,30 @@ const stampHtml = (r) => {
   return `<span class="stamp ${r.stamp} ${fresh ? "fresh" : ""}">${r.stamp}${r.stamp === "WAIT" ? `<small>until day ${r.holdUntilDay}</small>` : ""}</span>`;
 };
 
+// "Show the math": the engine's receipt for a ruling. Open receipts stay open across live re-renders.
+const openMath = new Set();
+document.addEventListener("toggle", (e) => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.classList.contains("math")) return;
+  d.open ? openMath.add(d.dataset.item) : openMath.delete(d.dataset.item);
+}, true);
+const signed = (n) => (n < 0 ? `−${usd(-n)}` : usd(n));
+function mathHtml(r) {
+  if (!r.math?.length) return "";
+  const total = r.math.reduce((s, l) => s + l.amount, 0);
+  const yearly = r.math[0].label.includes("12 ×");
+  const totalLabel = r.stamp === "WAIT" ? `On day ${r.holdUntilDay}` : yearly ? "Per year" : "Today";
+  return `<details class="math" data-item="${esc(r.itemId)}" ${openMath.has(r.itemId) ? "open" : ""}>
+    <summary>Show the math</summary>
+    <table>
+      ${r.math.map((l, i) => `<tr><td>${esc(l.label)}</td><td>${i === 0 ? usd(l.amount) : signed(l.amount)}</td></tr>`).join("")}
+      <tr class="sum"><td>${totalLabel}</td><td>${usd(total)}</td></tr>
+      ${r.stamp === "WAIT" && r.nowCost > 0 ? `<tr class="note"><td>Today: screen repair</td><td>${usd(r.nowCost)}</td></tr>` : ""}
+    </table>
+    <div class="by">Computed by engine.ts · not the AI</div>
+  </details>`;
+}
+
 function rulingCard(r, names) {
   const who = r.memberId ? names[r.memberId] : "Account";
   const item = r.label.includes(" · ") ? r.label.split(" · ").slice(1).join(" · ") : r.label;
@@ -41,6 +65,7 @@ function rulingCard(r, names) {
     <ul>${r.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(names[r.memberId])}'s current phone</div>“${esc(r.witness)}”</blockquote>` : ""}
     <div class="money">${money}${r.savings > 0 ? `<b>saves ${usd(r.savings)}</b>` : ""}</div>
+    ${mathHtml(r)}
   </article>`;
 }
 

@@ -107,11 +107,14 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     gb = need;
   }
   let price = target.prices[String(gb)];
+  const math: { label: string; amount: number }[] = [{ label: `${picked.name} ${pickedGB}GB, as argued`, amount: originalCost }];
+  if (price !== originalCost) math.push({ label: target.id !== picked.id ? `Switch to ${target.name} ${gb}GB` : `Drop to ${gb}GB`, amount: price - originalCost });
 
   // 3. Trade-in the family forgot about.
   if (m.device.tradeInValue > 0) {
     reasons.push(`Trade in ${m.name}'s ${m.device.model}: −${usd(m.device.tradeInValue)}`);
     price -= m.device.tradeInValue;
+    math.push({ label: `Trade-in: ${m.device.model}`, amount: -m.device.tradeInValue });
   }
 
   // 4. Timing: should this purchase wait?
@@ -119,6 +122,7 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
   if (active) {
     reasons.push(`${active.name} is live: −${usd(active.credit)}`);
     price -= active.credit;
+    math.push({ label: `${active.name} (live now)`, amount: -active.credit });
   }
   const healthy = m.device.batteryHealth >= LOW_BATTERY;
   let holdUntilDay: number | undefined;
@@ -126,6 +130,7 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     holdUntilDay = upcoming.startsOnDay;
     reasons.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: −${usd(upcoming.credit)}`);
     price -= upcoming.credit;
+    math.push({ label: `${upcoming.name} (from day ${upcoming.startsOnDay})`, amount: -upcoming.credit });
   }
   // installmentsLeft is as of day 0; payments keep getting made as the demo clock moves.
   const paymentsLeft = Math.max(0, Math.ceil((m.device.installmentsLeft * DAYS_PER_PAYMENT - day) / DAYS_PER_PAYMENT));
@@ -160,6 +165,7 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     holdUntilDay,
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
     witness: stamp === "WAIT" ? witnessStatement(m) : undefined,
+    math,
   };
 }
 
@@ -174,11 +180,13 @@ function reviewAddon(world: World, item: CartItem): Ruling {
       itemId: item.id, memberId: m.id, label: `${m.name} · ${addon.name}`, stamp: "CUT",
       reasons: [`The account already pays for ${dupe.name} and nobody has used it in 12 months`],
       originalCost: yearly, nowCost: 0, heldCost: 0, savings: yearly,
+      math: [{ label: `${addon.name}: 12 × ${usd(addon.monthly)}`, amount: yearly }, { label: "Struck: already on the account, unused", amount: -yearly }],
     };
   }
   return {
     itemId: item.id, memberId: m.id, label: `${m.name} · ${addon.name}`, stamp: "KEEP",
     reasons: ["Reasonable add-on"], originalCost: yearly, nowCost: yearly, heldCost: 0, savings: 0,
+    math: [{ label: `${addon.name}: 12 × ${usd(addon.monthly)}`, amount: yearly }],
   };
 }
 
@@ -192,6 +200,7 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
       itemId: `account:${a.id}`, label: `Account · ${a.name}`, stamp: "CUT",
       reasons: [`${usd(a.monthly)}/mo and unused for 12 months`],
       originalCost: yearly, nowCost: 0, heldCost: 0, savings: yearly,
+      math: [{ label: `${a.name}: 12 × ${usd(a.monthly)}`, amount: yearly }, { label: "Struck: unused for 12 months", amount: -yearly }],
     });
   }
   const sum = (f: (r: Ruling) => number) => rulings.reduce((t, r) => t + f(r), 0);
