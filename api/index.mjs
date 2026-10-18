@@ -1191,7 +1191,7 @@ function restoreSnapshot(snap) {
 onReload(() => {
   Object.assign(world, loadWorld());
   state = fromSaved(get("state", void 0));
-  lastSaved = "";
+  lastSaved = JSON.stringify(snapshot());
 });
 var lastSaved = "";
 function persist() {

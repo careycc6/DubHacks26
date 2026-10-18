@@ -131,7 +131,9 @@ export function restoreSnapshot(snap: Snapshot) {
 onReload(() => {
   Object.assign(world, loadWorld());
   state = fromSaved(get<Saved | undefined>("state", undefined));
-  lastSaved = "";
+  // What's loaded counts as saved: a request that changes nothing mustn't write it back, or a copy that loaded
+  // just before someone else's change (a new budget or price) would overwrite it, and the value flips back and forth.
+  lastSaved = JSON.stringify(snapshot());
 });
 
 let lastSaved = "";
