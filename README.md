@@ -29,7 +29,42 @@ npm test               # pricing engine tests
 - **`MONGODB_URI`:** saves the cart, rulings, chat and household to MongoDB (a free Atlas M0 cluster is enough).
   Without it, everything is saved to `data/*.local.json` on this computer. Either way, restarts no longer wipe the cart.
 
-## Host it
+## Host it on Vercel (serverless)
+
+On Vercel the court runs as one serverless function (`api/index.mjs`, bundled from `src/vercel.ts`). iMessages arrive
+as **Photon webhooks** at `/api/photon/webhook` instead of a stream; each request reloads state from MongoDB and saves
+before the function freezes; pages poll every 3 seconds instead of streaming. Locally `npm run build:vercel &&
+node scripts/vercel-local.mjs` runs the same bundle in serverless mode on port 3101.
+
+1. **Import the repo:** [vercel.com/new](https://vercel.com/new) → this GitHub repo → Framework preset **Other**.
+   `vercel.json` already sets the build (`npm run build:vercel`), static files (`public/`) and routing.
+2. **Environment variables** (Settings → Environment Variables, all environments):
+
+   | Name | Value |
+   |---|---|
+   | `MONGODB_URI` | your Atlas string (**required**: Vercel's disk is read-only) |
+   | `MONGODB_DB` | `cartcourt` |
+   | `ADMIN_TOKEN` | a long random string (`openssl rand -hex 24`) to unlock the dashboard |
+   | `GEMINI_API_KEY`, `GEMINI_MODELS` | as in `.env` |
+   | `PHOTON_PROJECT_ID`, `PHOTON_PROJECT_SECRET` | as in `.env` |
+   | `NODEJS_HELPERS` | `0` (lets Express read the raw webhook body) |
+   | `PUBLIC_URL` | `https://<your-app>.vercel.app` (add after the first deploy) |
+   | `SPECTRUM_WEBHOOK_SECRET` | from step 4 |
+
+3. **Deploy**, and note the `https://<your-app>.vercel.app` address.
+4. **Point Photon at it** (from your laptop, in `cart-court/`):
+   ```bash
+   node --env-file=.env scripts/photon-webhook.mjs https://<your-app>.vercel.app
+   ```
+   It prints `SPECTRUM_WEBHOOK_SECRET=…` **once**. Add it (and `PUBLIC_URL`) in Vercel, then **Redeploy**.
+5. **Stop the laptop server** (`Ctrl+C` in its terminal). Two courts on one Photon project would double-reply.
+6. Open `https://<your-app>.vercel.app/?key=<ADMIN_TOKEN>` once to unlock the dashboard in that browser.
+   `https://<your-app>.vercel.app/healthz` should say `"db":"mongodb"`. Text the court and watch the dashboard.
+
+Keys can't be saved from `/setup` on Vercel (read-only disk). Set them as environment variables instead. The household step works.
+`scripts/photon-webhook.mjs --list` / `--delete <id>` show or remove registered webhooks.
+
+## Host it as a container
 
 The server is one long-running Node process (the Photon stream stays connected), so host it as a container with
 **exactly one instance, always on** (Cloud Run with min and max instances 1 and CPU always allocated, Render, Fly or Railway).

@@ -2,7 +2,7 @@
 // The state is saved through db.ts on every change, so a restart or redeploy picks up where the court left off.
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
-import { get, onShutdown, put } from "./db.ts";
+import { get, onReload, onShutdown, put } from "./db.ts";
 import { runTrial, type Prefs, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
@@ -38,6 +38,7 @@ export interface State {
   prefs: Record<string, Prefs>; // what each person said they care about (battery, screen, camera…)
   lastRecs: Record<string, { phoneId: string; storageGB: number }[]>; // so "add the first one" works
   budget?: number; // the family's budget for this round of shopping
+  seenIds: string[]; // Photon message ids already handled (delivery is at-least-once)
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
@@ -45,7 +46,7 @@ export interface State {
 export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
-const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, trialRuns: 0 });
+const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, seenIds: [], trialRuns: 0 });
 
 // What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone.
 type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }> };
@@ -59,8 +60,16 @@ function restore(): State {
 }
 export let state: State = restore();
 
+// Another copy of the court (serverless) may have changed things: start from what's saved.
+onReload(() => {
+  Object.assign(world, loadWorld());
+  state = restore();
+  lastSaved = "";
+});
+
 let lastSaved = "";
-function persist() {
+/** Save now (also called at the end of every serverless request). */
+export function persist() {
   const { pendingImage: _p, ...rest } = state;
   const saved: Saved = {
     ...rest,

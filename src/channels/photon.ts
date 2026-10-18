@@ -4,20 +4,26 @@
 // On Photon's free/shared plan each person texts the court 1:1 (no group chats; those need a
 // dedicated line). That's fine: every 1:1 chat feeds the same household cart, and "it's time"
 // alerts go to everyone. Photon only delivers to numbers added under Users in the dashboard.
+//
+// Two ways in:
+//  - Laptop / container: startPhoton() keeps a streaming connection open (`for await app.messages`).
+//  - Vercel: Photon POSTs each message to /api/photon/webhook (see handleWebhook). No stream; the
+//    SDK client is created on demand just to verify webhooks and send replies.
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import type { Space } from "spectrum-ts";
+import type { Message, Space } from "spectrum-ts";
 import { handle as handleMessage } from "../agent.ts";
 import { memberForHandle, welcome, welcomeQuestion } from "../claims.ts";
-import { addChat } from "../store.ts";
+import { background, serverless } from "../runtime.ts";
+import { addChat, state } from "../store.ts";
 import { registerChannel, sendTo } from "./index.ts";
 
 type SpectrumApp = Awaited<ReturnType<typeof Spectrum>>;
 
 const spaces = new Map<string, Space>();
 const handleSpace = new Map<string, string>(); // sender handle -> their 1:1 space id
-const seen = new Set<string>(); // delivery is at-least-once: dedupe on message id
 let app: SpectrumApp | undefined;
+let connecting: Promise<SpectrumApp | undefined> | undefined;
 let generation = 0; // bumps on restart so an old message loop stops
 
 export const photonStatus: { state: "off" | "connecting" | "connected" | "error"; error?: string; line?: string } = { state: "off" };
@@ -34,17 +40,12 @@ function lineOf(space: Space): string | undefined {
   }
 }
 
-export async function startPhoton() {
+/** Create the SDK client (no stream). Shared by both modes; on Vercel it's created on the first request that needs it. */
+async function connect(): Promise<SpectrumApp | undefined> {
   const { PHOTON_PROJECT_ID: projectId, PHOTON_PROJECT_SECRET: projectSecret } = process.env;
-  const myGen = ++generation;
-  if (app) {
-    await app.stop().catch(() => {});
-    app = undefined;
-  }
   if (!projectId || !projectSecret) {
     photonStatus.state = "off";
-    console.log("[photon] PHOTON_PROJECT_ID/SECRET not set: real phone channel disabled (simulator still works)");
-    return;
+    return undefined;
   }
   photonStatus.state = "connecting";
   photonStatus.error = undefined;
@@ -54,61 +55,107 @@ export async function startPhoton() {
     photonStatus.state = "error";
     photonStatus.error = String((err as Error).message ?? err);
     console.error("[photon] failed to start:", photonStatus.error);
-    return;
+    return undefined;
   }
   registerChannel("photon", async (spaceId, text) => {
     await spaces.get(spaceId.slice("photon:".length))?.send(text);
   });
   photonStatus.state = "connected";
-  console.log("[photon] connected, listening for messages");
+  return app;
+}
 
-  for await (const [space, message] of app.messages) {
-    if (myGen !== generation) break;
-    if (message.direction === "outbound" || seen.has(message.id)) continue;
-    seen.add(message.id);
-    spaces.set(space.id, space);
-    photonStatus.line ??= lineOf(space);
-
-    const content = message.content as { type: string; text?: string; mimeType?: string; read?: () => Promise<Buffer> };
-    let text = content.type === "text" ? content.text ?? "" : "";
-    let image: { mimeType: string; base64: string } | undefined;
-    if (content.type === "attachment" && content.mimeType?.startsWith("image/") && content.read) {
-      image = { mimeType: content.mimeType, base64: (await content.read()).toString("base64") };
-      text ||= "[photo]";
-    }
-    if (!text && !image) continue; // reactions, typing, read receipts...
-
-    const isGroup = (space as unknown as { type?: string }).type === "group";
-    const spaceId = `photon:${space.id}`;
-    const handle = message.sender?.id;
-    if (handle && !isGroup) handleSpace.set(handle, space.id);
-    const memberId = memberForHandle(handle);
-    addChat({ spaceId, from: memberId ?? handle ?? "unknown", text, private: !isGroup, image: image ? `data:${image.mimeType};base64,${image.base64}` : undefined });
-    console.log(`[photon] ${handle} (${memberId ?? "new"}): ${text.slice(0, 80)}`);
-
-    try {
-      const reply = await space.responding(() => handleMessage({ spaceId, isGroup, memberId, handle, text, image }));
-      if (reply) await sendTo(spaceId, reply, !isGroup);
-    } catch (err) {
-      console.error("[photon] handler failed", err);
-    }
+/** The SDK client, connecting first if needed (waits for a connect already in progress). */
+async function ensureApp(): Promise<SpectrumApp> {
+  if (app && photonStatus.state === "connected") return app;
+  connecting ??= connect().finally(() => (connecting = undefined));
+  const a = await connecting;
+  if (!a) {
+    throw new Error(photonStatus.state === "error" ? `Photon couldn't connect: ${photonStatus.error}` : "Photon isn't connected. Paste the Project ID and Secret in step 2 on /setup.");
   }
+  return a;
+}
+
+/** Delivery is at-least-once (stream and webhooks both): skip messages we've already handled. Saved, so it works across serverless copies. */
+function alreadySeen(id: string) {
+  if (state.seenIds.includes(id)) return true;
+  state.seenIds.push(id);
+  if (state.seenIds.length > 300) state.seenIds.splice(0, state.seenIds.length - 300);
+  return false;
+}
+
+/** One inbound iMessage, from the stream or a webhook: run it through the court and reply. */
+async function onInbound(space: Space, message: Message) {
+  if (message.direction === "outbound" || alreadySeen(message.id)) return;
+  spaces.set(space.id, space);
+  photonStatus.line ??= lineOf(space);
+
+  const content = message.content as { type: string; text?: string; mimeType?: string; read?: () => Promise<Buffer> };
+  let text = content.type === "text" ? content.text ?? "" : "";
+  let image: { mimeType: string; base64: string } | undefined;
+  if (content.type === "attachment" && content.mimeType?.startsWith("image/") && content.read) {
+    image = { mimeType: content.mimeType, base64: (await content.read()).toString("base64") };
+    text ||= "[photo]";
+  }
+  if (!text && !image) return; // reactions, typing, read receipts...
+
+  const isGroup = (space as unknown as { type?: string }).type === "group";
+  const spaceId = `photon:${space.id}`;
+  const handle = message.sender?.id;
+  if (handle && !isGroup) handleSpace.set(handle, space.id);
+  const memberId = memberForHandle(handle);
+  addChat({ spaceId, from: memberId ?? handle ?? "unknown", text, private: !isGroup, image: image ? `data:${image.mimeType};base64,${image.base64}` : undefined });
+  console.log(`[photon] ${handle} (${memberId ?? "new"}): ${text.slice(0, 80)}`);
+
+  try {
+    const reply = await space.responding(() => handleMessage({ spaceId, isGroup, memberId, handle, text, image }));
+    if (reply) await sendTo(spaceId, reply, !isGroup);
+  } catch (err) {
+    console.error("[photon] handler failed", err);
+  }
+}
+
+/** Laptop / container: connect and keep a streaming connection open. On Vercel this only connects (webhooks bring messages). */
+export async function startPhoton() {
+  const myGen = ++generation;
+  if (app) {
+    await app.stop().catch(() => {});
+    app = undefined;
+  }
+  if (!process.env.PHOTON_PROJECT_ID || !process.env.PHOTON_PROJECT_SECRET) {
+    photonStatus.state = "off";
+    console.log("[photon] PHOTON_PROJECT_ID/SECRET not set: real phone channel disabled (simulator still works)");
+    return;
+  }
+  const a = await connect();
+  if (!a || serverless) return;
+  console.log("[photon] connected, listening for messages");
+  for await (const [space, message] of a.messages) {
+    if (myGen !== generation) break;
+    await onInbound(space, message);
+  }
+}
+
+/**
+ * Vercel: one webhook delivery from Photon. `body` must be the exact raw bytes. The SDK verifies the
+ * signature (SPECTRUM_WEBHOOK_SECRET) and calls back with each message after it has computed the
+ * response; that work is tracked with background() so the function stays alive until replies are sent.
+ */
+export async function handleWebhook(body: Uint8Array, headers: Record<string, string>) {
+  const a = await ensureApp();
+  return a.webhook({ body, headers }, (space, message) => {
+    const work = onInbound(space, message);
+    background(work);
+    return work;
+  });
 }
 
 /** The court texts first, so the tester learns its number. The handle must be added under Users in the Photon dashboard. */
 export async function sayHello(handle: string): Promise<{ line?: string }> {
-  // Right after Connect, Photon takes a few seconds to come up: wait instead of failing.
-  for (let waited = 0; (!app || photonStatus.state === "connecting") && waited < 20_000; waited += 500) {
-    if (photonStatus.state === "off" || photonStatus.state === "error") break;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  if (!app || photonStatus.state !== "connected") {
-    throw new Error(photonStatus.state === "error" ? `Photon couldn't connect: ${photonStatus.error}` : "Photon isn't connected. Paste the Project ID and Secret in step 2 on /setup.");
-  }
+  const a = await ensureApp();
   const im = (imessage as unknown as (a: SpectrumApp) => {
     user(id: string): Promise<unknown>;
     space: { create(u: unknown): Promise<Space> };
-  })(app);
+  })(a);
   const space = await im.space.create(await im.user(handle));
   spaces.set(space.id, space);
   handleSpace.set(handle, space.id);
@@ -120,17 +167,19 @@ export async function sayHello(handle: string): Promise<{ line?: string }> {
   return { line };
 }
 
-export const photonReady = () => !!app && photonStatus.state === "connected";
+/** Is a Photon project configured (so it's worth trying to send)? On Vercel the client connects on demand. */
+export const photonReady = () =>
+  !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET && photonStatus.state !== "error" && (serverless || photonStatus.state === "connected");
 
 /** Text one person in their 1:1 chat with the court (reuses the chat, or opens it). Returns the space id. */
 export async function sendToHandle(handle: string, text: string): Promise<string> {
-  if (!photonReady()) throw new Error("Photon isn't connected");
+  const a = await ensureApp();
   let id = handleSpace.get(handle);
   if (!id || !spaces.has(id)) {
     const im = (imessage as unknown as (a: SpectrumApp) => {
       user(id: string): Promise<unknown>;
       space: { create(u: unknown): Promise<Space> };
-    })(app!);
+    })(a);
     const space = await im.space.create(await im.user(handle));
     spaces.set(space.id, space);
     handleSpace.set(handle, space.id);

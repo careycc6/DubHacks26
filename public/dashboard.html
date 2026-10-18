@@ -135,6 +135,7 @@
 </div>
 
 <script src="/casefile.js"></script>
+<script src="/live.js"></script>
 <script>
 const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
 const chip = (id, cls, text) => { $(id).className = `chip ${cls}`; $(id).textContent = text; };
@@ -168,15 +169,13 @@ function renderFeed(activity) {
   $("feed").innerHTML = [...activity].reverse().map((a) => `<li><span class="when">day ${a.day} · ${ago(a.at)}</span>${linkify(a.text)}</li>`).join("");
 }
 
-const es = new EventSource("/api/events");
-es.addEventListener("state", (e) => {
-  const s = JSON.parse(e.data);
+live({ onState: (s) => {
   render(s);
   $("household").textContent = s.household;
   $("cartCount").textContent = s.cart.length ? `${s.cart.length} in the cart` : "cart empty";
   renderFeed(s.activity);
   loadDashboard();
-});
+} });
 
 $("budgetSave").onclick = async () => {
   const r = await post("/api/dashboard/budget", { amount: Number($("budget").value || 0) });

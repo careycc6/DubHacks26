@@ -106,3 +106,16 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.exit(0);
   });
 }
+
+// ---- Serverless (Vercel): several short-lived copies of the court may run, so each request first pulls
+// the latest from MongoDB. Modules that keep their own copy (state, claims, welcomes) re-read via onReload.
+const reloadHooks: (() => void)[] = [];
+export const onReload = (fn: () => void) => reloadHooks.push(fn);
+
+export async function reload() {
+  if (!docs) return; // local files: this process is the only writer
+  for (const d of await docs.find().toArray()) {
+    if (!dirty.has(d._id as Key)) cache.set(d._id as Key, JSON.parse(d.json));
+  }
+  for (const fn of reloadHooks) fn();
+}

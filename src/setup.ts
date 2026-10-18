@@ -8,7 +8,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
 import { addPhotonUser, dashboardToken } from "./photonUsers.ts";
 import { loadHouseholdLocal, loadWorld, savedMemberIds, saveHouseholdLocal } from "./data.ts";
-import { backend, flush, get, put } from "./db.ts";
+import { backend, flush, get, onReload, put } from "./db.ts";
 import { changed, world } from "./store.ts";
 import { claimedHandles } from "./claims.ts";
 
@@ -28,7 +28,12 @@ function writeEnv(updates: Partial<Record<Key, string>>) {
     else lines.push(`${k}=${v}`);
     process.env[k] = v;
   }
-  writeFileSync(envFile, lines.join("\n"));
+  try {
+    writeFileSync(envFile, lines.join("\n"));
+  } catch (err) {
+    // Hosted (Vercel's file system is read-only): applies until the next restart. Set keys in the host's environment variables.
+    console.warn(`[setup] couldn't save .env (${(err as Error).message}). Set these in your host's environment variables: ${Object.keys(updates).join(", ")}`);
+  }
 }
 
 /** Local-only: loopback address, a localhost Host header, and no proxy/tunnel forwarding headers. */
@@ -230,6 +235,7 @@ setupRouter.post("/api/setup/household", (req, res) => {
 
 // Remembers who already got a welcome, so "Text everyone" after adding one person only texts that person.
 const welcomed = get<string[]>("welcomed", []);
+onReload(() => welcomed.splice(0, welcomed.length, ...get<string[]>("welcomed", [])));
 export const wasWelcomed = (handle: string) => welcomed.includes(handle);
 
 setupRouter.post("/api/setup/hello-all", async (req, res) => {

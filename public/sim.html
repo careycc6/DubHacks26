@@ -33,6 +33,7 @@
     <iframe src="/cart" title="Live case file"></iframe>
   </section>
 </div>
+<script src="/live.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -77,16 +78,16 @@ document.querySelector(".controls").onclick = async (e) => {
   renderThread();
 };
 
-const es = new EventSource("/api/events?chat=1");
-es.addEventListener("state", (e) => {
-  const s = JSON.parse(e.data);
+live({
+  onState: (s) => {
   if (!members.length) {
     members = s.members;
     $("who").innerHTML = members.map((m) => `<option value="${m.id}">${esc(m.name)} (${esc(m.role)})</option>`).join("") + `<option value="new:+15555550199">📱 New phone (unknown)</option>`;
     renderTabs();
   }
+  },
+  onChat: (c) => { lines.push(c); renderThread(); },
 });
-es.addEventListener("chat", (e) => { lines.push(JSON.parse(e.data)); renderThread(); });
 </script>
 </body>
 </html>

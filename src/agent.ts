@@ -6,6 +6,7 @@ import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
 import { broadcastChanges, snapshot } from "./feed.ts";
+import { later } from "./runtime.ts";
 
 export interface Incoming {
   spaceId: string;
@@ -40,7 +41,7 @@ export async function handle(msg: Incoming): Promise<string | null> {
   // Family feed: changes made in a 1:1 chat get a one-line update in everyone else's chat.
   // Sent just after this reply so the person who acted hears back first.
   // (Always logs to the dashboard; only 1:1 chats get relayed to the others.)
-  setTimeout(() => broadcastChanges(before, msg.memberId, msg.spaceId).catch((e) => console.warn("[feed]", e)), 400);
+  later(() => broadcastChanges(before, msg.memberId, msg.spaceId), 400);
   return reply;
 }
 

@@ -2,10 +2,14 @@
 // Numbers in data/household.json are matched first; anyone else introduces themselves in chat
 // ("I'm Maya") and the claim is saved (db.ts: MongoDB or data/claims.local.json) so it survives restarts.
 import { savedMemberIds } from "./data.ts";
-import { get, put } from "./db.ts";
+import { get, onReload, put } from "./db.ts";
 import { world } from "./store.ts";
 
 const claims = get<Record<string, string>>("claims", {});
+onReload(() => {
+  for (const k of Object.keys(claims)) delete claims[k];
+  Object.assign(claims, get<Record<string, string>>("claims", {}));
+});
 /** The simulator's "new phone": claims stay in memory and never show up as a real contact. */
 export const SIM_HANDLE = "+15555550199";
 const asked = new Set<string>(); // handles we've already asked "who are you?" in a group
