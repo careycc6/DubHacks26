@@ -147,6 +147,7 @@ export const tools = {
     params: {},
     run: () => {
       state.trial = runTrial(world, state.cart, state.day, trialOpts());
+      state.trialRuns++;
       changed();
       return { verdictText: formatVerdict(state.trial), trial: state.trial };
     },

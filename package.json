@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Cart Court: an honest phone-shopping agent for your group chat (DubHacks 26)",
   "scripts": {
-    "dev": "node --use-system-ca --watch-path=src --watch-path=data --watch-preserve-output --import tsx src/server.ts",
+    "dev": "node --use-system-ca --watch-path=src --watch-path=data/catalog.json --watch-path=data/household.json --watch-path=data/offers.json --watch-preserve-output --import tsx src/server.ts",
     "start": "node --use-system-ca --import tsx src/server.ts",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc",

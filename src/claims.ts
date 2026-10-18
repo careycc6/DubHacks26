@@ -29,10 +29,10 @@ export function claim(handle: string, memberId: string) {
   writeFileSync(file, JSON.stringify(Object.fromEntries(Object.entries(claims).filter(([h]) => h !== SIM_HANDLE)), null, 2));
 }
 
+/** Demo reset: forget the simulator's fake phone only. Real people stay linked. */
 export function forgetClaims() {
-  for (const k of Object.keys(claims)) delete claims[k];
+  delete claims[SIM_HANDLE];
   asked.clear();
-  writeFileSync(file, "{}");
 }
 
 /** Find a member name in an intro like "I'm Maya", "maya", "this is dad". */

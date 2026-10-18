@@ -5,6 +5,7 @@ import { usd } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
+import { broadcastChanges, snapshot } from "./feed.ts";
 
 export interface Incoming {
   spaceId: string;
@@ -34,6 +35,17 @@ export function shouldRespond(msg: Incoming) {
 }
 
 export async function handle(msg: Incoming): Promise<string | null> {
+  const before = snapshot();
+  const reply = await respond(msg);
+  // Family feed: changes made in a 1:1 chat get a one-line update in everyone else's chat.
+  // Sent just after this reply so the person who acted hears back first.
+  if (!msg.isGroup && msg.memberId) {
+    setTimeout(() => broadcastChanges(before, msg.memberId, msg.spaceId).catch((e) => console.warn("[feed]", e)), 400);
+  }
+  return reply;
+}
+
+async function respond(msg: Incoming): Promise<string | null> {
   // Onboarding: a number the court doesn't know yet introduces itself ("I'm Maya").
   if (!msg.memberId && msg.handle) {
     const intro = introducedAs(msg.text);

@@ -15,6 +15,7 @@ import { registerChannel, sendTo } from "./index.ts";
 type SpectrumApp = Awaited<ReturnType<typeof Spectrum>>;
 
 const spaces = new Map<string, Space>();
+const handleSpace = new Map<string, string>(); // sender handle -> their 1:1 space id
 const seen = new Set<string>(); // delivery is at-least-once: dedupe on message id
 let app: SpectrumApp | undefined;
 let generation = 0; // bumps on restart so an old message loop stops
@@ -79,6 +80,7 @@ export async function startPhoton() {
     const isGroup = (space as unknown as { type?: string }).type === "group";
     const spaceId = `photon:${space.id}`;
     const handle = message.sender?.id;
+    if (handle && !isGroup) handleSpace.set(handle, space.id);
     const memberId = memberForHandle(handle);
     addChat({ spaceId, from: memberId ?? handle ?? "unknown", text, private: !isGroup, image: image ? `data:${image.mimeType};base64,${image.base64}` : undefined });
     console.log(`[photon] ${handle} (${memberId ?? "new"}): ${text.slice(0, 80)}`);
@@ -108,10 +110,31 @@ export async function sayHello(handle: string): Promise<{ line?: string }> {
   })(app);
   const space = await im.space.create(await im.user(handle));
   spaces.set(space.id, space);
+  handleSpace.set(handle, space.id);
   const memberId = memberForHandle(handle);
   const text = memberId ? welcome(memberId) : welcomeQuestion();
   await sendTo(`photon:${space.id}`, text, true);
   const line = lineOf(space);
   if (line) photonStatus.line = line;
   return { line };
+}
+
+export const photonReady = () => !!app && photonStatus.state === "connected";
+
+/** Text one person in their 1:1 chat with the court (reuses the chat, or opens it). Returns the space id. */
+export async function sendToHandle(handle: string, text: string): Promise<string> {
+  if (!photonReady()) throw new Error("Photon isn't connected");
+  let id = handleSpace.get(handle);
+  if (!id || !spaces.has(id)) {
+    const im = (imessage as unknown as (a: SpectrumApp) => {
+      user(id: string): Promise<unknown>;
+      space: { create(u: unknown): Promise<Space> };
+    })(app!);
+    const space = await im.space.create(await im.user(handle));
+    spaces.set(space.id, space);
+    handleSpace.set(handle, space.id);
+    id = space.id;
+  }
+  await sendTo(`photon:${id}`, text, true);
+  return id;
 }

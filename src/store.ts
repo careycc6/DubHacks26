@@ -32,13 +32,14 @@ export interface State {
   chat: ChatLine[];
   groupSpaceId?: string; // where proactive "it's time" messages go
   exhibits: Exhibit[];
+  trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
 
 export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
-const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [] });
+const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], trialRuns: 0 });
 export let state: State = fresh();
 
 let seq = 0;
