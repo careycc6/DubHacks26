@@ -32,10 +32,11 @@ You'll see ✓ Works. Now the court chats naturally and reads photos.
 
 On the same **/setup** page:
 1. **Step 2:** paste your Photon **Project ID** and **Project Secret** from [app.photon.codes](https://app.photon.codes), then click **Connect**.
-2. **In the Photon dashboard**, open **Users** and add every family member's phone number.
-3. **Step 3, "Your household":** type each person's name and phone number, then click **Text everyone**.
-   Each person gets a personal welcome ("Welcome to the court, Maya!") from the court's number, already knowing who they are.
-   Save that number as a contact called "Cart Court".
+2. **Once, in a terminal:** `npx -p @photon-ai/cli photon login` (approve it in your browser). This lets the court add
+   your family's numbers under Photon's **Users** list itself. Prefer to do it by hand? Add each number at app.photon.codes → Users.
+3. **Step 3, "Your household":** the grey rows are an example family. Type over a row with a real person's name,
+   role, current phone and number. Rows you leave blank stay examples and are never saved or texted. Then click **Text everyone**.
+   Each person gets "Welcome to the court, [name]! ⚖️" from the court's number. Save it as a contact called "Cart Court".
 4. **Step 4 (so the links it texts open on phones):** in a second terminal run `npm run tunnel` and open
    the `https://…trycloudflare.com` address it prints once.
 

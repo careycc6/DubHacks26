@@ -5,14 +5,15 @@ import { fileURLToPath } from "node:url";
 import { GoogleGenAI } from "@google/genai";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
-import { loadHouseholdLocal, saveHouseholdLocal } from "./data.ts";
+import { addPhotonUser, dashboardToken } from "./photonUsers.ts";
+import { loadHouseholdLocal, loadWorld, savedMemberIds, saveHouseholdLocal } from "./data.ts";
 import { changed, world } from "./store.ts";
 import { claimedHandles } from "./claims.ts";
 
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
 const exampleFile = fileURLToPath(new URL("../.env.example", import.meta.url));
 
-const EDITABLE = ["GEMINI_API_KEY", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "PUBLIC_URL", "COURT_NUMBER"] as const;
+const EDITABLE = ["GEMINI_API_KEY", "GEMINI_MODELS", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "PUBLIC_URL", "COURT_NUMBER"] as const;
 type Key = (typeof EDITABLE)[number];
 
 function writeEnv(updates: Partial<Record<Key, string>>) {
@@ -45,8 +46,13 @@ setupRouter.use(["/setup", "/setup.html", "/api/setup"], localOnly);
 
 setupRouter.get("/api/setup", (_req, res) => {
   res.json({
-    gemini: { configured: !!process.env.GEMINI_API_KEY, hint: mask(process.env.GEMINI_API_KEY) },
-    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), ...photonStatus, projectHint: mask(process.env.PHOTON_PROJECT_ID) },
+    gemini: { configured: !!process.env.GEMINI_API_KEY, hint: mask(process.env.GEMINI_API_KEY), models: process.env.GEMINI_MODELS ?? "" },
+    photon: {
+      configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET),
+      ...photonStatus,
+      projectHint: mask(process.env.PHOTON_PROJECT_ID),
+      autoUsers: !!dashboardToken(), // can the court add numbers under Users by itself?
+    },
     publicUrl: process.env.PUBLIC_URL ?? "",
     courtNumber: process.env.COURT_NUMBER ?? "",
   });
@@ -59,8 +65,11 @@ setupRouter.post("/api/setup", async (req, res) => {
     const v = typeof body[k] === "string" ? body[k]!.trim() : undefined;
     if (v) updates[k] = k === "PUBLIC_URL" ? v.replace(/\/+$/, "") : v;
   }
+  const photonChanged =
+    (updates.PHOTON_PROJECT_ID && updates.PHOTON_PROJECT_ID !== process.env.PHOTON_PROJECT_ID) ||
+    (updates.PHOTON_PROJECT_SECRET && updates.PHOTON_PROJECT_SECRET !== process.env.PHOTON_PROJECT_SECRET);
   writeEnv(updates);
-  if (updates.PHOTON_PROJECT_ID || updates.PHOTON_PROJECT_SECRET) {
+  if (photonChanged || ((updates.PHOTON_PROJECT_ID || updates.PHOTON_PROJECT_SECRET) && photonStatus.state !== "connected")) {
     startPhoton().catch((err) => console.error("[photon] restart failed:", err));
     await new Promise((r) => setTimeout(r, 2500)); // let it report connected / error
   }
@@ -108,6 +117,7 @@ setupRouter.post("/api/setup/hello", async (req, res) => {
 });
 
 // ---- Household: real names + phone numbers, entered before anyone texts.
+// Rows nobody filled in stay example data: greyed out on /setup, never saved, never texted.
 
 /** "+1 (206) 555-0123" / "2065550123" -> "+12065550123"; emails pass through. */
 function normalizeHandle(raw: string): string | undefined {
@@ -119,48 +129,100 @@ function normalizeHandle(raw: string): string | undefined {
   return `+${d.length === 10 ? `1${d}` : d}`;
 }
 
+const ROLES = ["parent", "teen", "kid", "grandparent", "roommate", "partner", "other"];
+
 setupRouter.get("/api/setup/household", (_req, res) => {
+  const example = loadWorld().household; // pristine example values, shown greyed for unsaved rows
+  const saved = loadHouseholdLocal().members;
   res.json({
-    name: world.household.name,
-    members: world.household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, age: m.age, device: m.device.model, handles: [...new Set([...m.handles, ...claimedHandles(m.id)])] })),
+    roles: ROLES,
+    phones: [...new Set([...example.members.map((m) => m.device.model), ...world.catalog.phones.map((p) => p.name)])],
+    members: world.household.members.map((m) => {
+      const ex = example.members.find((x) => x.id === m.id)!;
+      const s = saved[m.id];
+      return {
+        id: m.id,
+        saved: !!s,
+        example: { name: ex.name, role: ex.role, phoneModel: ex.device.model },
+        name: s?.name ?? "",
+        role: s?.role ?? "",
+        phoneModel: s?.phoneModel ?? "",
+        handle: s?.handles?.[0] ?? claimedHandles(m.id)[0] ?? "",
+      };
+    }),
   });
 });
 
 setupRouter.post("/api/setup/household", (req, res) => {
-  const input = (req.body?.members ?? []) as { id: string; name?: string; phone?: string }[];
+  const input = (req.body?.members ?? []) as { id: string; name?: string; phone?: string; role?: string; phoneModel?: string }[];
   const local = loadHouseholdLocal();
   const problems: string[] = [];
   for (const row of input) {
-    const m = world.household.members.find((x) => x.id === row.id);
-    if (!m) continue;
+    if (!world.household.members.some((x) => x.id === row.id)) continue;
     const name = (row.name ?? "").trim();
     const phone = (row.phone ?? "").trim();
+    if (!name && !phone) {
+      delete local.members[row.id]; // left blank: stays an example
+      continue;
+    }
+    if (!name) {
+      problems.push(`Add a name for ${phone}`);
+      continue;
+    }
     const handle = phone ? normalizeHandle(phone) : undefined;
-    if (phone && !handle) problems.push(`${name || m.name}: "${phone}" isn't a phone number or email`);
-    const entry = (local.members[m.id] ??= {});
-    if (name) entry.name = m.name = name;
-    entry.handles = m.handles = handle ? [handle] : phone ? m.handles : [];
+    if (phone && !handle) problems.push(`${name}: "${phone}" isn't a phone number or email`);
+    local.members[row.id] = {
+      name,
+      handles: handle ? [handle] : (local.members[row.id]?.handles ?? []),
+      role: ROLES.includes(row.role ?? "") ? row.role : undefined,
+      phoneModel: (row.phoneModel ?? "").trim() || undefined,
+    };
   }
   saveHouseholdLocal(local);
+  // Re-apply names/roles/phones from disk onto the live household (example rows go back to example values).
+  const fresh = loadWorld().household.members;
+  for (const m of world.household.members) {
+    const f = fresh.find((x) => x.id === m.id)!;
+    m.name = f.name;
+    m.role = f.role;
+    m.handles = f.handles;
+    m.device.model = f.device.model;
+  }
   changed();
-  res.json({ ok: problems.length === 0, problems, members: world.household.members.map((m) => ({ id: m.id, name: m.name, handles: m.handles })) });
+  res.json({ ok: problems.length === 0, problems, saved: Object.keys(local.members).length });
 });
 
 setupRouter.post("/api/setup/hello-all", async (_req, res) => {
-  const results: { name: string; handle: string; ok: boolean; error?: string }[] = [];
-  for (const m of world.household.members) {
+  const saved = savedMemberIds();
+  const canRegister = !!dashboardToken();
+  const results: { name: string; handle: string; ok: boolean; registered?: string; error?: string }[] = [];
+  for (const m of world.household.members.filter((x) => saved.includes(x.id))) {
     for (const handle of m.handles) {
+      let registered: string | undefined;
       try {
+        if (canRegister) {
+          registered = await addPhotonUser(m.name, handle).catch((e) => {
+            console.warn(`[photon] couldn't add ${handle} under Users:`, (e as Error).message);
+            return undefined;
+          });
+        }
         const r = await sayHello(handle);
         if (r.line && !process.env.COURT_NUMBER) writeEnv({ COURT_NUMBER: r.line });
         console.log(`[photon] welcomed ${m.name} at ${handle}`);
-        results.push({ name: m.name, handle, ok: true });
+        results.push({ name: m.name, handle, ok: true, registered });
       } catch (err) {
         const msg = String((err as Error).message ?? err);
         console.error(`[photon] welcome to ${m.name} (${handle}) failed:`, msg);
-        results.push({ name: m.name, handle, ok: false, error: /not allowed|allowlist/i.test(msg) ? "Add this number under Users in the Photon dashboard first" : msg.slice(0, 160) });
+        results.push({
+          name: m.name,
+          handle,
+          ok: false,
+          error: /not allowed|allowlist/i.test(msg)
+            ? canRegister ? "Photon hasn't approved this number yet. Try again in a minute" : "not approved in Photon yet (see the tip above)"
+            : msg.slice(0, 160),
+        });
       }
     }
   }
-  res.json({ ok: results.length > 0 && results.every((r) => r.ok), results, line: photonStatus.line });
+  res.json({ ok: results.length > 0 && results.every((r) => r.ok), results, line: photonStatus.line, canRegister });
 });

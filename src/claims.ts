@@ -3,6 +3,7 @@
 // ("I'm Maya") and the claim is saved to data/claims.local.json (gitignored) so it survives restarts.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { savedMemberIds } from "./data.ts";
 import { world } from "./store.ts";
 
 const file = fileURLToPath(new URL("../data/claims.local.json", import.meta.url));
@@ -57,13 +58,15 @@ export function shouldAsk(handle: string, isGroup: boolean) {
 }
 
 export function welcomeQuestion() {
-  const names = world.household.members.map((m) => m.name);
+  const saved = savedMemberIds();
+  const names = world.household.members.filter((m) => !saved.length || saved.includes(m.id)).map((m) => m.name);
+  if (names.length === 1) return `⚖️ Welcome to Cart Court! Is this ${names[0]}? Reply with your name.`;
   return `⚖️ Welcome to Cart Court, the honest phone-shopping assistant for ${world.household.name}. Who's texting? Reply with your name: ${names.slice(0, -1).join(", ")} or ${names.at(-1)}.`;
 }
 
 export function welcome(memberId: string) {
   const m = world.household.members.find((x) => x.id === memberId)!;
-  return `Welcome to the court, ${m.name}! 👋 I have you on your ${m.device.model}.\nTry: paste a phone link, send a photo of your battery health, ask "court, what phone should I get?", or "court, rule" when the family's ready to check out.`;
+  return `Welcome to the court, ${m.name}! ⚖️`;
 }
 
 /** Numbers that introduced themselves in chat as this member (shown pre-filled on /setup). */

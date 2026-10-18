@@ -14,18 +14,27 @@
     .step p { margin: 6px 0; color: #3d362d; line-height: 1.55; font-size: 14.5px; }
     .chip { font-family: var(--mono); font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1.5px solid currentColor; }
     .chip.ok { color: var(--keep); } .chip.no { color: var(--muted); } .chip.err { color: var(--cut); } .chip.wait { color: var(--wait); }
-    .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    .row input { flex: 1; min-width: 200px; font: 14px var(--mono); padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
+    .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+    .row input, .row select { flex: 1; min-width: 200px; font: 14px var(--mono); padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
     .row .btn { padding: 10px 16px; font-size: 14px; }
-    .msg { font-size: 13.5px; margin-top: 8px; min-height: 18px; }
+    .row label { font-size: 13px; color: var(--muted); }
+    .msg { font-size: 13.5px; margin-top: 8px; min-height: 18px; line-height: 1.5; }
     .msg.ok { color: var(--keep); } .msg.err { color: var(--cut); }
     code { font-family: var(--mono); background: var(--paper-2); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
     .optional { font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; }
+    .tip { background: var(--paper-2); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; margin-top: 10px; }
+    .tip.ok { background: #e6efe5; color: #24543a; }
+
     table.members { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
     table.members th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 4px 6px; }
     table.members td { padding: 4px 6px; }
-    table.members input { width: 100%; font: 14px var(--mono); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
-    @media (max-width: 640px) { table.members td.muted { display: none; } }
+    table.members input, table.members select { width: 100%; font: 14px var(--mono); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: #fff; color: var(--ink); }
+    /* Rows nobody has filled in are just the example household: greyed out until you type in them. */
+    table.members tr.example input, table.members tr.example select { background: var(--paper-2); color: var(--muted); border-style: dashed; }
+    table.members tr.example input::placeholder { color: #a99f8f; font-style: italic; }
+    table.members tr .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    table.members tr.saved .tag { color: var(--keep); }
+    @media (max-width: 700px) { table.members .c-role, table.members .c-phone { display: none; } }
     ol.sub { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: #3d362d; }
   </style>
 </head>
@@ -35,7 +44,7 @@
       <div>
         <div class="caseno">Cart Court · setup</div>
         <h1>Swear in the court</h1>
-        <div class="subtitle">Four steps. Step 1 is all you need to try it; steps 2–3 put it on real phones.</div>
+        <div class="subtitle">Step 1 is all you need to try it. Steps 2–3 put it on your family's phones.</div>
       </div>
       <div class="header-side"><a class="btn ghost" href="/sim">Open the demo →</a></div>
     </header>
@@ -43,10 +52,15 @@
     <div class="steps">
       <section class="step">
         <h2><span class="n">1</span> Gemini (the court's voice) <span class="chip no" id="gChip">checking…</span></h2>
-        <p>Sign in with your Google account at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>, click <b>Create API key</b>, and paste it here. It's free.
+        <p>Sign in with your Google account at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>, click <b>Create API key</b>, and paste it here.
           No key? The court still works in rules mode: the verdicts, prices and demo buttons need no AI.</p>
         <div class="row"><input id="gemini" type="password" placeholder="Paste your Gemini API key" autocomplete="off" />
           <button class="btn" id="gSave">Save &amp; test</button></div>
+        <div class="row"><label for="model">Model</label>
+          <select id="model">
+            <option value="gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash">Flash-Lite: fastest, cheapest (recommended)</option>
+            <option value="gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite">Flash: a bit smarter, a bit slower</option>
+          </select></div>
         <div class="msg" id="gMsg"></div>
       </section>
 
@@ -59,17 +73,15 @@
       </section>
 
       <section class="step">
-        <h2><span class="n">3</span> Your household <span class="optional">needs step 2 to text</span></h2>
-        <p>Enter each person's name and the phone number (or iMessage email) they'll text from. When they text the court it already knows who they are,
-          and <b>Text everyone</b> sends each person a personal welcome so they get the court's number.</p>
-        <ol class="sub">
-          <li>On Photon's free plan, every number must also be added under <b>Users</b> in the <a href="https://app.photon.codes" target="_blank" rel="noopener">Photon dashboard</a>.</li>
-          <li>Not sure which handle an iPhone sends from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on that phone.</li>
-        </ol>
+        <h2><span class="n">3</span> Your household <span class="optional">needs step 2 to text</span> <span class="chip no" id="hhChip"></span></h2>
+        <p>The grey rows are an <b>example family</b>. Type over a row to make it a real person; rows you leave blank stay examples and are never saved or texted.
+          Then <b>Text everyone</b> sends each person "Welcome to the court, [name]! ⚖️" from the court's number.</p>
         <table class="members" id="members"></table>
         <div class="row"><button class="btn ghost" id="hhSave">Save household</button><button class="btn" id="hhHello">Text everyone</button></div>
+        <div class="tip" id="usersTip"></div>
         <div class="msg" id="hhMsg"></div>
-        <p class="fine" style="margin-top:6px">Names and numbers are saved only on this computer (<code>data/household.local.json</code>, gitignored). Phones, prices and promos stay synthetic.</p>
+        <p class="fine" style="margin-top:6px">Names and numbers are saved only on this computer (<code>data/household.local.json</code>, gitignored). Phone stats, prices and promos stay synthetic.
+          Not sure which number an iPhone sends iMessages from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on that phone.</p>
       </section>
 
       <section class="step">
@@ -88,47 +100,90 @@ const $ = (id) => document.getElementById(id);
 const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
 const chip = (id, cls, text) => { $(id).className = `chip ${cls}`; $(id).textContent = text; };
 const say = (id, cls, text) => { $(id).className = `msg ${cls}`; $(id).textContent = text; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let photonConnected = false;
 
 async function refresh() {
   const s = await fetch("/api/setup").then((r) => r.json());
   s.gemini.configured ? chip("gChip", "ok", `key saved ${s.gemini.hint}`) : chip("gChip", "no", "rules mode");
+  if (s.gemini.models && document.activeElement !== $("model")) {
+    const opt = [...$("model").options].find((o) => o.value.split(",")[0] === s.gemini.models.split(",")[0]);
+    if (opt) $("model").value = opt.value;
+  }
   const p = s.photon;
+  photonConnected = p.state === "connected";
   if (!p.configured) chip("pChip", "no", "not connected");
-  else if (p.state === "connected") chip("pChip", "ok", p.line ? `connected · ${p.line}` : "connected");
+  else if (photonConnected) chip("pChip", "ok", p.line ? `connected · ${p.line}` : "connected");
   else if (p.state === "error") chip("pChip", "err", "error");
   else chip("pChip", "wait", p.state);
   if (p.state === "error" && p.error) say("pMsg", "err", p.error);
+  if (photonConnected) { $("pid").placeholder = `Project ID (saved ${p.projectHint})`; $("psecret").placeholder = "Project Secret (saved)"; }
+  $("usersTip").className = p.autoUsers ? "tip ok" : "tip";
+  $("usersTip").innerHTML = p.autoUsers
+    ? "✓ Signed in to Photon: <b>Text everyone</b> also adds each number under <b>Users</b> for you."
+    : "Photon's free plan only texts numbers listed under <b>Users</b> in its dashboard. Skip typing them in by hand: run <code>npx -p @photon-ai/cli photon login</code> once in a terminal, " +
+      "then <b>Text everyone</b> adds each number for you. (Or add them yourself at <a href=\"https://app.photon.codes\" target=\"_blank\" rel=\"noopener\">app.photon.codes</a> → Users.)";
   s.publicUrl && !s.publicUrl.includes("localhost") ? chip("uChip", "ok", s.publicUrl) : chip("uChip", "no", "localhost only");
 }
 
 $("gSave").onclick = async () => {
   const key = $("gemini").value.trim();
-  if (key) await post("/api/setup", { GEMINI_API_KEY: key });
+  await post("/api/setup", { GEMINI_API_KEY: key, GEMINI_MODELS: $("model").value });
   $("gemini").value = "";
   say("gMsg", "", "Testing…");
   const r = await post("/api/setup/test-gemini");
   r.ok ? say("gMsg", "ok", `✓ Works (${r.model}): "${r.reply}"`) : say("gMsg", "err", r.error);
   refresh();
 };
+$("model").onchange = async () => {
+  await post("/api/setup", { GEMINI_MODELS: $("model").value });
+  say("gMsg", "ok", `✓ The court now uses ${$("model").selectedOptions[0].text.split(":")[0]} first.`);
+};
 $("pSave").onclick = async () => {
+  if (!$("pid").value.trim() && !$("psecret").value.trim()) {
+    return say("pMsg", photonConnected ? "ok" : "err", photonConnected ? "✓ Already connected. Nothing to change." : "Paste the Project ID and Secret first.");
+  }
   say("pMsg", "", "Connecting…");
   await post("/api/setup", { PHOTON_PROJECT_ID: $("pid").value, PHOTON_PROJECT_SECRET: $("psecret").value });
-  $("psecret").value = "";
+  $("pid").value = ""; $("psecret").value = "";
   await refresh();
-  if ($("pChip").classList.contains("ok")) say("pMsg", "ok", "✓ Connected. Now do step 3.");
+  if (photonConnected) say("pMsg", "ok", "✓ Connected. Now do step 3.");
 };
+
+let roles = [];
 async function loadHousehold() {
   const h = await fetch("/api/setup/household").then((r) => r.json());
-  $("members").innerHTML = `<tr><th>Name</th><th>Role · current phone</th><th>Texts from</th></tr>` + h.members.map((m) => `
-    <tr data-id="${m.id}">
-      <td><input class="m-name" value="${m.name.replace(/"/g, "&quot;")}" /></td>
-      <td class="muted">${m.role} · ${m.device}</td>
-      <td><input class="m-phone" placeholder="+1 206 555 0123" value="${(m.handles[0] ?? "").replace(/"/g, "&quot;")}" /></td>
+  roles = h.roles;
+  $("phoneList")?.remove();
+  document.body.insertAdjacentHTML("beforeend", `<datalist id="phoneList">${h.phones.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>`);
+  const saved = h.members.filter((m) => m.saved).length;
+  chip("hhChip", saved ? "ok" : "no", saved ? `${saved} saved` : "example family");
+  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => `
+    <tr data-id="${m.id}" class="${m.saved ? "saved" : "example"}">
+      <td><input class="m-name" placeholder="e.g. ${esc(m.example.name)}" value="${esc(m.name)}" /></td>
+      <td class="c-role"><select class="m-role">
+        ${m.saved ? "" : `<option value="">e.g. ${esc(m.example.role)}</option>`}
+        ${roles.map((r) => `<option value="${r}" ${r === (m.role || (m.saved ? m.example.role : "")) ? "selected" : ""}>${r}</option>`).join("")}
+      </select></td>
+      <td class="c-phone"><input class="m-model" list="phoneList" placeholder="e.g. ${esc(m.example.phoneModel)}" value="${esc(m.phoneModel)}" /></td>
+      <td><input class="m-phone" placeholder="e.g. +1 206 555 0123" value="${esc(m.handle)}" /></td>
+      <td><span class="tag">${m.saved ? "saved" : "example"}</span></td>
     </tr>`).join("");
+  // Typing in a grey example row turns it into a real person.
+  document.querySelectorAll("#members tr[data-id]").forEach((tr) => {
+    tr.addEventListener("input", () => {
+      const filled = tr.querySelector(".m-name").value.trim() || tr.querySelector(".m-phone").value.trim();
+      tr.classList.toggle("example", !filled && !tr.classList.contains("saved"));
+    });
+  });
 }
 async function saveHousehold() {
   const members = [...document.querySelectorAll("#members tr[data-id]")].map((tr) => ({
-    id: tr.dataset.id, name: tr.querySelector(".m-name").value, phone: tr.querySelector(".m-phone").value,
+    id: tr.dataset.id,
+    name: tr.querySelector(".m-name").value,
+    phone: tr.querySelector(".m-phone").value,
+    role: tr.querySelector(".m-role").value,
+    phoneModel: tr.querySelector(".m-model").value,
   }));
   const r = await post("/api/setup/household", { members });
   await loadHousehold();
@@ -136,24 +191,25 @@ async function saveHousehold() {
 }
 $("hhSave").onclick = async () => {
   const r = await saveHousehold();
-  r.ok ? say("hhMsg", "ok", "✓ Saved. The court will recognize these numbers.") : say("hhMsg", "err", r.problems.join(" · "));
+  r.ok ? say("hhMsg", "ok", r.saved ? `✓ Saved ${r.saved} ${r.saved === 1 ? "person" : "people"}. The court will recognize their numbers.` : "Nothing to save yet. Type a name over one of the example rows.")
+       : say("hhMsg", "err", r.problems.join(" · "));
 };
 $("hhHello").onclick = async () => {
   const saved = await saveHousehold();
   if (!saved.ok) return say("hhMsg", "err", saved.problems.join(" · "));
-  say("hhMsg", "", "Texting everyone…");
+  say("hhMsg", "", "Texting everyone… (this can take a few seconds)");
   const r = await post("/api/setup/hello-all");
-  if (!r.results.length) return say("hhMsg", "err", "Add at least one phone number first.");
+  if (!r.results.length) return say("hhMsg", "err", "Add at least one person with a phone number first.");
   const lines = r.results.map((x) => (x.ok ? `✓ ${x.name}` : `✗ ${x.name}: ${x.error}`)).join("  ·  ");
   say("hhMsg", r.ok ? "ok" : "err", lines + (r.line ? `  ·  The court's number: ${r.line}` : ""));
   refresh();
 };
-loadHousehold();
 $("uSave").onclick = async () => {
   await post("/api/setup", { PUBLIC_URL: $("url").value });
   say("uMsg", "ok", "✓ Saved");
   refresh();
 };
+loadHousehold();
 refresh();
 setInterval(refresh, 5000);
 </script>

@@ -8,7 +8,8 @@ const load = (file: string) => JSON.parse(readFileSync(dataDir + file, "utf8"));
 // Real names and phone numbers entered on /setup live here, never in git.
 const localFile = dataDir + "household.local.json";
 export interface HouseholdLocal {
-  members: Record<string, { name?: string; handles?: string[] }>;
+  /** Only people actually entered on /setup are here; the rest of household.json is example data. */
+  members: Record<string, { name?: string; handles?: string[]; role?: string; phoneModel?: string }>;
 }
 
 export function loadHouseholdLocal(): HouseholdLocal {
@@ -30,6 +31,13 @@ export function loadWorld(): World {
     const o = local.members[m.id];
     if (o?.name) m.name = o.name;
     if (o?.handles?.length) m.handles = o.handles;
+    if (o?.role) m.role = o.role;
+    if (o?.phoneModel) m.device.model = o.phoneModel;
   }
   return world;
+}
+
+/** Members someone actually set up on /setup (empty = still the example household). */
+export function savedMemberIds(): string[] {
+  return Object.keys(loadHouseholdLocal().members);
 }

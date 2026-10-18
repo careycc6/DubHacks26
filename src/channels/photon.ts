@@ -94,7 +94,14 @@ export async function startPhoton() {
 
 /** The court texts first, so the tester learns its number. The handle must be added under Users in the Photon dashboard. */
 export async function sayHello(handle: string): Promise<{ line?: string }> {
-  if (!app || photonStatus.state !== "connected") throw new Error("Photon isn't connected yet. Check the keys on /setup.");
+  // Right after Connect, Photon takes a few seconds to come up: wait instead of failing.
+  for (let waited = 0; (!app || photonStatus.state === "connecting") && waited < 20_000; waited += 500) {
+    if (photonStatus.state === "off" || photonStatus.state === "error") break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (!app || photonStatus.state !== "connected") {
+    throw new Error(photonStatus.state === "error" ? `Photon couldn't connect: ${photonStatus.error}` : "Photon isn't connected. Paste the Project ID and Secret in step 2 on /setup.");
+  }
   const im = (imessage as unknown as (a: SpectrumApp) => {
     user(id: string): Promise<unknown>;
     space: { create(u: unknown): Promise<Space> };

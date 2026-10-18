@@ -123,7 +123,8 @@ function summarizeRuns(runs: ToolRun[]): string | null {
 let ai: GoogleGenAI | undefined;
 
 // Free-tier quotas are per model (e.g. 20 requests/day), so rotate through models on 429.
-const MODELS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash")
+// Read live so the model picker on /setup applies without a restart.
+const models = () => (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash")
   .split(",").map((m) => m.trim()).filter(Boolean);
 const coolingUntil = new Map<string, number>();
 
@@ -135,7 +136,7 @@ async function generateWithFallback(
   deadline: number,
 ) {
   let lastErr: unknown;
-  for (const model of MODELS) {
+  for (const model of models()) {
     if ((coolingUntil.get(model) ?? 0) > Date.now()) continue;
     const timeLeft = deadline - Date.now();
     if (timeLeft < 2_000) break;
@@ -147,7 +148,7 @@ async function generateWithFallback(
       const slow = (err as Error).name === "TimeoutError" || (err as Error).name === "AbortError" || /abort|timed? ?out/i.test(text);
       if (/"code":\s*402|prepayment credits|billing/i.test(text)) {
         // Billing is per project, so every model is out: go straight to rules mode for a few minutes.
-        for (const m of MODELS) coolingUntil.set(m, Date.now() + 5 * 60_000);
+        for (const m of models()) coolingUntil.set(m, Date.now() + 5 * 60_000);
         console.warn("[llm] Gemini billing: prepaid credits are empty for this key's project (ai.studio/projects). Using rules mode.");
         throw err;
       } else if (slow) {
