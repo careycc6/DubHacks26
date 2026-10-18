@@ -75,9 +75,9 @@
       <section class="step">
         <h2><span class="n">3</span> Your household <span class="optional">needs step 2 to text</span> <span class="chip no" id="hhChip"></span></h2>
         <p>The grey rows are an <b>example family</b>. Type over a row to make it a real person; rows you leave blank stay examples and are never saved or texted.
-          Then <b>Text everyone</b> sends each person "Welcome to the court, [name]! ⚖️" from the court's number.</p>
+          Then <b>Text everyone</b> texts them all at once ("Welcome to the court, [name]! ⚖️"). Press it again after adding someone and only the new person gets texted. Photon's free plan gives each person their own 1:1 chat with the court (group chats need a paid dedicated line), and every chat shares the same family cart.</p>
         <table class="members" id="members"></table>
-        <div class="row"><button class="btn ghost" id="hhSave">Save household</button><button class="btn" id="hhHello">Text everyone</button></div>
+        <div class="row"><button class="btn ghost" id="hhSave">Save household</button><button class="btn" id="hhHello">Text everyone</button><button class="btn ghost" id="hhResend" hidden>Resend to all</button></div>
         <div class="tip" id="usersTip"></div>
         <div class="msg" id="hhMsg"></div>
         <p class="fine" style="margin-top:6px">Names and numbers are saved only on this computer (<code>data/household.local.json</code>, gitignored). Phone stats, prices and promos stay synthetic.
@@ -194,16 +194,25 @@ $("hhSave").onclick = async () => {
   r.ok ? say("hhMsg", "ok", r.saved ? `✓ Saved ${r.saved} ${r.saved === 1 ? "person" : "people"}. The court will recognize their numbers.` : "Nothing to save yet. Type a name over one of the example rows.")
        : say("hhMsg", "err", r.problems.join(" · "));
 };
-$("hhHello").onclick = async () => {
+async function textEveryone(resend) {
   const saved = await saveHousehold();
   if (!saved.ok) return say("hhMsg", "err", saved.problems.join(" · "));
-  say("hhMsg", "", "Texting everyone… (this can take a few seconds)");
-  const r = await post("/api/setup/hello-all");
-  if (!r.results.length) return say("hhMsg", "err", "Add at least one person with a phone number first.");
+  $("hhResend").hidden = true;
+  say("hhMsg", "", "Texting everyone at once…");
+  const r = await post("/api/setup/hello-all", { resend });
+  if (!r.total) return say("hhMsg", "err", "Add at least one person with a phone number first.");
+  if (!r.results.length) {
+    $("hhResend").hidden = false;
+    return say("hhMsg", "ok", `Everyone (${r.total}) already got their welcome. Added someone? Fill in their row and press Text everyone again: only new people get texted.`);
+  }
   const lines = r.results.map((x) => (x.ok ? `✓ ${x.name}` : `✗ ${x.name}: ${x.error}`)).join("  ·  ");
-  say("hhMsg", r.ok ? "ok" : "err", lines + (r.line ? `  ·  The court's number: ${r.line}` : ""));
+  const extra = r.skipped ? `  ·  ${r.skipped} already welcomed` : "";
+  say("hhMsg", r.ok ? "ok" : "err", lines + extra + (r.line ? `  ·  The court's number: ${r.line}` : ""));
+  if (r.skipped) $("hhResend").hidden = false;
   refresh();
-};
+}
+$("hhHello").onclick = () => textEveryone(false);
+$("hhResend").onclick = () => textEveryone(true);
 $("uSave").onclick = async () => {
   await post("/api/setup", { PUBLIC_URL: $("url").value });
   say("uMsg", "ok", "✓ Saved");

@@ -3,3 +3,4 @@ node_modules
 .claude/
 data/claims.local.json
 data/household.local.json
+data/welcomed.local.json

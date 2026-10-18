@@ -192,37 +192,46 @@ setupRouter.post("/api/setup/household", (req, res) => {
   res.json({ ok: problems.length === 0, problems, saved: Object.keys(local.members).length });
 });
 
-setupRouter.post("/api/setup/hello-all", async (_req, res) => {
+// Remembers who already got a welcome, so "Text everyone" after adding one person only texts that person.
+const welcomedFile = fileURLToPath(new URL("../data/welcomed.local.json", import.meta.url));
+const welcomed: string[] = existsSync(welcomedFile) ? JSON.parse(readFileSync(welcomedFile, "utf8")) : [];
+
+setupRouter.post("/api/setup/hello-all", async (req, res) => {
+  const resend = req.body?.resend === true;
   const saved = savedMemberIds();
   const canRegister = !!dashboardToken();
-  const results: { name: string; handle: string; ok: boolean; registered?: string; error?: string }[] = [];
-  for (const m of world.household.members.filter((x) => saved.includes(x.id))) {
-    for (const handle of m.handles) {
-      let registered: string | undefined;
+  const targets = world.household.members
+    .filter((m) => saved.includes(m.id))
+    .flatMap((m) => m.handles.map((handle) => ({ name: m.name, handle })));
+  const todo = resend ? targets : targets.filter((t) => !welcomed.includes(t.handle));
+  const skipped = targets.length - todo.length;
+
+  // Everyone at once: register with Photon (if logged in), then text the welcome.
+  const results = await Promise.all(
+    todo.map(async ({ name, handle }) => {
       try {
         if (canRegister) {
-          registered = await addPhotonUser(m.name, handle).catch((e) => {
-            console.warn(`[photon] couldn't add ${handle} under Users:`, (e as Error).message);
-            return undefined;
-          });
+          await addPhotonUser(name, handle).catch((e) => console.warn(`[photon] couldn't add ${handle} under Users:`, (e as Error).message));
         }
         const r = await sayHello(handle);
         if (r.line && !process.env.COURT_NUMBER) writeEnv({ COURT_NUMBER: r.line });
-        console.log(`[photon] welcomed ${m.name} at ${handle}`);
-        results.push({ name: m.name, handle, ok: true, registered });
+        if (!welcomed.includes(handle)) welcomed.push(handle);
+        console.log(`[photon] welcomed ${name} at ${handle}`);
+        return { name, handle, ok: true };
       } catch (err) {
         const msg = String((err as Error).message ?? err);
-        console.error(`[photon] welcome to ${m.name} (${handle}) failed:`, msg);
-        results.push({
-          name: m.name,
+        console.error(`[photon] welcome to ${name} (${handle}) failed:`, msg);
+        return {
+          name,
           handle,
           ok: false,
           error: /not allowed|allowlist/i.test(msg)
             ? canRegister ? "Photon hasn't approved this number yet. Try again in a minute" : "not approved in Photon yet (see the tip above)"
             : msg.slice(0, 160),
-        });
+        };
       }
-    }
-  }
-  res.json({ ok: results.length > 0 && results.every((r) => r.ok), results, line: photonStatus.line, canRegister });
+    }),
+  );
+  writeFileSync(welcomedFile, JSON.stringify(welcomed, null, 2));
+  res.json({ ok: results.every((r) => r.ok), results, skipped, total: targets.length, line: photonStatus.line, canRegister });
 });
