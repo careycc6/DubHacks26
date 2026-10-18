@@ -32,6 +32,17 @@
     .try code { font-family: var(--mono); background: rgba(255,255,255,.12); padding: 1px 6px; border-radius: 4px; }
     .end { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
     .who { font-size: 13px; color: var(--muted); }
+    .sub { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+    .sub > li { border-left: 3px solid var(--rule); padding: 2px 0 2px 12px; }
+    .sub > li.ok { border-color: var(--keep); }
+    .sub > li > b:first-child::before { content: "○ "; color: var(--muted); }
+    .sub > li.ok > b:first-child::before { content: "✓ "; color: var(--keep); }
+    .sub p { font-size: 14px; }
+    .sub code, .vars code { font-family: var(--mono); font-size: 12.5px; background: var(--paper-2); padding: 1px 6px; border-radius: 4px; word-break: break-all; }
+    .nums { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+    .nums li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+    .nums .h { font-family: var(--mono); }
+    .copy { font: 12px var(--sans); padding: 3px 9px; border: 1px solid var(--rule); border-radius: 6px; background: #fff; cursor: pointer; }
     .linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
   </style>
 </head>
@@ -54,35 +65,57 @@
         </div>
       </section>
 
-      <section class="step" id="s-budget">
+      <section class="step" id="s-texting">
         <div class="tick">2</div>
         <div>
-          <h2>Phone budget <small>optional</small></h2>
-          <p>How much the family can spend on phones over the whole plan, now and later. The court trims picks to fit and says what's left.</p>
-          <div class="status" id="budgetStatus"></div>
-          <div class="row"><input id="budget" inputmode="numeric" placeholder="e.g. 2500" /><button class="btn" id="budgetSave">Save budget</button></div>
-          <div class="msg" id="budgetMsg"></div>
-        </div>
-      </section>
-
-      <section class="step" id="s-texting">
-        <div class="tick">3</div>
-        <div>
-          <h2>Connect iMessage</h2>
-          <p>Cart Court lives in iMessage: each person texts the court's number, and it keeps everyone posted. This connects the court's number (via Photon).</p>
+          <h2>Connect iMessage <small>with Photon, about 5 minutes</small></h2>
+          <p>Cart Court lives in iMessage. Photon gives the court a real iMessage number: everyone texts it links and questions about anything they want to buy (phones, iPads, Macs, speakers, TVs…), and it texts back rulings. Nobody installs an app.</p>
+          <ol class="sub">
+            <li id="p-project"><b>Make a Photon project</b>
+              <p>Sign up at <a href="https://app.photon.codes" target="_blank" rel="noopener">app.photon.codes</a> (free), create a project, and open its settings. Copy the <b>Project ID</b> and <b>Project Secret</b>.</p></li>
+            <li id="p-keys"><b>Give the court its keys</b>
+              <div id="keysLocal">
+                <p>Paste them here. They're saved to <code>.env</code> on this computer only.</p>
+                <div class="row"><input id="pid" placeholder="Project ID" autocomplete="off" /><input id="psecret" type="password" placeholder="Project Secret" autocomplete="off" /><button class="btn" id="pSave">Connect</button></div>
+              </div>
+              <div id="keysHosted" hidden>
+                <p>This court is hosted, so keys go in the host's settings, not on this page. In Vercel: <b>Settings → Environment Variables</b>, add these two, then <b>Redeploy</b>:</p>
+                <p class="vars"><code>PHOTON_PROJECT_ID</code> &nbsp; <code>PHOTON_PROJECT_SECRET</code></p>
+              </div>
+              <div class="msg" id="pMsg"></div></li>
+            <li id="p-hook" hidden><b>Point Photon at this court</b>
+              <p>Hosted courts get messages by webhook. On the laptop with the project's <code>.env</code>, in the <code>cart-court</code> folder, run:</p>
+              <p><code id="hookCmd"></code> <button class="copy" data-copy="hookCmd">Copy</button></p>
+              <p>It prints <code>SPECTRUM_WEBHOOK_SECRET=…</code> once. Add that in Vercel (plus <code>PUBLIC_URL</code> = this site's address) and Redeploy. Then stop any laptop copy of the court, or every text gets two replies.</p></li>
+            <li id="p-users"><b>Add your family's numbers in Photon</b>
+              <p id="usersHow"></p>
+              <ul class="nums" id="nums"></ul>
+              <p class="fine">Not sure which number an iPhone sends iMessages from (some use an email)? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on that phone.</p></li>
+          </ol>
           <div class="status" id="textingStatus"></div>
-          <div class="row"><a class="btn ghost" href="/setup#photon">Connect texting →</a></div>
+          <div class="row"><a class="btn ghost" href="/setup#photon">Advanced settings</a></div>
         </div>
       </section>
 
       <section class="step" id="s-invite">
-        <div class="tick">4</div>
+        <div class="tick">3</div>
         <div>
           <h2>Say hello to everyone</h2>
           <p>The court texts each person a one-line welcome so they have its number saved. Nobody needs to install anything.</p>
           <div class="status" id="inviteStatus"></div>
           <div class="row"><button class="btn" id="hello-all">Text everyone a welcome</button></div>
           <div class="msg" id="inviteMsg"></div>
+        </div>
+      </section>
+
+      <section class="step" id="s-budget">
+        <div class="tick">4</div>
+        <div>
+          <h2>Family budget <small>optional</small></h2>
+          <p>How much the family can spend on tech over the whole plan: phones, iPads, Macs, laptops, TVs, speakers, headphones. The court trims picks to fit, holds nice-to-haves first, and says what's left.</p>
+          <div class="status" id="budgetStatus"></div>
+          <div class="row"><input id="budget" inputmode="numeric" placeholder="e.g. 2500" /><button class="btn" id="budgetSave">Save budget</button></div>
+          <div class="msg" id="budgetMsg"></div>
         </div>
       </section>
 
@@ -102,8 +135,8 @@
       <h2>Then try it from your phone</h2>
       <ul>
         <li id="numberLine">Text the court's number:</li>
-        <li><code>court, what phone should I get?</code> for picks that fit you</li>
-        <li>Paste a store link to put a phone in the family cart</li>
+        <li><code>court, what phone should I get?</code> or <code>court, what laptop should I get?</code> for picks that fit you</li>
+        <li>Paste any store link (Apple, T-Mobile, Best Buy, Amazon…) to put it in the family cart: phones, iPads, Macs, speakers, anything</li>
         <li><code>court, rule</code> when the family is ready: BUY, WAIT or SKIP, with the savings</li>
       </ul>
     </div>
@@ -118,6 +151,8 @@
 const $ = (id) => document.getElementById(id);
 const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
 const usd = (n) => "$" + Math.round(n).toLocaleString();
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const sub = (id, ok) => $(id).classList.toggle("ok", !!ok);
 const say = (id, cls, t) => { $(id).className = `msg ${cls}`; $(id).textContent = t; };
 const mark = (id, done, status) => { $(id).classList.toggle("done", !!done); $(id).querySelector(".tick").textContent = done ? "✓" : $(id).querySelector(".tick").dataset.n; $(id).querySelector(".status").textContent = status; };
 document.querySelectorAll(".step .tick").forEach((t) => (t.dataset.n = t.textContent));
@@ -134,11 +169,32 @@ async function refresh() {
 
   const h = g.household;
   mark("s-family", h.saved > 0, h.saved ? `✓ ${h.names.join(", ")}${h.withNumbers < h.saved ? ` · ${h.saved - h.withNumbers} still need a number` : ""}` : "Nobody added yet (the dashboard shows an example family until you do)");
-  mark("s-budget", g.budget != null, g.budget != null ? `✓ ${usd(g.budget)} for phones` : "No budget set");
+  mark("s-budget", g.budget != null, g.budget != null ? `✓ ${usd(g.budget)} for the family's tech` : "No budget set");
   const p = g.photon;
-  mark("s-texting", p.state === "connected", p.state === "connected" ? `✓ Connected${p.line ? ` · ${p.line}` : ""}` : p.configured ? `Saved, ${p.state}` : "Not connected yet (you can still try everything in the dashboard)");
+  // Step 2, piece by piece. Hosted courts count as connected once the keys and the webhook secret are set.
+  const live = p.state === "connected" || (p.hosted && p.configured && p.webhook && p.state !== "error");
+  sub("p-project", p.configured);
+  sub("p-keys", p.configured);
+  $("keysLocal").hidden = p.hosted;
+  $("keysHosted").hidden = !p.hosted;
+  if (p.configured && !p.hosted) { $("pid").placeholder = "Project ID (saved)"; $("psecret").placeholder = "Project Secret (saved)"; }
+  $("p-hook").hidden = !p.hosted;
+  sub("p-hook", p.webhook);
+  $("hookCmd").textContent = `node --env-file=.env scripts/photon-webhook.mjs ${p.publicUrl || location.origin}`;
+  const nums = g.numbers ?? [];
+  sub("p-users", nums.length > 0 && (p.autoUsers || nums.every((n) => n.welcomed)));
+  $("usersHow").innerHTML = !nums.length
+    ? "Photon's free plan only texts numbers you've listed under <b>Users</b>. Add everyone's number in step 1 first; they'll show up here."
+    : p.autoUsers
+      ? "✓ The court is signed in to Photon, so <b>Text everyone a welcome</b> in step 3 adds these under <b>Users</b> for you."
+      : `Photon's free plan only texts numbers listed under <b>Users</b>. At <a href="https://app.photon.codes" target="_blank" rel="noopener">app.photon.codes</a> → your project → <b>Users</b> → <b>Add user</b>, add each of these:`;
+  $("nums").innerHTML = nums.map((n, i) => `<li>${n.welcomed ? "✓" : "○"} ${esc(n.name)} <span class="h" id="num${i}">${esc(n.handle)}</span> <button class="copy" data-copy="num${i}">Copy</button></li>`).join("");
+  mark("s-texting", live, live ? `✓ Connected${p.line ? ` · the court's number is ${p.line}` : ""}`
+    : p.state === "error" ? `Photon says: ${p.error ?? "something's wrong with the keys"}`
+    : p.configured ? (p.hosted && !p.webhook ? "Keys set. Point Photon at this court next." : `Keys saved, ${p.state}…`)
+    : "Not connected yet (you can still try everything in the dashboard)");
   mark("s-invite", h.saved > 0 && g.welcomed >= h.withNumbers && h.withNumbers > 0, h.withNumbers ? `${g.welcomed} of ${h.withNumbers} welcomed` : "Add numbers in step 1 first");
-  $("hello-all").disabled = !(p.state === "connected" && h.withNumbers);
+  $("hello-all").disabled = !(live && h.withNumbers);
   const others = acc.accounts.filter((a) => !a.you);
   mark("s-parent", others.length > 0 || acc.invited.length > 0,
     [others.length ? `✓ ${others.map((a) => a.name || a.email).join(", ")} can sign in` : "", acc.invited.length ? `Invited: ${acc.invited.join(", ")}` : ""].filter(Boolean).join(" · ") || "Just you so far");
@@ -149,6 +205,20 @@ async function refresh() {
   $("count").textContent = `${done} of 5 done`;
 }
 
+$("pSave").onclick = async () => {
+  if (!$("pid").value.trim() || !$("psecret").value.trim()) return say("pMsg", "err", "Paste both the Project ID and the Project Secret.");
+  say("pMsg", "", "Connecting…");
+  await post("/api/setup", { PHOTON_PROJECT_ID: $("pid").value, PHOTON_PROJECT_SECRET: $("psecret").value });
+  $("pid").value = ""; $("psecret").value = "";
+  const g = await fetch("/api/guide").then((r) => r.json());
+  g.photon.state === "connected" ? say("pMsg", "ok", "✓ Connected.") : say("pMsg", "err", g.photon.error ? `Photon says: ${g.photon.error}` : "Saved, still connecting. Check the keys if this doesn't turn green.");
+  refresh();
+};
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-copy]");
+  if (!b) return;
+  navigator.clipboard?.writeText($(b.dataset.copy).textContent).then(() => { b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1200); });
+});
 $("budgetSave").onclick = async () => {
   const n = Number($("budget").value.replace(/[^\d.]/g, ""));
   if (!n) return say("budgetMsg", "err", "Enter an amount, like 2500.");

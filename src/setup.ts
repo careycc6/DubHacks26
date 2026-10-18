@@ -12,6 +12,7 @@ import { backend, flush, get, onReload, put } from "./db.ts";
 import { changed, state, world } from "./store.ts";
 import { claimedHandles } from "./claims.ts";
 import { signedIn } from "./auth.ts";
+import { serverless } from "./runtime.ts";
 
 
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
@@ -100,7 +101,19 @@ setupRouter.get("/api/guide", (_req, res) => {
     household: { saved: members.length, withNumbers: members.filter((m) => m.handles.length).length, names: members.map((m) => m.name) },
     budget: state.budget ?? null,
     gemini: !!process.env.GEMINI_API_KEY,
-    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonStatus.state, line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
+    photon: {
+      configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET),
+      state: photonStatus.state,
+      error: photonStatus.error,
+      line: photonStatus.line ?? process.env.COURT_NUMBER ?? "",
+      autoUsers: !!dashboardToken(), // the court can add numbers under Photon's Users by itself
+      // Hosted (Vercel): keys live in the host's environment variables and messages arrive by webhook.
+      hosted: serverless,
+      webhook: !!process.env.SPECTRUM_WEBHOOK_SECRET,
+      publicUrl: process.env.PUBLIC_URL ?? "",
+    },
+    // The numbers Photon's free plan has to list under Users before the court can text them.
+    numbers: members.flatMap((m) => m.handles.map((handle) => ({ name: m.name, handle, welcomed: welcomed.includes(handle) }))),
     welcomed: members.filter((m) => m.handles.some((h) => welcomed.includes(h))).length,
     database: backend,
   });
