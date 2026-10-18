@@ -1,7 +1,7 @@
 // Who is texting? Maps real phone numbers / Apple IDs to household members.
 // Numbers in data/household.json are matched first; anyone else introduces themselves in chat
 // ("I'm Maya") and the claim is saved (db.ts: MongoDB or data/claims.local.json) so it survives restarts.
-import { loadHouseholdLocal, savedMemberIds } from "./data.ts";
+import { savedMemberIds } from "./data.ts";
 import { get, onReload, put } from "./db.ts";
 import { world } from "./store.ts";
 
@@ -69,10 +69,7 @@ export function welcomeQuestion() {
 
 export function welcome(memberId: string) {
   const m = world.household.members.find((x) => x.id === memberId)!;
-  const known = loadHouseholdLocal().members[memberId]?.batteryHealth;
-  if (known) return `Welcome to the court, ${m.name}! ⚖️`;
-  return `Welcome to the court, ${m.name}! ⚖️
-One quick thing: what's your battery health? ${batteryHowTo(m.device.model)}, then reply like "battery health 85%".`;
+  return `Welcome to the court, ${m.name}! ⚖️`;
 }
 
 /** Where to find battery health on this phone (it decides whether a phone can wait). */

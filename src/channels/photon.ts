@@ -199,6 +199,9 @@ export const photonReady = () =>
   !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET && photonStatus.state !== "error" && (serverless || photonStatus.state === "connected");
 
 /** Text one person in their 1:1 chat with the court (reuses the chat, or opens it). Returns the space id. */
+/** Is this Photon conversation reachable from this process (a group the court has seen since it started)? */
+export const hasSpace = (spaceId: string) => spaces.has(spaceId.replace(/^photon:/, ""));
+
 export async function sendToHandle(handle: string, text: string): Promise<string> {
   const a = await ensureApp();
   let id = handleSpace.get(handle);

@@ -3,7 +3,7 @@
 // It feels like a group chat without needing one. Private things (DM notes, budget talk) never go out.
 import { usd, VERDICT } from "./engine.ts";
 import { sendTo } from "./channels/index.ts";
-import { photonReady, sendToHandle } from "./channels/photon.ts";
+import { hasSpace, photonReady, sendToHandle } from "./channels/photon.ts";
 import { logActivity, state, world } from "./store.ts";
 
 export interface Snapshot {
@@ -98,11 +98,18 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
   return lines;
 }
 
-/** Send one update to everyone except `exceptId`, on real phones (Photon) or the simulator's 1:1 tabs. */
+/**
+ * Send one update to everyone except `exceptId`, on real phones (Photon) or the simulator's 1:1 tabs.
+ * If the family has a group chat with the court (Photon's dedicated-line plan), it goes there once instead.
+ */
 export async function deliver(text: string, exceptId: string | undefined, channel: "photon" | "sim") {
   const others = world.household.members.filter((m) => m.id !== exceptId);
   if (channel === "photon") {
     if (!photonReady()) return 0;
+    const group = state.groupSpaceId;
+    if (group?.startsWith("photon:") && hasSpace(group)) {
+      try { await sendTo(group, text); return others.length; } catch (e) { console.warn("[feed] group send failed, texting each person:", (e as Error).message); }
+    }
     const sends = others.flatMap((m) =>
       m.handles.map((h) => sendToHandle(h, text).then(() => 1, (e) => (console.warn(`[feed] couldn't update ${m.name}:`, (e as Error).message), 0))),
     );
@@ -121,7 +128,8 @@ export async function broadcastChanges(before: Snapshot, actorId: string | undef
   if (!lines.length) return;
   logActivity(lines);
   const channel = sourceSpaceId.startsWith("photon:") ? "photon" : sourceSpaceId.startsWith("sim:dm:") ? "sim" : undefined;
-  if (!channel) return; // a real group chat already saw it
+  if (!channel) return; // the group chat already saw it
+  if (channel === "photon" && sourceSpaceId === state.groupSpaceId) return;
   const n = await deliver(lines.join("\n"), actorId, channel);
   console.log(`[feed] told ${n} others: ${lines[0].slice(0, 80)}`);
 }

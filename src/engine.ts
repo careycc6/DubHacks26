@@ -4,6 +4,7 @@ import type {
 } from "./types.ts";
 
 const LOW_BATTERY = 80; // below this, upgrading now is justified
+const BATTERY_SERVICE = 99; // typical carrier/maker battery replacement
 const PROMO_LOOKAHEAD_DAYS = 90;
 const DAYS_PER_PAYMENT = 30;
 export const SCREEN_REPAIR = 129;
@@ -45,12 +46,39 @@ export function neededStorage(p: Phone, m: Member): number {
   return opts.find((gb) => gb >= m.device.storageUsedGB * 2) ?? opts[opts.length - 1];
 }
 
-const promoFor = (world: World, phoneId: string, day: number) => ({
-  active: world.offers.promos.find((x) => x.phones.includes(phoneId) && x.startsOnDay <= day && day < x.endsOnDay),
-  upcoming: world.offers.promos.find(
-    (x) => x.phones.includes(phoneId) && x.startsOnDay > day && x.startsOnDay - day <= PROMO_LOOKAHEAD_DAYS,
-  ),
-});
+const BILL_CREDIT_MONTHS = 24;
+
+/** What a plan-locked deal costs in extra plan fees over its bill-credit period (0 if it needs no plan change). */
+export function planCost(x: Promo, currentPlan?: string): number {
+  if (!x.requiresPlan || x.requiresPlan === currentPlan) return 0;
+  return (x.planExtraMonthly ?? 0) * (x.billCreditMonths ?? BILL_CREDIT_MONTHS);
+}
+
+/** A deal counts only if this person qualifies (has a trade-in when it needs one) and it's worth any plan change. */
+const qualifies = (x: Promo, m?: Member, currentPlan?: string) =>
+  (!x.requiresTradeIn || !m || m.device.tradeInValue > 0) && x.credit - planCost(x, currentPlan) > 0;
+
+const promoFor = (world: World, phoneId: string, day: number, m?: Member) => {
+  const plan = world.household.plan;
+  const mine = world.offers.promos.filter((x) => x.phones.includes(phoneId));
+  const best = (xs: Promo[]) => xs.sort((a, b) => (b.credit - planCost(b, plan)) - (a.credit - planCost(a, plan)))[0];
+  return {
+    active: best(mine.filter((x) => x.startsOnDay <= day && day < x.endsOnDay && qualifies(x, m, plan))),
+    upcoming: best(mine.filter((x) => x.startsOnDay > day && x.startsOnDay - day <= PROMO_LOOKAHEAD_DAYS && qualifies(x, m, plan))),
+    // Deals the court turned down (a plan that costs more than it saves), so it can say why.
+    notWorthIt: mine.filter((x) => x.startsOnDay <= day + PROMO_LOOKAHEAD_DAYS && day < x.endsOnDay && x.requiresPlan && !qualifies(x, m, plan)),
+  };
+};
+
+/** "−$312 (as 24 monthly bill credits; needs Premium Unlimited at +$10/mo, so −$72 net)" */
+function dealText(x: Promo, plan: string): string {
+  const extra = planCost(x, plan);
+  const parts: string[] = [];
+  if (x.billCreditMonths) parts.push(`as ${x.billCreditMonths} monthly bill credits, so stay ${x.billCreditMonths} months to get it all`);
+  if (extra) parts.push(`needs ${x.requiresPlan} at +${usd(x.planExtraMonthly ?? 0)}/mo, so ${usd(x.credit - extra)} net`);
+  return `−${usd(x.credit)}${parts.length ? ` (${parts.join("; ")})` : ""}`;
+}
+const dealValue = (x: Promo, plan: string) => x.credit - planCost(x, plan);
 
 function overkill(p: Phone, m: Member, prefs: Prefs = {}) {
   // If they told the court they care about the camera or gaming, the Pro features aren't wasted.
@@ -166,7 +194,7 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
       target = mid;
       reasons.push(
         opts.trimForBudget
-          ? `To fit the family's phone budget: the ${mid.name} covers how ${m.name.split(/s+/)[0]} uses a phone`
+          ? `To fit the family's phone budget: the ${mid.name} covers how ${m.name.split(/\s+/)[0]} uses a phone`
           : `Keeping the total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`,
       );
     }
@@ -193,23 +221,30 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
   let price = target.prices[String(gb)];
 
   // 3. Trade-in the family forgot about.
+  const plan = world.household.plan;
   if (m.device.tradeInValue > 0) {
     reasons.push(`Trade in ${m.name}'s ${m.device.model}: −${usd(m.device.tradeInValue)}`);
     price -= m.device.tradeInValue;
   }
 
   // 4. Timing: should this purchase wait?
-  const { active, upcoming } = promoFor(world, target.id, day);
+  const { active, upcoming, notWorthIt } = promoFor(world, target.id, day, m);
+  let tradeInDeal = 0; // promo credit that only exists with a trade-in
   if (active) {
-    reasons.push(`${active.name} is live: −${usd(active.credit)}`);
-    price -= active.credit;
+    reasons.push(`${active.name} is live: ${dealText(active, plan)}`);
+    price -= dealValue(active, plan);
+    if (active.requiresTradeIn) tradeInDeal = dealValue(active, plan);
   }
   const healthy = m.device.batteryHealth >= LOW_BATTERY;
   let holdUntilDay: number | undefined;
   if (healthy && upcoming && !active) {
     holdUntilDay = upcoming.startsOnDay;
-    reasons.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: −${usd(upcoming.credit)}`);
-    price -= upcoming.credit;
+    reasons.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: ${dealText(upcoming, plan)}`);
+    price -= dealValue(upcoming, plan);
+    if (upcoming.requiresTradeIn) tradeInDeal = dealValue(upcoming, plan);
+  }
+  for (const x of notWorthIt.filter((x) => x !== active && x !== upcoming)) {
+    reasons.push(`Skip the ${x.name}: it needs ${x.requiresPlan} at +${usd(x.planExtraMonthly ?? 0)}/mo, which costs ${usd(planCost(x, plan))} over ${x.billCreditMonths ?? BILL_CREDIT_MONTHS} months for a ${usd(x.credit)} credit`);
   }
   // installmentsLeft is as of day 0; payments keep getting made as the demo clock moves.
   const paymentsLeft = Math.max(0, Math.ceil((m.device.installmentsLeft * DAYS_PER_PAYMENT - day) / DAYS_PER_PAYMENT));
@@ -221,6 +256,8 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     reasons.unshift(`${m.name}'s ${m.device.model} still has ${m.device.batteryHealth}% battery health. It has time left`);
   } else if (!healthy) {
     reasons.unshift(`${m.name}'s ${m.device.model} is at ${m.device.batteryHealth}% battery health. Upgrading now makes sense`);
+    // A worn battery on a phone that is otherwise fine can be swapped for far less than a new phone.
+    if (!m.device.screenCracked && m.device.ageMonths <= 48) reasons.splice(1, 0, `Or consider a battery replacement (about ${usd(BATTERY_SERVICE)}): it can give the ${m.device.model} another year or two`);
   }
 
   // A cracked screen on an otherwise healthy phone is a repair, not a reason to buy a new phone.
@@ -245,6 +282,9 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
     witness: stamp === "WAIT" ? witnessStatement(m) : undefined,
     protection: protectionAdvice(m, target.prices[String(gb)]),
+    tradeIn: m.device.tradeInValue > 0
+      ? { device: m.device.model, value: m.device.tradeInValue, withTradeIn: price, withoutTradeIn: price + m.device.tradeInValue + tradeInDeal }
+      : undefined,
     track: priceTrack(world, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40)),
   };
 }
@@ -554,8 +594,24 @@ export function accessoryType(text: string): Accessory["type"] | undefined {
 }
 
 /** Where to buy it: the catalog's own link if it has one, else a shopping search for the exact name. */
+// Official stores only: T-Mobile first (the family's carrier), then the phone maker's own store.
+const MAKER_STORES: Record<string, { store: string; search: (q: string) => string }> = {
+  Apple: { store: "Apple", search: (q) => `https://www.apple.com/us/search/${encodeURIComponent(q.toLowerCase().replace(/\s+/g, "-"))}?src=globalnav` },
+  Samsung: { store: "Samsung", search: (q) => `https://www.samsung.com/us/search/searchMain/?listType=g&searchTerm=${encodeURIComponent(q)}` },
+  Google: { store: "Google Store", search: (q) => `https://store.google.com/us/search?q=${encodeURIComponent(q)}` },
+};
+const tmobileSearch = (q: string) => `https://www.t-mobile.com/search?q=${encodeURIComponent(q)}`;
+
+/** Where to buy something yourself: T-Mobile, plus the maker's store when it's made for one brand. */
+export function shopLinks(name: string, brands: string[] = []): { store: string; url: string }[] {
+  const links = [{ store: "T-Mobile", url: tmobileSearch(name) }];
+  const maker = brands.length === 1 ? MAKER_STORES[brands[0]] : undefined;
+  if (maker) links.push({ store: maker.store, url: maker.search(name) });
+  return links;
+}
+
 export function shopUrl(a: Accessory) {
-  return a.url ?? `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(a.name).replace(/%20/g, "+")}`;
+  return a.url ?? shopLinks(a.name, a.brands)[0].url;
 }
 
 /** Loose name match against the accessory catalog ("airpods", "rugged case", "magsafe"). */
@@ -598,6 +654,7 @@ export function recommendAccessories(world: World, memberId: string, opts: { typ
     type: a.type,
     price: a.price,
     shopUrl: shopUrl(a),
+    shopLinks: a.url ? [{ store: "Store", url: a.url }] : shopLinks(a.name, a.brands),
     why: [a.note ??(a.brands.includes(brand) ? `made for ${({ Apple: "iPhone", Google: "Pixel phones", Samsung: "Galaxy phones" } as Record<string, string>)[brand] ?? "your phone"}` : "works with any phone")],
   }));
 }

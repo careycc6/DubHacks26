@@ -60,10 +60,12 @@ Everyone texts the court one-on-one, and it keeps the family in sync:
   and edit or remove their own items. (A household with no parents, like roommates, lets everyone do it.)
 - **Clearing takes two texts:** text `cart clear` (it must say "cart"), then reply **YES** within 2 minutes.
 - **Anyone can report a purchase:** "bought my iPhone 17 for $799" or a photo of the receipt. The court confirms who it's
-  for ("this is Maya's new phone"), matching the model to whoever has it in the cart. If that's wrong, a parent texts
+  for ("this is Maya's new phone"), matching the model to whoever has it in the cart. Kids can log their own purchases by text, but logging one as
+  someone else's needs a photo of the receipt. If that's wrong, a parent texts
   **"this is for Rosa"** and the court moves it (and puts back anything it took out of the wrong cart).
-- **Battery health:** if setup left it blank, the welcome text asks for it (iPhone: Settings → Battery → Battery Health;
-  Pixel: Settings → Battery → Battery health; Galaxy: Samsung Members → Phone diagnostics). People reply "battery health 85%".
+- **Battery health (optional):** leave it blank if unknown. Anyone can text "battery health 85%" later (iPhone: Settings → Battery →
+  Battery Health; Pixel: Settings → Battery → Battery health; Galaxy: Samsung Members → Phone diagnostics). When a battery is
+  worn but the phone is otherwise fine, the court also suggests a ~$99 battery replacement as the cheaper option.
 - **Accessories:** picks come with a shop link. Add one to the cart, or buy it yourself and text "bought the case for $35"
   (or tap **Bought…** on the dashboard).
 - **The family budget** is the money set aside for phones over the whole plan, now and later (it can cover a couple of

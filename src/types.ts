@@ -64,6 +64,10 @@ export interface Promo {
   phones: string[];
   requiresTradeIn: boolean;
   credit: number;
+  /** T-Mobile-style deals: only on a certain plan, paid back as monthly bill credits. */
+  requiresPlan?: string;
+  planExtraMonthly?: number; // what moving to that plan adds to the bill each month
+  billCreditMonths?: number; // credit arrives spread over this many monthly bills
 }
 
 export interface Offers {
@@ -105,6 +109,8 @@ export interface Ruling {
   proposed?: { phoneId: string; storageGB: number; label: string };
   witness?: string; // the old phone's statement, for WAIT rulings
   protection?: { verdict: "ADD" | "SKIP" | "OPTIONAL"; monthly: number; reason: string };
+  /** Price both ways, so the family can decide whether to hand the old phone down instead. */
+  tradeIn?: { device: string; value: number; withTradeIn: number; withoutTradeIn: number };
   track?: { points: { day: number; price: number }[]; now: number; lowest: { day: number; price: number } };
 }
 

@@ -30,13 +30,15 @@ function rulingLine(r: Ruling, day: number, hasProtection = false) {
   const swapped = r.proposed && !r.label.endsWith(r.proposed.label) ? ` (instead of ${was})` : "";
   const save = r.savings > 0 ? ` · saves ${usd(r.savings)}` : "";
   const shield = r.protection?.verdict === "ADD" && !hasProtection ? " · 🛡️ add protection" : "";
+  // Both prices, so keeping the old phone (hand-me-down, backup) is an informed choice.
+  const ti = r.tradeIn ? ` with trade-in (${usd(r.tradeIn.withoutTradeIn)} without)` : "";
   switch (r.stamp) {
     case "KEEP":
     case "SWAP":
-      return `✅ BUY: ${who}${r.memberId ? item : r.label.split(" · ").slice(1).join(" · ")}${swapped} · ${usd(r.nowCost)} today${save}${shield}`;
+      return `✅ BUY: ${who}${r.memberId ? item : r.label.split(" · ").slice(1).join(" · ")}${swapped} · ${usd(r.nowCost)} today${ti}${save}${shield}`;
     case "WAIT": {
       const days = (r.holdUntilDay ?? day) - day;
-      return `⏳ WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} · ${usd(r.heldCost)} on day ${r.holdUntilDay}${save}${shield}`;
+      return `⏳ WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} · ${usd(r.heldCost)} on day ${r.holdUntilDay}${ti}${save}${shield}`;
     }
     case "CUT":
       return `✂️ SKIP: ${r.label.split(" · ").slice(1).join(" · ") || r.label}${save ? `${save}/yr` : ""}`;
@@ -104,6 +106,7 @@ export const tools = {
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
+            withTradeIn: m.device.tradeInValue > 0 ? { price: Math.max(0, r.price - m.device.tradeInValue), tradeIn: m.device.model } : undefined,
             priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : undefined,
             promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: −${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`),
           };

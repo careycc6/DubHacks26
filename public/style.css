@@ -155,3 +155,4 @@ a { color: inherit; }
 /* Accessories: buy it yourself */
 .shop-link { display: inline-block; margin: 6px 0 2px; font-size: 13px; font-weight: 600; color: var(--keep, #24543a); text-decoration: none; }
 .shop-link:hover { text-decoration: underline; }
+.tradein { font-size: 13px; margin: 6px 0 2px; color: var(--ink, #222); }

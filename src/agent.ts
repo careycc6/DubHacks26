@@ -110,6 +110,7 @@ const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 const CLEAR_CART = /\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\bcart\b|\bcart\s+(clear|empty|wipe|reset)\b/i;
 const CONFIRM_YES = /^\W*(yes|yep|yeah|y|confirm|confirmed|do it)\W*$/i;
 const CONFIRM_MS = 2 * 60_000;
+const RECEIPT_MS = 10 * 60_000;
 // In a 1:1 chat, "battery health 82%" / "my battery is at 79% health" is evidence without saying "court".
 const batteryReport = (msg: Incoming) => !msg.isGroup && /\bbattery\b/i.test(msg.text) && /\b\d{2,3}\s*%/.test(msg.text) && !/\b(phone|pick|recommend)s?\b.*\?/i.test(msg.text);
 const REMOVE_ITEM = /\b(remove|delete|take out|scratch)\b/i; // not "drop": "when does the price drop?"
@@ -234,7 +235,7 @@ Hard rules:
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
 - Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove/change other people's items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly.
-- Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it.
+- Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it. Kids can log their own purchases; logging one as someone else's needs a receipt photo (the tool refuses otherwise).
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
 - When someone sends a photo of a phone (a cracked screen, a battery-health screenshot), call enter_evidence with ONLY what the photo actually shows, then say in one line how it changes their ruling. Call it "Exhibit A" (B, C…).
@@ -274,7 +275,7 @@ async function llmReply(msg: Incoming, applied: ToolRun[] = []): Promise<string>
       parts: calls.map((c) => {
         const denied = c.name === "clear_cart"
           ? (canManage(msg.memberId) ? `To clear the whole cart, text "cart clear" and confirm with YES.` : ONLY_PARENTS("clear the family cart"))
-          : guard(msg.memberId, c.name!, c.args ?? {});
+          : guard(msg.memberId, c.name!, c.args ?? {}, { image: !!msg.image });
         const result = denied ? { error: denied } : callTool(c.name!, c.args ?? {});
         applied.push({ name: c.name!, result });
         return { functionResponse: { id: c.id, name: c.name, response: { result } } };
@@ -302,7 +303,8 @@ function rulesReply(msg: Incoming): string {
 
   const batt = text.match(/(\d{2,3})\s*%/);
   const cracked = /\b(crack(ed)?|shattered|smashed)\b/i.test(text);
-  if (msg.image || (ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt)) || batteryReport(msg)) {
+  const receiptFollowUp = !!msg.image && (state.pendingReceipt?.[msg.memberId ?? ""]?.until ?? 0) > Date.now();
+  if (!BOUGHT.test(text) && !receiptFollowUp && (msg.image || (ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt)) || batteryReport(msg))) {
     if (!batt && !cracked) return `🗂️ Exhibit received. Tell the court what it shows, like "cracked screen" or "battery health 76%".`;
     const finding = [cracked && "Cracked screen", batt && `Battery health ${batt[1]}%`].filter(Boolean).join(", ");
     const r = callTool("enter_evidence", { member: target, batteryHealth: batt ? Number(batt[1]) : undefined, screenCracked: cracked, finding }) as {
@@ -348,17 +350,34 @@ function rulesReply(msg: Incoming): string {
     return `🧾 Fixed: that purchase is ${forWho.name}'s, not ${r.movedFrom!.split(/\s+/)[0]}'s (${r.recorded!.split(": ").slice(1).join(": ")}).${r.tookFromCart ? ` Took ${r.tookFromCart} out of the cart.` : ""}`;
   }
   // "I bought my iPhone 17 Pro for $899" / "Jaret's phone was ordered, paid $629"
-  const paid = priceIn(text);
-  if (BOUGHT.test(text) && paid !== undefined) {
+  // A receipt photo can come first ("bought it" + photo), with the total in the next text.
+  const pending = msg.memberId ? state.pendingReceipt?.[msg.memberId] : undefined;
+  const live = pending && pending.until > Date.now() ? pending : undefined;
+  const stated = priceIn(text);
+  // Two follow-ups: a total after a receipt photo, or a receipt photo for a purchase we asked about.
+  const afterPhoto = live?.seen && stated !== undefined ? live : undefined;
+  const photoFor = live && !live.seen && msg.image && stated === undefined ? live : undefined;
+  const paid = stated ?? photoFor?.paid;
+  if ((BOUGHT.test(text) || afterPhoto || photoFor) && paid !== undefined) {
+    const hasReceipt = !!msg.image || !!afterPhoto;
     // "bought the rugged case for $35" is an accessory; "bought my iPhone for $899" is a phone.
-    const accBought = /\bin case\b/i.test(text) ? undefined : accessoryType(text);
-    const named = accBought ? undefined : findPhone(world, text);
-    // Whose is it? Someone named in the text; else whoever has that phone in the cart; else the sender.
-    const mentioned = mentionedMember(text)?.id;
+    const accBought = photoFor ? photoFor.accessory : (/\bin case\b/i.test(text) ? undefined : accessoryType(text));
+    const named = accBought ? undefined : (photoFor ? world.catalog.phones.find((p) => p.id === photoFor.phoneId) : findPhone(world, text));
+    // Whose is it? Someone named in the text; "my/for me" means the sender; else whoever has that phone
+    // in the cart; else the sender.
+    const mentioned = photoFor?.owner ?? mentionedMember(text)?.id ?? afterPhoto?.owner;
+    const self = !mentioned && /\b(for me|my|mine|myself|i got me)\b/i.test(text);
     const holders = named ? state.cart.filter((i) => i.kind === "device" && i.phoneId === named.id).map((i) => i.memberId) : [];
-    const owner = mentioned ?? (holders.includes(msg.memberId ?? "") ? msg.memberId : holders[0]) ?? target;
-    const matched = !mentioned && owner !== msg.memberId && holders.includes(owner);
-    const r = callTool("record_purchase", { member: owner, paid, phone: named?.id, accessory: accBought ? (findAccessory(world, text)?.id ?? accBought) : undefined, fromReceipt: !!msg.image }) as {
+    const owner = mentioned ?? (self ? msg.memberId : undefined) ?? (holders.includes(msg.memberId ?? "") ? msg.memberId : holders[0]) ?? target;
+    const matched = !mentioned && !self && owner !== msg.memberId && holders.includes(owner);
+    // Kids can log their own purchases by text. Logging one as someone else's takes a receipt (or a parent).
+    if (owner !== msg.memberId && !canManage(msg.memberId) && !hasReceipt && msg.memberId) {
+      (state.pendingReceipt ??= {})[msg.memberId] = { until: Date.now() + RECEIPT_MS, paid, phoneId: named?.id, accessory: accBought, owner };
+      const them = nameOf(owner).split(/\s+/)[0];
+      return `🧾 To log this as ${them}'s, send a photo of the receipt or order confirmation (or ${them} or a parent can text it). If it's yours, say "bought it for me for ${usd(paid)}".`;
+    }
+    if (msg.memberId && state.pendingReceipt) delete state.pendingReceipt[msg.memberId];
+    const r = callTool("record_purchase", { member: owner, paid, phone: named?.id, accessory: accBought ? (findAccessory(world, accBought)?.id ?? accBought) : undefined, fromReceipt: hasReceipt }) as {
       recorded?: string; forWhom?: string; label?: string; isPhone?: boolean; savedVsSticker?: number; vsCourtPrice?: number; budgetLeft?: number; error?: string;
     };
     if (r.error) return `Objection: ${r.error}`;
@@ -374,7 +393,10 @@ function rulesReply(msg: Incoming): string {
     if (r.isPhone) lines.push(`\nNot ${first}'s? A parent can text "this is for <name>".`);
     return lines.join(" ");
   }
-  if (BOUGHT.test(text) && msg.image) return "🧾 Got the receipt. What was the total? (e.g. \"paid $899\")";
+  if (BOUGHT.test(text) && msg.image && msg.memberId) {
+    (state.pendingReceipt ??= {})[msg.memberId] = { until: Date.now() + RECEIPT_MS, seen: true, owner: mentionedMember(text)?.id };
+    return "🧾 Got the receipt. What was the total? (e.g. \"paid $899\")";
+  }
   // "switch mine to 256GB" / "change Jaret's to the pixel 10"
   if (CHANGE_ITEM.test(text)) {
     const gb = Number(text.match(/(\d{3,4})\s*gb/i)?.[1]) || undefined;
@@ -412,12 +434,12 @@ function rulesReply(msg: Incoming): string {
       return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added} (${usd(r.price ?? 0)}).`;
     }
     const r = callTool("recommend_accessories", { member: target, type: accType }) as {
-      forWhom: string; phoneBrand: string; picks: { name: string; price: number; why: string[]; shopUrl: string }[]; error?: string;
+      forWhom: string; phoneBrand: string; picks: { name: string; price: number; why: string[]; shopUrl: string; shopLinks: { store: string; url: string }[] }[]; error?: string;
     };
     if (r.error) return `Objection: ${r.error}`;
     const whoFor = target === msg.memberId ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`;
     const phoneWord = r.phoneBrand === "Apple" ? "iPhone" : r.phoneBrand === "any" ? "phone" : `${r.phoneBrand} phone`;
-    return `🎧 Picks for ${whoFor} ${phoneWord}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}\n   ${p.shopUrl}`).join("\n")}\nSay "add the first one" to put it in the family cart, or shop the link yourself and text "bought the case for $35".`;
+    return `🎧 Picks for ${whoFor} ${phoneWord}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}\n   ${p.shopLinks.map((l) => `${l.store}: ${l.url}`).join("\n   ")}`).join("\n")}\nSay "add the first one" to put it in the family cart, or shop it yourself and text "bought the case for $35".`;
   }
 
   // "Our budget is $1500"
@@ -449,7 +471,7 @@ function rulesReply(msg: Incoming): string {
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
   // Any message that says what they care about gets fresh picks ("actually I also want a bigger screen").
   if (asking.test(text) || hasPrefs(said)) {
-    type Pick = { name: string; storageGB: number; price: number; why: string[]; priceDrop?: { price: number; inDays: number }; protection: { verdict: string; reason: string } };
+    type Pick = { name: string; storageGB: number; price: number; why: string[]; priceDrop?: { price: number; inDays: number }; protection: { verdict: string; reason: string }; withTradeIn?: { price: number; tradeIn: string } };
     const r = callTool("recommend_phones", { member: target }) as { forWhom: string; remembered: string; picks: Pick[] };
     const whoFor = target === msg.memberId ? "you" : r.forWhom.split(/\s+/)[0];
     const heard = r.remembered ? `Got it: ${r.remembered}. ` : "";
@@ -463,7 +485,7 @@ function rulesReply(msg: Incoming): string {
           .map((a) => `${a.name} (${usd(a.price)})`)
       : [];
     const pairLine = pairs.length ? `\n🎧 Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.` : "";
-    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}\nSay "add the first one" to put it in the family cart.`;
+    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${p.withTradeIn ? ` (${usd(p.withTradeIn.price)} with trade-in)` : ""}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}\nSay "add the first one" to put it in the family cart.`;
   }
   // A private aside ("money's tight, don't tell the kids"): acknowledge, never repeat it.
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
@@ -496,8 +518,12 @@ export function canManage(memberId?: string) {
 }
 
 /** Why this person can't run this tool, or null if they can. */
-export function guard(memberId: string | undefined, name: string, args: Record<string, unknown>): string | null {
+export function guard(memberId: string | undefined, name: string, args: Record<string, unknown>, ctx: { image?: boolean } = {}): string | null {
   if (canManage(memberId)) return null;
+  // Logging a purchase as someone else's takes a receipt photo (or a parent).
+  if (name === "record_purchase" && args.member && args.member !== memberId && !ctx.image) {
+    return "To log a purchase as someone else's, send a photo of the receipt (or that person or a parent can text it).";
+  }
   if (name === "clear_cart") return ONLY_PARENTS("clear the family cart");
   if (name === "reassign_purchase") return ONLY_PARENTS("change who a purchase was for");
   if (name === "set_budget") return ONLY_PARENTS("set the family budget");

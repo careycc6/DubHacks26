@@ -203,7 +203,7 @@ function renderCart(s) {
   const names = Object.fromEntries(s.members.map((m) => [m.id, m.name]));
   $("cartList").innerHTML = s.cart.length
     ? s.cart.map((i) => `<li><div><span class="who">${esc(names[i.memberId] ?? "")}</span><br>${esc(i.label)} · ${usd(i.price)}${i.kind === "addon" ? "/yr" : ""}</div>
-        <div class="acts">${i.shopUrl ? `<a class="shop" href="${esc(i.shopUrl)}" target="_blank" rel="noopener" title="Shop it yourself">Shop ↗</a>` : ""}${i.kind !== "addon" ? `<button class="buy" data-buy="${i.id}">Bought…</button>` : ""}<button data-remove="${i.id}" title="Remove">✕</button></div></li>`).join("")
+        <div class="acts">${(i.shopLinks ?? (i.shopUrl ? [{ store: "Shop", url: i.shopUrl }] : [])).map((l) => `<a class="shop" href="${esc(l.url)}" target="_blank" rel="noopener" title="Buy it yourself at ${esc(l.store)}">${esc(l.store)} ↗</a>`).join("")}${i.kind !== "addon" ? `<button class="buy" data-buy="${i.id}">Bought…</button>` : ""}<button data-remove="${i.id}" title="Remove">✕</button></div></li>`).join("")
     : `<li class="empty-feed">Empty. Paste store links in the chat, or ask the court for picks.</li>`;
   const ps = s.purchases ?? [];
   $("spentTotal").textContent = ps.length ? `${usd(s.spent)} spent` : "";

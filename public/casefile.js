@@ -71,7 +71,7 @@ function shieldHtml(p) {
 
 // itemId -> store link for accessories, so people can buy it themselves
 let shopLinks = {};
-const shopHtml = (id) => shopLinks[id] ? `<a class="shop-link" href="${esc(shopLinks[id])}" target="_blank" rel="noopener">Shop it yourself ↗</a>` : "";
+const shopHtml = (id) => (shopLinks[id] ?? []).map((l) => `<a class="shop-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.store)} ↗</a>`).join(" ");
 
 function rulingCard(r, names) {
   const who = r.memberId ? names[r.memberId] : "Account";
@@ -89,7 +89,8 @@ function rulingCard(r, names) {
     ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(names[r.memberId])}'s current phone</div>“${esc(r.witness)}”</blockquote>` : ""}
     ${r.memberId && r.track ? sparkline(r.track, r.stamp === "WAIT" ? r.holdUntilDay : undefined) : ""}
     ${shieldHtml(r.protection)}
-    ${r.stamp !== "CUT" ? shopHtml(r.itemId) : ""}
+    ${r.tradeIn && r.stamp !== "CUT" ? `<div class="tradein">♻️ With trade-in of the ${esc(r.tradeIn.device)} (−${usd(r.tradeIn.value)}): <b>${usd(r.tradeIn.withTradeIn)}</b> · without: ${usd(r.tradeIn.withoutTradeIn)}</div>` : ""}
+    ${r.stamp !== "CUT" && r.stamp !== "WAIT" ? shopHtml(r.itemId) : ""}
     <div class="money">${money}${r.savings > 0 ? `<b>you save ${usd(r.savings)}</b>` : ""}</div>
   </article>`;
 }
@@ -101,7 +102,7 @@ function section(title, hint, rulings, names) {
 
 function render(s) {
   const names = Object.fromEntries(s.members.map((m) => [m.id, m.name]));
-  shopLinks = Object.fromEntries(s.cart.filter((i) => i.shopUrl).map((i) => [i.id, i.shopUrl]));
+  shopLinks = Object.fromEntries(s.cart.filter((i) => i.shopUrl).map((i) => [i.id, i.shopLinks ?? [{ store: "Shop", url: i.shopUrl }]]));
   $("caseno").textContent = `Case No. 26-${(s.household.split(" ")[1] ?? "FAM").slice(0, 3).toUpperCase()} · ${s.household}`;
   $("day").textContent = `Day ${s.day}`;
   $("textline").innerHTML = s.courtNumber ? `Text the court<b>${esc(s.courtNumber)}</b>` : "";

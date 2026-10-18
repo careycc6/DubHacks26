@@ -10,7 +10,8 @@ import type { Collection } from "mongodb";
 const KEYS = ["household", "claims", "welcomed", "state"] as const;
 export type Key = (typeof KEYS)[number];
 
-const dataDir = fileURLToPath(new URL("../data/", import.meta.url));
+// CART_COURT_DATA_DIR lets tests use a throwaway folder instead of your real household.
+const dataDir = process.env.CART_COURT_DATA_DIR ? process.env.CART_COURT_DATA_DIR.replace(/[\/]?$/, "/") : fileURLToPath(new URL("../data/", import.meta.url));
 const fileFor = (key: Key) => `${dataDir}${key}.local.json`;
 const readFile = (key: Key): unknown => (existsSync(fileFor(key)) ? JSON.parse(readFileSync(fileFor(key), "utf8")) : undefined);
 

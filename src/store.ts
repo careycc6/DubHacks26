@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onReload, onShutdown, put } from "./db.ts";
-import { runTrial, shopUrl, type Prefs, type TrialOptions } from "./engine.ts";
+import { runTrial, shopLinks, shopUrl, type Prefs, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
 export interface ChatLine {
@@ -59,6 +59,8 @@ export interface State {
   purchases: Purchase[];
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingClear?: Record<string, number>; // memberId -> when their "cart clear" confirmation expires (ms)
+  // memberId -> a purchase waiting on a receipt photo (or a receipt waiting on its total)
+  pendingReceipt?: Record<string, { until: number; seen?: boolean; paid?: number; phoneId?: string; accessory?: string; owner?: string }>;
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
 
@@ -127,8 +129,9 @@ export function publicState() {
       const p = world.catalog.phones.find((x) => x.id === i.phoneId);
       const a = world.catalog.addons.find((x) => x.id === i.addonId);
       const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
-      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc) };
-      return { ...i, label: p ? `${p.name} ${i.storageGB}GB` : a?.name, price: p ? p.prices[String(i.storageGB)] : (a?.monthly ?? 0) * 12 };
+      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc), shopLinks: acc.url ? undefined : shopLinks(acc.name, acc.brands) };
+      if (p) return { ...i, label: `${p.name} ${i.storageGB}GB`, price: p.prices[String(i.storageGB)], shopUrl: shopLinks(p.name, [p.brand])[0].url, shopLinks: shopLinks(p.name, [p.brand]) };
+      return { ...i, label: a?.name, price: (a?.monthly ?? 0) * 12 };
     }),
     trial: state.trial,
     nest: state.nest,

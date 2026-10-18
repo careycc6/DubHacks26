@@ -8,6 +8,7 @@ import { GoogleGenAI } from "@google/genai";
 
 // src/engine.ts
 var LOW_BATTERY = 80;
+var BATTERY_SERVICE = 99;
 var PROMO_LOOKAHEAD_DAYS = 90;
 var DAYS_PER_PAYMENT = 30;
 var SCREEN_REPAIR = 129;
@@ -38,12 +39,31 @@ function neededStorage(p, m) {
   const opts = storageOptions(p);
   return opts.find((gb) => gb >= m.device.storageUsedGB * 2) ?? opts[opts.length - 1];
 }
-var promoFor = (world2, phoneId, day) => ({
-  active: world2.offers.promos.find((x) => x.phones.includes(phoneId) && x.startsOnDay <= day && day < x.endsOnDay),
-  upcoming: world2.offers.promos.find(
-    (x) => x.phones.includes(phoneId) && x.startsOnDay > day && x.startsOnDay - day <= PROMO_LOOKAHEAD_DAYS
-  )
-});
+var BILL_CREDIT_MONTHS = 24;
+function planCost(x, currentPlan) {
+  if (!x.requiresPlan || x.requiresPlan === currentPlan) return 0;
+  return (x.planExtraMonthly ?? 0) * (x.billCreditMonths ?? BILL_CREDIT_MONTHS);
+}
+var qualifies = (x, m, currentPlan) => (!x.requiresTradeIn || !m || m.device.tradeInValue > 0) && x.credit - planCost(x, currentPlan) > 0;
+var promoFor = (world2, phoneId, day, m) => {
+  const plan = world2.household.plan;
+  const mine = world2.offers.promos.filter((x) => x.phones.includes(phoneId));
+  const best = (xs) => xs.sort((a, b) => b.credit - planCost(b, plan) - (a.credit - planCost(a, plan)))[0];
+  return {
+    active: best(mine.filter((x) => x.startsOnDay <= day && day < x.endsOnDay && qualifies(x, m, plan))),
+    upcoming: best(mine.filter((x) => x.startsOnDay > day && x.startsOnDay - day <= PROMO_LOOKAHEAD_DAYS && qualifies(x, m, plan))),
+    // Deals the court turned down (a plan that costs more than it saves), so it can say why.
+    notWorthIt: mine.filter((x) => x.startsOnDay <= day + PROMO_LOOKAHEAD_DAYS && day < x.endsOnDay && x.requiresPlan && !qualifies(x, m, plan))
+  };
+};
+function dealText(x, plan) {
+  const extra = planCost(x, plan);
+  const parts = [];
+  if (x.billCreditMonths) parts.push(`as ${x.billCreditMonths} monthly bill credits, so stay ${x.billCreditMonths} months to get it all`);
+  if (extra) parts.push(`needs ${x.requiresPlan} at +${usd(x.planExtraMonthly ?? 0)}/mo, so ${usd(x.credit - extra)} net`);
+  return `\u2212${usd(x.credit)}${parts.length ? ` (${parts.join("; ")})` : ""}`;
+}
+var dealValue = (x, plan) => x.credit - planCost(x, plan);
 function overkill(p, m, prefs = {}) {
   if (prefs.camera || prefs.gaming) return false;
   return p.tier === "flagship" && m.usage.camera <= 3 && m.usage.gaming <= 2;
@@ -116,7 +136,7 @@ function reviewDevice(world2, item, day, opts = {}) {
     if (mid && keepsWhatTheyWant && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
       target = mid;
       reasons2.push(
-        opts.trimForBudget ? `To fit the family's phone budget: the ${mid.name} covers how ${m.name.split(/s+/)[0]} uses a phone` : `Keeping the total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`
+        opts.trimForBudget ? `To fit the family's phone budget: the ${mid.name} covers how ${m.name.split(/\s+/)[0]} uses a phone` : `Keeping the total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`
       );
     }
   }
@@ -136,21 +156,28 @@ function reviewDevice(world2, item, day, opts = {}) {
     gb = need;
   }
   let price = target.prices[String(gb)];
+  const plan = world2.household.plan;
   if (m.device.tradeInValue > 0) {
     reasons2.push(`Trade in ${m.name}'s ${m.device.model}: \u2212${usd(m.device.tradeInValue)}`);
     price -= m.device.tradeInValue;
   }
-  const { active, upcoming } = promoFor(world2, target.id, day);
+  const { active, upcoming, notWorthIt } = promoFor(world2, target.id, day, m);
+  let tradeInDeal = 0;
   if (active) {
-    reasons2.push(`${active.name} is live: \u2212${usd(active.credit)}`);
-    price -= active.credit;
+    reasons2.push(`${active.name} is live: ${dealText(active, plan)}`);
+    price -= dealValue(active, plan);
+    if (active.requiresTradeIn) tradeInDeal = dealValue(active, plan);
   }
   const healthy = m.device.batteryHealth >= LOW_BATTERY;
   let holdUntilDay;
   if (healthy && upcoming && !active) {
     holdUntilDay = upcoming.startsOnDay;
-    reasons2.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: \u2212${usd(upcoming.credit)}`);
-    price -= upcoming.credit;
+    reasons2.push(`${upcoming.name} starts in ${upcoming.startsOnDay - day} days: ${dealText(upcoming, plan)}`);
+    price -= dealValue(upcoming, plan);
+    if (upcoming.requiresTradeIn) tradeInDeal = dealValue(upcoming, plan);
+  }
+  for (const x of notWorthIt.filter((x2) => x2 !== active && x2 !== upcoming)) {
+    reasons2.push(`Skip the ${x.name}: it needs ${x.requiresPlan} at +${usd(x.planExtraMonthly ?? 0)}/mo, which costs ${usd(planCost(x, plan))} over ${x.billCreditMonths ?? BILL_CREDIT_MONTHS} months for a ${usd(x.credit)} credit`);
   }
   const paymentsLeft = Math.max(0, Math.ceil((m.device.installmentsLeft * DAYS_PER_PAYMENT - day) / DAYS_PER_PAYMENT));
   if (healthy && paymentsLeft > 0) {
@@ -161,6 +188,7 @@ function reviewDevice(world2, item, day, opts = {}) {
     reasons2.unshift(`${m.name}'s ${m.device.model} still has ${m.device.batteryHealth}% battery health. It has time left`);
   } else if (!healthy) {
     reasons2.unshift(`${m.name}'s ${m.device.model} is at ${m.device.batteryHealth}% battery health. Upgrading now makes sense`);
+    if (!m.device.screenCracked && m.device.ageMonths <= 48) reasons2.splice(1, 0, `Or consider a battery replacement (about ${usd(BATTERY_SERVICE)}): it can give the ${m.device.model} another year or two`);
   }
   const repairNow = holdUntilDay !== void 0 && !!m.device.screenCracked;
   if (repairNow) reasons2.splice(1, 0, `Exhibit A shows a cracked screen. A ${usd(SCREEN_REPAIR)} screen repair fixes that today. A new phone doesn't have to`);
@@ -182,6 +210,7 @@ function reviewDevice(world2, item, day, opts = {}) {
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
     witness: stamp === "WAIT" ? witnessStatement(m) : void 0,
     protection: protectionAdvice(m, target.prices[String(gb)]),
+    tradeIn: m.device.tradeInValue > 0 ? { device: m.device.model, value: m.device.tradeInValue, withTradeIn: price, withoutTradeIn: price + m.device.tradeInValue + tradeInDeal } : void 0,
     track: priceTrack(world2, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40))
   };
 }
@@ -444,8 +473,20 @@ var ACCESSORY_TYPE_WORDS = [
 function accessoryType(text) {
   return ACCESSORY_TYPE_WORDS.find(([, re]) => re.test(text))?.[0];
 }
+var MAKER_STORES = {
+  Apple: { store: "Apple", search: (q) => `https://www.apple.com/us/search/${encodeURIComponent(q.toLowerCase().replace(/\s+/g, "-"))}?src=globalnav` },
+  Samsung: { store: "Samsung", search: (q) => `https://www.samsung.com/us/search/searchMain/?listType=g&searchTerm=${encodeURIComponent(q)}` },
+  Google: { store: "Google Store", search: (q) => `https://store.google.com/us/search?q=${encodeURIComponent(q)}` }
+};
+var tmobileSearch = (q) => `https://www.t-mobile.com/search?q=${encodeURIComponent(q)}`;
+function shopLinks(name, brands = []) {
+  const links = [{ store: "T-Mobile", url: tmobileSearch(name) }];
+  const maker = brands.length === 1 ? MAKER_STORES[brands[0]] : void 0;
+  if (maker) links.push({ store: maker.store, url: maker.search(name) });
+  return links;
+}
 function shopUrl(a) {
-  return a.url ?? `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(a.name).replace(/%20/g, "+")}`;
+  return a.url ?? shopLinks(a.name, a.brands)[0].url;
 }
 function findAccessory(world2, query) {
   const q = query.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
@@ -480,6 +521,7 @@ function recommendAccessories(world2, memberId, opts = {}) {
     type: a.type,
     price: a.price,
     shopUrl: shopUrl(a),
+    shopLinks: a.url ? [{ store: "Store", url: a.url }] : shopLinks(a.name, a.brands),
     why: [a.note ?? (a.brands.includes(brand) ? `made for ${{ Apple: "iPhone", Google: "Pixel phones", Samsung: "Galaxy phones" }[brand] ?? "your phone"}` : "works with any phone")]
   }));
 }
@@ -510,7 +552,7 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 var KEYS = ["household", "claims", "welcomed", "state"];
-var dataDir = fileURLToPath(new URL("../data/", import.meta.url));
+var dataDir = process.env.CART_COURT_DATA_DIR ? process.env.CART_COURT_DATA_DIR.replace(/[\/]?$/, "/") : fileURLToPath(new URL("../data/", import.meta.url));
 var fileFor = (key) => `${dataDir}${key}.local.json`;
 var readFile = (key) => existsSync(fileFor(key)) ? JSON.parse(readFileSync(fileFor(key), "utf8")) : void 0;
 var docs;
@@ -685,8 +727,9 @@ function publicState() {
       const p = world.catalog.phones.find((x) => x.id === i.phoneId);
       const a = world.catalog.addons.find((x) => x.id === i.addonId);
       const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
-      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc) };
-      return { ...i, label: p ? `${p.name} ${i.storageGB}GB` : a?.name, price: p ? p.prices[String(i.storageGB)] : (a?.monthly ?? 0) * 12 };
+      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc), shopLinks: acc.url ? void 0 : shopLinks(acc.name, acc.brands) };
+      if (p) return { ...i, label: `${p.name} ${i.storageGB}GB`, price: p.prices[String(i.storageGB)], shopUrl: shopLinks(p.name, [p.brand])[0].url, shopLinks: shopLinks(p.name, [p.brand]) };
+      return { ...i, label: a?.name, price: (a?.monthly ?? 0) * 12 };
     }),
     trial: state.trial,
     nest: state.nest,
@@ -744,13 +787,14 @@ function rulingLine(r, day, hasProtection = false) {
   const swapped = r.proposed && !r.label.endsWith(r.proposed.label) ? ` (instead of ${was})` : "";
   const save = r.savings > 0 ? ` \xB7 saves ${usd(r.savings)}` : "";
   const shield = r.protection?.verdict === "ADD" && !hasProtection ? " \xB7 \u{1F6E1}\uFE0F add protection" : "";
+  const ti = r.tradeIn ? ` with trade-in (${usd(r.tradeIn.withoutTradeIn)} without)` : "";
   switch (r.stamp) {
     case "KEEP":
     case "SWAP":
-      return `\u2705 BUY: ${who}${r.memberId ? item : r.label.split(" \xB7 ").slice(1).join(" \xB7 ")}${swapped} \xB7 ${usd(r.nowCost)} today${save}${shield}`;
+      return `\u2705 BUY: ${who}${r.memberId ? item : r.label.split(" \xB7 ").slice(1).join(" \xB7 ")}${swapped} \xB7 ${usd(r.nowCost)} today${ti}${save}${shield}`;
     case "WAIT": {
       const days = (r.holdUntilDay ?? day) - day;
-      return `\u23F3 WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} \xB7 ${usd(r.heldCost)} on day ${r.holdUntilDay}${save}${shield}`;
+      return `\u23F3 WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} \xB7 ${usd(r.heldCost)} on day ${r.holdUntilDay}${ti}${save}${shield}`;
     }
     case "CUT":
       return `\u2702\uFE0F SKIP: ${r.label.split(" \xB7 ").slice(1).join(" \xB7 ") || r.label}${save ? `${save}/yr` : ""}`;
@@ -810,6 +854,7 @@ var tools = {
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
+            withTradeIn: m.device.tradeInValue > 0 ? { price: Math.max(0, r.price - m.device.tradeInValue), tradeIn: m.device.model } : void 0,
             priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : void 0,
             promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: \u2212${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`)
           };
@@ -1226,16 +1271,7 @@ function welcomeQuestion() {
 }
 function welcome(memberId) {
   const m = world.household.members.find((x) => x.id === memberId);
-  const known = loadHouseholdLocal().members[memberId]?.batteryHealth;
-  if (known) return `Welcome to the court, ${m.name}! \u2696\uFE0F`;
-  return `Welcome to the court, ${m.name}! \u2696\uFE0F
-One quick thing: what's your battery health? ${batteryHowTo(m.device.model)}, then reply like "battery health 85%".`;
-}
-function batteryHowTo(model = "") {
-  if (/iphone/i.test(model)) return "On iPhone: Settings \u2192 Battery \u2192 Battery Health (Maximum Capacity)";
-  if (/pixel/i.test(model)) return "On Pixel: Settings \u2192 Battery \u2192 Battery health";
-  if (/galaxy|samsung/i.test(model)) return "On Galaxy: Samsung Members app \u2192 Support \u2192 Phone diagnostics \u2192 Battery status";
-  return "iPhone: Settings \u2192 Battery \u2192 Battery Health. Android: Settings \u2192 Battery \u2192 Battery health (Galaxy: Samsung Members \u2192 Phone diagnostics)";
+  return `Welcome to the court, ${m.name}! \u2696\uFE0F`;
 }
 function claimedHandles(memberId) {
   return Object.entries(claims).filter(([h, id]) => id === memberId && h !== SIM_HANDLE).map(([h]) => h);
@@ -1430,6 +1466,7 @@ async function sayHello(handle2) {
   return { line };
 }
 var photonReady = () => !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET && photonStatus.state !== "error" && (serverless || photonStatus.state === "connected");
+var hasSpace = (spaceId) => spaces.has(spaceId.replace(/^photon:/, ""));
 async function sendToHandle(handle2, text) {
   const a = await ensureApp();
   let id = handleSpace.get(handle2);
@@ -1515,6 +1552,15 @@ async function deliver(text, exceptId, channel) {
   const others = world.household.members.filter((m) => m.id !== exceptId);
   if (channel === "photon") {
     if (!photonReady()) return 0;
+    const group = state.groupSpaceId;
+    if (group?.startsWith("photon:") && hasSpace(group)) {
+      try {
+        await sendTo(group, text);
+        return others.length;
+      } catch (e) {
+        console.warn("[feed] group send failed, texting each person:", e.message);
+      }
+    }
     const sends = others.flatMap(
       (m) => m.handles.map((h) => sendToHandle(h, text).then(() => 1, (e) => (console.warn(`[feed] couldn't update ${m.name}:`, e.message), 0)))
     );
@@ -1529,6 +1575,7 @@ async function broadcastChanges(before, actorId, sourceSpaceId) {
   logActivity(lines);
   const channel = sourceSpaceId.startsWith("photon:") ? "photon" : sourceSpaceId.startsWith("sim:dm:") ? "sim" : void 0;
   if (!channel) return;
+  if (channel === "photon" && sourceSpaceId === state.groupSpaceId) return;
   const n = await deliver(lines.join("\n"), actorId, channel);
   console.log(`[feed] told ${n} others: ${lines[0].slice(0, 80)}`);
 }
@@ -1607,6 +1654,7 @@ var TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 var CLEAR_CART = /\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\bcart\b|\bcart\s+(clear|empty|wipe|reset)\b/i;
 var CONFIRM_YES = /^\W*(yes|yep|yeah|y|confirm|confirmed|do it)\W*$/i;
 var CONFIRM_MS = 2 * 6e4;
+var RECEIPT_MS = 10 * 6e4;
 var batteryReport = (msg) => !msg.isGroup && /\bbattery\b/i.test(msg.text) && /\b\d{2,3}\s*%/.test(msg.text) && !/\b(phone|pick|recommend)s?\b.*\?/i.test(msg.text);
 var REMOVE_ITEM = /\b(remove|delete|take out|scratch)\b/i;
 var CHANGE_ITEM = /\b(change|switch|swap|make)\b[^.?!]*\b(\d{3,4}\s*gb|to (the |a )?(iphone|pixel|galaxy))/i;
@@ -1710,7 +1758,7 @@ Hard rules:
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
 - Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove/change other people's items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly.
-- Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it.
+- Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it. Kids can log their own purchases; logging one as someone else's needs a receipt photo (the tool refuses otherwise).
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
 - When someone sends a photo of a phone (a cracked screen, a battery-health screenshot), call enter_evidence with ONLY what the photo actually shows, then say in one line how it changes their ruling. Call it "Exhibit A" (B, C\u2026).
@@ -1750,7 +1798,7 @@ Reply to ${nameOf2(msg.memberId)}'s latest message.` }];
     contents.push({
       role: "user",
       parts: calls.map((c) => {
-        const denied = c.name === "clear_cart" ? canManage(msg.memberId) ? `To clear the whole cart, text "cart clear" and confirm with YES.` : ONLY_PARENTS("clear the family cart") : guard(msg.memberId, c.name, c.args ?? {});
+        const denied = c.name === "clear_cart" ? canManage(msg.memberId) ? `To clear the whole cart, text "cart clear" and confirm with YES.` : ONLY_PARENTS("clear the family cart") : guard(msg.memberId, c.name, c.args ?? {}, { image: !!msg.image });
         const result = denied ? { error: denied } : callTool(c.name, c.args ?? {});
         applied.push({ name: c.name, result });
         return { functionResponse: { id: c.id, name: c.name, response: { result } } };
@@ -1769,7 +1817,8 @@ function rulesReply(msg) {
   const target = mentionedMember(text)?.id ?? msg.memberId ?? "marco";
   const batt = text.match(/(\d{2,3})\s*%/);
   const cracked = /\b(crack(ed)?|shattered|smashed)\b/i.test(text);
-  if (msg.image || ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt) || batteryReport(msg)) {
+  const receiptFollowUp = !!msg.image && (state.pendingReceipt?.[msg.memberId ?? ""]?.until ?? 0) > Date.now();
+  if (!BOUGHT.test(text) && !receiptFollowUp && (msg.image || ADDRESSED.test(text) && (cracked || /battery/i.test(text)) && (cracked || batt) || batteryReport(msg))) {
     if (!batt && !cracked) return `\u{1F5C2}\uFE0F Exhibit received. Tell the court what it shows, like "cracked screen" or "battery health 76%".`;
     const finding = [cracked && "Cracked screen", batt && `Battery health ${batt[1]}%`].filter(Boolean).join(", ");
     const r = callTool("enter_evidence", { member: target, batteryHealth: batt ? Number(batt[1]) : void 0, screenCracked: cracked, finding });
@@ -1807,15 +1856,28 @@ function rulesReply(msg) {
     if (r.unchanged) return `\u{1F9FE} Already logged for ${forWho.name}: ${r.recorded.split(": ").slice(1).join(": ")}.`;
     return `\u{1F9FE} Fixed: that purchase is ${forWho.name}'s, not ${r.movedFrom.split(/\s+/)[0]}'s (${r.recorded.split(": ").slice(1).join(": ")}).${r.tookFromCart ? ` Took ${r.tookFromCart} out of the cart.` : ""}`;
   }
-  const paid = priceIn(text);
-  if (BOUGHT.test(text) && paid !== void 0) {
-    const accBought = /\bin case\b/i.test(text) ? void 0 : accessoryType(text);
-    const named = accBought ? void 0 : findPhone(world, text);
-    const mentioned = mentionedMember(text)?.id;
+  const pending2 = msg.memberId ? state.pendingReceipt?.[msg.memberId] : void 0;
+  const live = pending2 && pending2.until > Date.now() ? pending2 : void 0;
+  const stated = priceIn(text);
+  const afterPhoto = live?.seen && stated !== void 0 ? live : void 0;
+  const photoFor = live && !live.seen && msg.image && stated === void 0 ? live : void 0;
+  const paid = stated ?? photoFor?.paid;
+  if ((BOUGHT.test(text) || afterPhoto || photoFor) && paid !== void 0) {
+    const hasReceipt = !!msg.image || !!afterPhoto;
+    const accBought = photoFor ? photoFor.accessory : /\bin case\b/i.test(text) ? void 0 : accessoryType(text);
+    const named = accBought ? void 0 : photoFor ? world.catalog.phones.find((p) => p.id === photoFor.phoneId) : findPhone(world, text);
+    const mentioned = photoFor?.owner ?? mentionedMember(text)?.id ?? afterPhoto?.owner;
+    const self = !mentioned && /\b(for me|my|mine|myself|i got me)\b/i.test(text);
     const holders = named ? state.cart.filter((i) => i.kind === "device" && i.phoneId === named.id).map((i) => i.memberId) : [];
-    const owner = mentioned ?? (holders.includes(msg.memberId ?? "") ? msg.memberId : holders[0]) ?? target;
-    const matched = !mentioned && owner !== msg.memberId && holders.includes(owner);
-    const r = callTool("record_purchase", { member: owner, paid, phone: named?.id, accessory: accBought ? findAccessory(world, text)?.id ?? accBought : void 0, fromReceipt: !!msg.image });
+    const owner = mentioned ?? (self ? msg.memberId : void 0) ?? (holders.includes(msg.memberId ?? "") ? msg.memberId : holders[0]) ?? target;
+    const matched = !mentioned && !self && owner !== msg.memberId && holders.includes(owner);
+    if (owner !== msg.memberId && !canManage(msg.memberId) && !hasReceipt && msg.memberId) {
+      (state.pendingReceipt ??= {})[msg.memberId] = { until: Date.now() + RECEIPT_MS, paid, phoneId: named?.id, accessory: accBought, owner };
+      const them = nameOf2(owner).split(/\s+/)[0];
+      return `\u{1F9FE} To log this as ${them}'s, send a photo of the receipt or order confirmation (or ${them} or a parent can text it). If it's yours, say "bought it for me for ${usd(paid)}".`;
+    }
+    if (msg.memberId && state.pendingReceipt) delete state.pendingReceipt[msg.memberId];
+    const r = callTool("record_purchase", { member: owner, paid, phone: named?.id, accessory: accBought ? findAccessory(world, accBought)?.id ?? accBought : void 0, fromReceipt: hasReceipt });
     if (r.error) return `Objection: ${r.error}`;
     const first2 = (r.forWhom ?? "").split(/\s+/)[0];
     const lines = [r.isPhone ? `\u{1F9FE} Confirmed: this is ${first2}'s new phone, ${r.label} for ${usd(paid)}.${matched ? ` (It matched the one in ${first2}'s cart.)` : ""}` : `\u{1F9FE} Recorded for ${first2}: ${r.label}, ${usd(paid)}.`];
@@ -1828,7 +1890,10 @@ function rulesReply(msg) {
 Not ${first2}'s? A parent can text "this is for <name>".`);
     return lines.join(" ");
   }
-  if (BOUGHT.test(text) && msg.image) return '\u{1F9FE} Got the receipt. What was the total? (e.g. "paid $899")';
+  if (BOUGHT.test(text) && msg.image && msg.memberId) {
+    (state.pendingReceipt ??= {})[msg.memberId] = { until: Date.now() + RECEIPT_MS, seen: true, owner: mentionedMember(text)?.id };
+    return '\u{1F9FE} Got the receipt. What was the total? (e.g. "paid $899")';
+  }
   if (CHANGE_ITEM.test(text)) {
     const gb = Number(text.match(/(\d{3,4})\s*gb/i)?.[1]) || void 0;
     const after = text.split(/\bto\b/i).slice(1).join(" to ");
@@ -1862,8 +1927,8 @@ Not ${first2}'s? A parent can text "this is for <name>".`);
     const phoneWord = r.phoneBrand === "Apple" ? "iPhone" : r.phoneBrand === "any" ? "phone" : `${r.phoneBrand} phone`;
     return `\u{1F3A7} Picks for ${whoFor} ${phoneWord}:
 ${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}: ${p.why[0]}
-   ${p.shopUrl}`).join("\n")}
-Say "add the first one" to put it in the family cart, or shop the link yourself and text "bought the case for $35".`;
+   ${p.shopLinks.map((l) => `${l.store}: ${l.url}`).join("\n   ")}`).join("\n")}
+Say "add the first one" to put it in the family cart, or shop it yourself and text "bought the case for $35".`;
   }
   const fb = familyBudget(text);
   if (fb !== void 0) {
@@ -1897,7 +1962,7 @@ Say "add the first one" to put it in the family cart, or shop the link yourself 
     const pairLine = pairs.length ? `
 \u{1F3A7} Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.` : "";
     return `${heard}The court's picks for ${whoFor}:
-${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}
+${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${p.withTradeIn ? ` (${usd(p.withTradeIn.price)} with trade-in)` : ""}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}${pairLine}
 Say "add the first one" to put it in the family cart.`;
   }
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
@@ -1920,8 +1985,11 @@ function canManage(memberId) {
   if (!members.some((m) => MANAGERS.has(m.role))) return members.some((m) => m.id === memberId);
   return MANAGERS.has(members.find((m) => m.id === memberId)?.role ?? "");
 }
-function guard(memberId, name, args) {
+function guard(memberId, name, args, ctx = {}) {
   if (canManage(memberId)) return null;
+  if (name === "record_purchase" && args.member && args.member !== memberId && !ctx.image) {
+    return "To log a purchase as someone else's, send a photo of the receipt (or that person or a parent can text it).";
+  }
   if (name === "clear_cart") return ONLY_PARENTS("clear the family cart");
   if (name === "reassign_purchase") return ONLY_PARENTS("change who a purchase was for");
   if (name === "set_budget") return ONLY_PARENTS("set the family budget");
@@ -2452,7 +2520,7 @@ app2.post("/api/demo/advance", async (req, res) => {
     const text = `\u23F3\u27A1\uFE0F\u2705 ${who}, it's time. Your ${r.proposed?.label} is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. Waiting saved ${usd(r.savings)}. Case file: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
     logActivity([text]);
     await deliver(text, void 0, "photon");
-    await sendTo(state.groupSpaceId ?? "sim:group", text);
+    if (!state.groupSpaceId?.startsWith("photon:")) await sendTo(state.groupSpaceId ?? "sim:group", text);
   }
   res.json({ day: state.day, announced: due.length });
 });

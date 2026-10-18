@@ -136,8 +136,8 @@ app.post("/api/demo/advance", async (req, res) => {
     const who = (world.household.members.find((m) => m.id === r.memberId)?.name ?? "").split(/\s+/)[0];
     const text = `⏳➡️✅ ${who}, it's time. Your ${r.proposed?.label} is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. Waiting saved ${usd(r.savings)}. Case file: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
     logActivity([text]);
-    await deliver(text, undefined, "photon");
-    await sendTo(state.groupSpaceId ?? "sim:group", text);
+    await deliver(text, undefined, "photon"); // the family group chat if there is one, else each 1:1 chat
+    if (!state.groupSpaceId?.startsWith("photon:")) await sendTo(state.groupSpaceId ?? "sim:group", text);
   }
   res.json({ day: state.day, announced: due.length });
 });

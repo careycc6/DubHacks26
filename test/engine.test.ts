@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadWorld } from "../src/data.ts";
-import { findPhone, leavingNest, readyHolds, recommend, runTrial } from "../src/engine.ts";
+import { findPhone, leavingNest, readyHolds, recommend, runTrial, shopLinks } from "../src/engine.ts";
 import type { CartItem } from "../src/types.ts";
 
 const world = loadWorld({ local: false }); // the example family, never your real household
@@ -190,4 +190,31 @@ test("accessories match the phone and wait with it", async () => {
   assert.equal(t.rulings.find((r) => r.itemId === "c")!.stamp, "WAIT"); // buy it with the phone
   const wrong: CartItem[] = [...cart, { id: "g", kind: "accessory", memberId: "maya", accessoryId: "galaxy-case" }];
   assert.equal(runTrial(world, wrong, 0).rulings.find((r) => r.itemId === "g")!.stamp, "CUT"); // doesn't fit an iPhone
+});
+
+test("rulings show the price with and without the trade-in", () => {
+  const r = runTrial(world, demoCart, 0).rulings.find((x) => x.memberId === "elena")!;
+  assert.equal(r.tradeIn?.device, "Pixel 7");
+  assert.equal(r.tradeIn?.withTradeIn, r.nowCost);
+  assert.equal(r.tradeIn?.withoutTradeIn, r.nowCost + 90);
+});
+
+test("a plan-locked deal that costs more than it gives is skipped", () => {
+  const cart: CartItem[] = [{ id: "u", kind: "device", memberId: "elena", phoneId: "galaxy-s26-ultra", storageGB: 256 }];
+  const r = runTrial(world, cart, 0).rulings[0];
+  assert.ok(r.reasons.some((x) => x.startsWith("Skip the Galaxy premium-plan deal")));
+  assert.ok(!r.reasons.some((x) => x.startsWith("Galaxy premium-plan deal is live")));
+});
+
+test("a worn battery on a newer phone suggests a battery replacement; a 6-year-old phone doesn't", () => {
+  const t = runTrial(world, [...demoCart, { id: "r", kind: "device", memberId: "rosa", phoneId: "pixel-10", storageGB: 128 }], 0);
+  assert.ok(t.rulings.find((x) => x.memberId === "elena")!.reasons.some((x) => x.includes("battery replacement")));
+  assert.ok(!t.rulings.find((x) => x.memberId === "rosa")!.reasons.some((x) => x.includes("battery replacement")));
+});
+
+test("shop links go to official stores, T-Mobile first", () => {
+  assert.deepEqual(shopLinks("Clear Case with MagSafe", ["Apple"]).map((l) => l.store), ["T-Mobile", "Apple"]);
+  assert.deepEqual(shopLinks("Pixel 10", ["Google"]).map((l) => l.store), ["T-Mobile", "Google Store"]);
+  assert.deepEqual(shopLinks("Power Bank", ["Apple", "Google", "Samsung"]).map((l) => l.store), ["T-Mobile"]);
+  assert.match(shopLinks("Clear Case", ["Apple"])[1].url, /apple\.com\/us\/search\/clear-case\?/);
 });
