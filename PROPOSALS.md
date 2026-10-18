@@ -7,7 +7,7 @@ Built overnight and already live or on a branch:
 - **On `main` (live):** prices shown with and without the trade-in, plan-locked deals that cost more than they give are skipped,
   kids need a receipt photo to log someone else's purchase, battery health is optional (worn batteries on newer phones get a
   battery-replacement suggestion), official store links (T-Mobile first, then Apple / Samsung / Google Store), family feed goes
-  to a Photon group chat when there is one, and 15 new tests (40 on main): permissions, cart-clear confirm, receipts, reassigning a purchase, the family feed, and private DMs staying private.
+  to a Photon group chat when there is one, and 15 new tests (36 on main; `login` adds 4 sign-in tests): permissions, cart-clear confirm, receipts, reassigning a purchase, the family feed, and private DMs staying private.
 - **On branch `login` (not merged):** Sign in with Google / Apple, `/welcome` setup guide, "Who can sign in" in Settings.
   Needs `GOOGLE_CLIENT_ID` (and optionally `APPLE_CLIENT_ID`, `SESSION_SECRET`) before it does anything. See ONBOARDING §5.
   **Before merging:** the live court already has a saved family, so the first Google sign-in only becomes owner if that browser
