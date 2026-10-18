@@ -25,6 +25,21 @@ export interface Exhibit {
   at: number;
 }
 
+/** Something the family actually bought (from a text, a receipt photo, or the dashboard). */
+export interface Purchase {
+  id: string;
+  memberId: string;
+  label: string; // "iPhone 17 Pro 256GB"
+  phoneId?: string;
+  storageGB?: number;
+  paid: number;
+  sticker?: number; // the store price of what they'd put in the cart
+  courtPrice?: number; // what the court said it should cost (after trade-in / promos), if it had ruled
+  day: number;
+  at: number;
+  source: "text" | "receipt" | "dashboard";
+}
+
 export interface State {
   day: number;
   cart: CartItem[];
@@ -39,6 +54,7 @@ export interface State {
   lastRecs: Record<string, { phoneId: string; storageGB: number }[]>; // so "add the first one" works
   budget?: number; // the family's budget for this round of shopping
   seenIds: string[]; // Photon message ids already handled (delivery is at-least-once)
+  purchases: Purchase[];
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
@@ -46,7 +62,7 @@ export interface State {
 export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
-const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, seenIds: [], trialRuns: 0 });
+const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, seenIds: [], purchases: [], trialRuns: 0 });
 
 // What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone.
 type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }> };
@@ -112,6 +128,8 @@ export function publicState() {
     trial: state.trial,
     nest: state.nest,
     budget: state.budget,
+    purchases: state.purchases,
+    spent: spent(),
     exhibits: state.exhibits.filter((e) => !e.private).map(({ private: _p, ...e }) => e),
     activity: state.activity.slice(-40),
   };
@@ -128,9 +146,14 @@ export function addChat(line: Omit<ChatLine, "id" | "at">) {
 
 const BUDGET_WORDS = /\b(tight|budget|afford|broke|expensive|money|bills?)\b/i;
 
+/** Money already spent this round (recorded purchases). */
+export const spent = () => state.purchases.reduce((t, p) => t + p.paid, 0);
+/** What's left of the family budget after what's already been bought (undefined = no budget). */
+export const remainingBudget = () => (state.budget === undefined ? undefined : Math.max(0, state.budget - spent()));
+
 /** Private DMs can shape rulings (never revealed): e.g. "money is tight" -> budget mode. */
 export function trialOpts(): TrialOptions {
-  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs, budget: state.budget };
+  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs, budget: remainingBudget() };
 }
 
 /** Add public one-liners to the dashboard activity log (never private DM content). */

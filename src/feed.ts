@@ -12,6 +12,7 @@ export interface Snapshot {
   exhibits: number;
   nest?: object;
   cartLabels: Record<string, string>;
+  purchases: number;
 }
 
 const nameOf = (id?: string) => world.household.members.find((m) => m.id === id)?.name ?? "Someone";
@@ -32,6 +33,7 @@ export function snapshot(): Snapshot {
     exhibits: state.exhibits.length,
     nest: state.nest,
     cartLabels: Object.fromEntries(state.cart.map((i) => [i.id, cartLabel(i.id)])),
+    purchases: state.purchases.length,
   };
 }
 
@@ -45,8 +47,24 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
     const forWhom = i.memberId === actorId ? "" : ` for ${first(nameOf(i.memberId))}`;
     lines.push(`📥 ${actor} added ${cartLabel(i.id)}${forWhom} to the family cart.`);
   }
-  const removed = before.cartIds.filter((id) => !state.cart.some((i) => i.id === id) && !added.length);
-  for (const id of removed) lines.push(`🗑️ ${actor} took ${before.cartLabels[id] ?? "an item"} out of the cart.`);
+  // Purchases first: buying something also takes it out of the cart, which needs no separate line.
+  const bought = state.purchases.slice(before.purchases);
+  for (const p of bought) {
+    const save = p.sticker && p.sticker > p.paid ? `, ${usd(p.sticker - p.paid)} under sticker` : "";
+    lines.push(`🧾 ${first(nameOf(p.memberId))}'s ${p.label} was bought for ${usd(p.paid)}${save}.`);
+  }
+  const gone = before.cartIds.filter((id) => !state.cart.some((i) => i.id === id));
+  if (gone.length && !state.cart.length && !bought.length && gone.length > 1) {
+    lines.push(`🧹 ${actor} cleared the family cart (${gone.length} items). Starting fresh.`);
+  } else if (!added.length && !bought.length) {
+    for (const id of gone) lines.push(`🗑️ ${actor} took ${before.cartLabels[id] ?? "an item"} out of the cart.`);
+  }
+  // Edited in place (different phone or storage).
+  for (const i of state.cart) {
+    const was = before.cartLabels[i.id];
+    const now = cartLabel(i.id);
+    if (was && was !== now) lines.push(`✏️ ${actor} changed ${was} → ${now}.`);
+  }
 
   if (state.exhibits.length > before.exhibits) {
     for (const e of state.exhibits.slice(before.exhibits)) {

@@ -4,7 +4,7 @@ import {
   priceTrack, protectionAdvice,
   type Prefs,
 } from "./engine.ts";
-import { changed, newId, refreshTrial, state, trialOpts, world } from "./store.ts";
+import { changed, newId, refreshTrial, remainingBudget, spent, state, trialOpts, world, type Purchase } from "./store.ts";
 import type { Ruling, Stamp, Trial } from "./types.ts";
 
 const caseFileUrl = () => `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
@@ -211,14 +211,104 @@ export const tools = {
     },
   },
   remove_from_cart: {
-    description: "Remove a cart item by id.",
-    params: { itemId: { type: "string" } },
-    required: ["itemId"],
-    run: (a: { itemId: string }) => {
-      state.cart = state.cart.filter((i) => i.id !== a.itemId);
+    description: "Remove items from the family cart: someone's phone and/or add-ons. Give the member, or a phone name, or an itemId.",
+    params: {
+      member: { type: "string", description: "whose items (optional)" },
+      phone: { type: "string", description: "loose phone name to match (optional)" },
+      itemId: { type: "string", description: "exact cart item id (optional)" },
+      addonsToo: { type: "boolean", description: "also remove that member's add-ons (default false)" },
+    },
+    run: (a: { member?: string; phone?: string; itemId?: string; addonsToo?: boolean }) => {
+      if (!a.member && !a.phone && !a.itemId) throw new Error("Say whose item or which phone to remove (or clear the whole cart)");
+      const hits = findCartItems(a);
+      if (!hits.length) throw new Error("Nothing in the cart matches that");
+      const removed = hits.map(cartItemLabel);
+      state.cart = state.cart.filter((i) => !hits.includes(i));
+      if (!state.cart.length) state.trial = undefined; // nothing left to rule on
       refreshTrial();
       changed();
-      return { cart: state.cart };
+      return { removed, left: state.cart.length };
+    },
+  },
+  clear_cart: {
+    description: "Empty the whole family cart to start over (purchases already recorded are kept).",
+    params: {},
+    run: () => {
+      const n = state.cart.length;
+      state.cart = [];
+      state.trial = undefined;
+      changed();
+      return { cleared: n };
+    },
+  },
+  change_cart_item: {
+    description: "Edit a phone already in the cart: different storage and/or a different phone. Identify it by member (or phone name).",
+    params: {
+      member: { type: "string" },
+      phone: { type: "string", description: "current phone to match (optional)" },
+      newPhone: { type: "string", description: "swap to this phone (optional)" },
+      storageGB: { type: "number", description: "new storage size (optional)" },
+    },
+    run: (a: { member?: string; phone?: string; newPhone?: string; storageGB?: number }) => {
+      const item = findCartItems({ member: a.member, phone: a.phone }).find((i) => i.kind === "device");
+      if (!item) throw new Error("No phone in the cart for that");
+      const next = a.newPhone ? world.catalog.phones.find((x) => x.id === a.newPhone) ?? findPhone(world, a.newPhone) : phone(world, item.phoneId!);
+      if (!next) throw new Error(`No phone matching "${a.newPhone}"`);
+      const opts = Object.keys(next.prices).map(Number).sort((x, y) => x - y);
+      const want = a.storageGB ?? item.storageGB ?? opts[0];
+      const gb = opts.includes(want) ? want : opts.find((x) => x >= want) ?? opts[opts.length - 1];
+      const before = cartItemLabel(item);
+      item.phoneId = next.id;
+      item.storageGB = gb;
+      refreshTrial();
+      changed();
+      return { from: before, to: `${next.name} ${gb}GB`, price: next.prices[String(gb)], storageNote: gb !== want ? `${want}GB isn't offered; used ${gb}GB` : undefined };
+    },
+  },
+  record_purchase: {
+    description:
+      "Someone actually bought a phone (they said so, or sent a receipt / order confirmation). Records what they paid, takes it out of the cart, and tells the family how it compares. Only use a price that the person or the receipt actually states.",
+    params: {
+      member: { type: "string", description: "who it was for" },
+      paid: { type: "number", description: "total paid in USD" },
+      phone: { type: "string", description: "what they bought, if stated (defaults to their cart phone)" },
+      fromReceipt: { type: "boolean", description: "true if read from a receipt / order confirmation" },
+    },
+    required: ["member", "paid"],
+    run: (a: { member: string; paid: number; phone?: string; fromReceipt?: boolean }) => {
+      const m = resolveMember(a.member);
+      if (!(a.paid > 0) || a.paid > 20_000) throw new Error("That price doesn't look right");
+      const inCart = findCartItems({ member: m.id, phone: a.phone }).find((i) => i.kind === "device") ?? findCartItems({ member: m.id }).find((i) => i.kind === "device");
+      const named = a.phone ? world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone) : undefined;
+      const ph = named ?? (inCart?.phoneId ? phone(world, inCart.phoneId) : undefined);
+      const gb = inCart?.storageGB ?? (ph ? Object.keys(ph.prices).map(Number).sort((x, y) => x - y)[0] : undefined);
+      const ruling = inCart ? state.trial?.rulings.find((r) => r.itemId === inCart.id) : undefined;
+      const purchase: Purchase = {
+        id: newId("p"),
+        memberId: m.id,
+        label: ph ? `${ph.name} ${gb}GB` : a.phone ?? "a phone",
+        phoneId: ph?.id,
+        storageGB: gb,
+        paid: Math.round(a.paid),
+        sticker: ph && gb ? ph.prices[String(gb)] : undefined,
+        courtPrice: ruling ? (ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost) : undefined,
+        day: state.day,
+        at: Date.now(),
+        source: a.fromReceipt ? "receipt" : "text",
+      };
+      state.purchases.push(purchase);
+      // Bought: the phone (and its add-ons like protection) leave the cart.
+      if (inCart) state.cart = state.cart.filter((i) => !(i.memberId === m.id && (i.id === inCart.id || i.kind === "addon")));
+      if (!state.cart.length) state.trial = undefined;
+      refreshTrial();
+      changed();
+      return {
+        recorded: `${m.name}: ${purchase.label} for ${usd(purchase.paid)}`,
+        savedVsSticker: purchase.sticker ? purchase.sticker - purchase.paid : undefined,
+        vsCourtPrice: purchase.courtPrice !== undefined ? purchase.paid - purchase.courtPrice : undefined,
+        spentSoFar: spent(),
+        budgetLeft: remainingBudget(),
+      };
     },
   },
   view_cart: {
@@ -264,3 +354,21 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
 }
 
 export { resolveMember, caseFileUrl, STAMP_ICON };
+
+/** Cart items matching a member and/or a loose phone name (or an exact id). */
+function findCartItems(q: { member?: string; phone?: string; itemId?: string; addonsToo?: boolean }) {
+  if (q.itemId) return state.cart.filter((i) => i.id === q.itemId);
+  const m = q.member ? resolveMember(q.member) : undefined;
+  const p = q.phone ? world.catalog.phones.find((x) => x.id === q.phone) ?? findPhone(world, q.phone) : undefined;
+  return state.cart.filter((i) => {
+    if (m && i.memberId !== m.id) return false;
+    if (p) return i.kind === "device" && i.phoneId === p.id;
+    return i.kind === "device" || !!q.addonsToo || !m;
+  });
+}
+
+function cartItemLabel(i: { kind: string; memberId: string; phoneId?: string; storageGB?: number; addonId?: string }) {
+  const who = member(world, i.memberId).name.split(/\s+/)[0];
+  if (i.kind === "device" && i.phoneId) return `${who}'s ${phone(world, i.phoneId).name} ${i.storageGB}GB`;
+  return `${who}'s ${world.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "add-on"}`;
+}

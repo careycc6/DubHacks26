@@ -1,7 +1,7 @@
 // Cart Court's brain: decides WHEN to speak (taste), then talks via Gemini + tools.
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
-import { familyBudget, hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
+import { familyBudget, findPhone, hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
@@ -99,11 +99,22 @@ function fileLinks(msg: Incoming): string | null {
 
 const PROTECTION_ASK = /\badd (?:device |phone )?(?:protection|insurance)\b/i;
 const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
+// Cart editing and purchases (deterministic: instant, no LLM needed).
+const CLEAR_CART = /\b(clear|empty|wipe|reset)\b[^.?!]{0,20}\bcart\b|\bstart (over|fresh)\b/i;
+const REMOVE_ITEM = /\b(remove|delete|take out|scratch)\b/i; // not "drop": "when does the price drop?"
+const CHANGE_ITEM = /\b(change|switch|swap|make)\b[^.?!]*\b(\d{3,4}\s*gb|to (the |a )?(iphone|pixel|galaxy))/i;
+const BOUGHT = /\b(bought|purchased|ordered|picked up|just got|paid)\b/i;
+const PRICE = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)|\b(\d[\d,]{2,}(?:\.\d{1,2})?)\s*(?:dollars|bucks|usd)\b/i;
+const priceIn = (text: string) => {
+  const m = text.match(PRICE);
+  return m ? Number((m[1] ?? m[2]).replace(/,/g, "")) : undefined;
+};
 
 async function reply_(msg: Incoming): Promise<string> {
   // The verdict is pure engine output: skip the LLM (instant, deterministic, costs no quota).
   // Verdicts, budgets and protection are pure engine work: answer instantly, no LLM.
-  if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text)) && !msg.image) return rulesReply(msg);
+  const cartEdit = CLEAR_CART.test(msg.text) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || (BOUGHT.test(msg.text) && priceIn(msg.text) !== undefined);
+  if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
   const applied: ToolRun[] = [];
   try {
@@ -206,6 +217,8 @@ Hard rules:
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
+- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; "clear the cart" / "start over" -> clear_cart.
+- Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it.
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
 - When someone sends a photo of a phone (a cracked screen, a battery-health screenshot), call enter_evidence with ONLY what the photo actually shows, then say in one line how it changes their ruling. Call it "Exhibit A" (B, C…).
@@ -297,6 +310,45 @@ function rulesReply(msg: Incoming): string {
     return "error" in (r as object) ? `Objection: ${(r as { error: string }).error}` : `📥 Added to the family cart: ${(r as { added: string }).added}. Nobody checks out until the court rules.`;
   }
   // "add the first one" / "add #2" after a recommendation
+  // ---- Editing the cart
+  if (CLEAR_CART.test(text)) {
+    const r = callTool("clear_cart", {}) as { cleared: number };
+    return `🧹 Cart cleared (${r.cleared} item${r.cleared === 1 ? "" : "s"}). Start fresh: paste a store link or ask "court, what phone should I get?"`;
+  }
+  // "I bought my iPhone 17 Pro for $899" / "Jaret's phone was ordered, paid $629"
+  const paid = priceIn(text);
+  if (BOUGHT.test(text) && paid !== undefined) {
+    const named = findPhone(world, text);
+    const r = callTool("record_purchase", { member: target, paid, phone: named?.id, fromReceipt: !!msg.image }) as {
+      recorded?: string; savedVsSticker?: number; vsCourtPrice?: number; budgetLeft?: number; error?: string;
+    };
+    if (r.error) return `Objection: ${r.error}`;
+    const lines = [`🧾 Recorded: ${r.recorded}.`];
+    if (r.savedVsSticker && r.savedVsSticker > 0) lines.push(`That's ${usd(r.savedVsSticker)} under sticker.`);
+    if (r.vsCourtPrice !== undefined) {
+      lines.push(r.vsCourtPrice <= 0 ? `Even better than the court's price. 👏` : `The court's price was ${usd(paid - r.vsCourtPrice)} (with trade-in and promos), ${usd(r.vsCourtPrice)} less.`);
+    }
+    if (r.budgetLeft !== undefined) lines.push(`💰 Family budget left: ${usd(r.budgetLeft)}.`);
+    return lines.join(" ");
+  }
+  if (BOUGHT.test(text) && msg.image) return "🧾 Got the receipt. What was the total? (e.g. \"paid $899\")";
+  // "switch mine to 256GB" / "change Jaret's to the pixel 10"
+  if (CHANGE_ITEM.test(text)) {
+    const gb = Number(text.match(/(\d{3,4})\s*gb/i)?.[1]) || undefined;
+    const after = text.split(/\bto\b/i).slice(1).join(" to ");
+    const newPhone = after ? findPhone(world, after)?.id : undefined;
+    const r = callTool("change_cart_item", { member: target, newPhone, storageGB: gb }) as { from?: string; to?: string; price?: number; storageNote?: string; error?: string };
+    return r.error ? `Objection: ${r.error}` : `✏️ Changed ${r.from} → ${r.to} (${usd(r.price ?? 0)}).${r.storageNote ? ` ${r.storageNote}.` : ""}`;
+  }
+  // "remove my phone" / "take out the pixel" / "remove Jaret's protection"
+  if (REMOVE_ITEM.test(text)) {
+    const protection = /\b(protection|insurance)\b/i.test(text);
+    const itemId = protection ? state.cart.find((i) => i.kind === "addon" && i.memberId === target && i.addonId === "protection-360")?.id : undefined;
+    const named = protection ? undefined : findPhone(world, text);
+    const r = callTool("remove_from_cart", itemId ? { itemId } : { member: named ? undefined : target, phone: named?.id }) as { removed?: string[]; error?: string };
+    return r.error ? `Objection: ${r.error}` : `🗑️ Removed ${r.removed!.join(", ")} from the family cart.`;
+  }
+
   // "Our budget is $1500"
   const fb = familyBudget(text);
   if (fb !== undefined) {

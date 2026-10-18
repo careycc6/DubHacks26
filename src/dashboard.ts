@@ -6,7 +6,7 @@ import { claimedHandles } from "./claims.ts";
 import { savedMemberIds } from "./data.ts";
 import { deliver, describeChanges, snapshot } from "./feed.ts";
 import { priceTrack } from "./engine.ts";
-import { logActivity, state, world } from "./store.ts";
+import { changed, logActivity, refreshTrial, state, world } from "./store.ts";
 import { callTool } from "./tools.ts";
 import { wasWelcomed } from "./setup.ts";
 
@@ -64,4 +64,43 @@ dashboardRouter.post("/api/dashboard/rule", async (_req, res) => {
   logActivity(lines);
   const told = await deliver(lines.join("\n"), undefined, "photon");
   res.json({ ok: true, told });
+});
+
+// ---- Cart editing and purchases from the dashboard. Each one is logged and texted to the family,
+// exactly like the same change made by text.
+async function announce(before: ReturnType<typeof snapshot>) {
+  const lines = describeChanges(before, undefined);
+  if (!lines.length) return 0;
+  logActivity(lines);
+  return deliver(lines.join("\n"), undefined, "photon");
+}
+
+dashboardRouter.post("/api/dashboard/cart/remove", async (req, res) => {
+  const before = snapshot();
+  const r = callTool("remove_from_cart", { itemId: String(req.body?.itemId ?? "") });
+  res.json({ ...(r as object), told: await announce(before) });
+});
+
+dashboardRouter.post("/api/dashboard/cart/clear", async (_req, res) => {
+  const before = snapshot();
+  const r = callTool("clear_cart", {});
+  res.json({ ...(r as object), told: await announce(before) });
+});
+
+dashboardRouter.post("/api/dashboard/cart/bought", async (req, res) => {
+  const item = state.cart.find((i) => i.id === req.body?.itemId);
+  if (!item) return res.json({ error: "That item isn't in the cart anymore." });
+  const before = snapshot();
+  const r = callTool("record_purchase", { member: item.memberId, paid: Number(req.body?.paid), phone: item.phoneId });
+  if (!(r as { error?: string }).error) state.purchases[state.purchases.length - 1].source = "dashboard";
+  res.json({ ...(r as object), told: await announce(before) });
+});
+
+/** Undo a purchase recorded by mistake (it doesn't go back into the cart; add it again if needed). */
+dashboardRouter.post("/api/dashboard/purchase/undo", (req, res) => {
+  const before = state.purchases.length;
+  state.purchases = state.purchases.filter((p) => p.id !== req.body?.id);
+  refreshTrial();
+  changed();
+  res.json({ removed: before - state.purchases.length });
 });

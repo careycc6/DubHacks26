@@ -149,6 +149,15 @@ function render(s) {
     <figure class="exhibit">${e.image ? `<img src="${e.image}" alt="">` : `<div class="noimg">🗂️</div>`}
       <figcaption><b>Exhibit ${String.fromCharCode(65 + i)}</b> · ${esc(names[e.memberId])}<br>${esc(e.finding)}</figcaption></figure>`).join("")}</div>` : "";
 
+  // What the family actually bought, and what it saved.
+  const bought = s.purchases ?? [];
+  if ($("boughtWrap")) $("boughtWrap").innerHTML = bought.length ? `<h2 class="section-title">🧾 Bought<span>${usd(s.spent)} spent so far</span></h2><div class="rulings">${[...bought].reverse().map((p) => `
+    <article class="ruling"><span class="stamp KEEP">PAID<small>day ${p.day}</small></span>
+      <div class="who-row"><span class="avatar">${initials(names[p.memberId])}</span><span class="who-name">${esc(names[p.memberId])}</span></div>
+      <h3>${esc(p.label)}</h3>
+      <div class="money">${p.sticker ? `<span class="strike">${usd(p.sticker)}</span>` : ""} ${usd(p.paid)}${p.sticker && p.sticker > p.paid ? `<b>you save ${usd(p.sticker - p.paid)}</b>` : ""}${p.source === "receipt" ? " <em>from receipt</em>" : ""}</div>
+    </article>`).join("")}</div>` : "";
+
   $("nestWrap").innerHTML = s.nest ? `<h2 class="section-title">Leaving the nest<span>stay on the family plan, or go solo?</span></h2><div class="rulings">
     <article class="ruling">${stampHtml({ itemId: "nest", stamp: s.nest.stamp })}
       <div class="who-row"><span class="avatar">${initials(names[s.nest.memberId])}</span><span class="who-name">${esc(names[s.nest.memberId])}</span></div>
