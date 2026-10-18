@@ -83,3 +83,39 @@ test("battery health by DM is evidence", async () => {
   fresh();
   assert.match((await say("marco", "battery health 72%"))!, /Exhibit/);
 });
+
+const { describeChanges, snapshot } = await import("../src/feed.ts");
+
+test("a purchase matched to the wrong person can be moved by a parent, restoring their cart", async () => {
+  fresh();
+  callTool("add_phone_to_cart", { member: "marco", phone: "pixel-10", storageGB: 128, addedBy: "marco" });
+  // Maya reports buying the Pixel 10 that's in Marco's cart: it's logged as Marco's (she has a receipt).
+  await say("maya", "bought the pixel 10 for $699", IMG);
+  assert.equal(store.state.purchases.at(-1)?.memberId, "marco");
+  assert.equal(store.state.cart.filter((i) => i.memberId === "marco").length, 0);
+  // Maya can't move it; a parent can.
+  assert.match((await say("maya", "this is for maya"))!, /Only a parent/);
+  await say("elena", "this is for maya");
+  assert.equal(store.state.purchases.at(-1)?.memberId, "maya");
+  assert.equal(store.state.cart.filter((i) => i.memberId === "marco" && i.phoneId === "pixel-10").length, 1);
+});
+
+test("the family feed describes a change once, naming who did it", async () => {
+  fresh();
+  const before = snapshot();
+  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17", storageGB: 256, addedBy: "maya" });
+  const lines = describeChanges(before, "maya");
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /Maya/);
+  assert.match(lines[0], /iPhone 17/);
+});
+
+test("a private DM never reaches the family feed", async () => {
+  fresh();
+  const before = snapshot();
+  await say("elena", "money is really tight this month, keep it between us");
+  const lines = describeChanges(before, "elena");
+  assert.ok(!lines.some((l) => /money|tight/i.test(l)));
+  // ...and isn't on the public case file either.
+  assert.ok(!JSON.stringify(store.publicState()).includes("tight"));
+});
