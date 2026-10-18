@@ -106,7 +106,7 @@ function rulingCard(r, names) {
     <div class="who-row"><span class="avatar">${initials(who)}</span><span class="who-name">${esc(who)}</span></div>
     <h3>${esc(item)}${changed ? ` <span class="arrow">→</span> <span class="to-inline">${esc(r.proposed.label)}</span>` : ""}</h3>
     <ul>${r.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(names[r.memberId])}'s current phone</div>“${esc(r.witness)}”</blockquote>` : ""}
+    ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(r.witnessOf ?? `${names[r.memberId]}'s current phone`)}</div>“${esc(r.witness)}”</blockquote>` : ""}
     ${r.memberId && r.track ? sparkline(r.track, r.stamp === "WAIT" ? r.holdUntilDay : undefined) : ""}
     ${shieldHtml(r.protection)}
     <div class="money">${money}${r.savings > 0 ? `<b>you save ${usd(r.savings)}</b>` : ""}</div>
@@ -147,7 +147,7 @@ function render(s) {
             <div class="who-row"><span class="avatar">${initials(names[i.memberId])}</span><span class="who-name">${esc(names[i.memberId])}</span></div>
             <h3>${esc(i.label)}</h3>
             <div class="money">${usd(i.price)}${i.kind === "addon" ? "/yr" : ""}</div></article>`).join("")}</div>`
-      : `<div class="empty"><div class="empty-gavel">⚖️</div>The docket is empty.<br>Text the court from your phone: paste a store link, send a photo, or ask <b>"court, what phone should I get?"</b></div>`;
+      : `<div class="empty"><div class="empty-gavel">⚖️</div>The docket is empty.<br>Text the court from your phone: paste a store link for anything, send a photo, or ask <b>"court, what laptop should I get?"</b></div>`;
     $("timelineWrap").innerHTML = "";
     $("ordered").hidden = true;
   } else {
@@ -170,8 +170,8 @@ function render(s) {
       const x = (d) => Math.min(100, ((d - t.day) / (end - t.day)) * 100);
       $("timelineWrap").innerHTML = `<h2 class="section-title">When to buy<span>the court's calendar</span></h2>
         <div class="timeline"><div class="line"></div>
-          <div class="tick first" style="left:0%"><div class="dot" style="background:var(--keep)"></div><b>Today</b><br>${buy.map((r) => esc(names[r.memberId])).join(", ") || "nothing"}</div>
-          ${held.map((h) => `<div class="tick" style="left:${x(h.holdUntilDay)}%"><div class="dot" style="background:var(--wait)"></div><b>Day ${h.holdUntilDay}</b><br>${esc(names[h.memberId])} · ${usd(h.heldCost)}</div>`).join("")}
+          <div class="tick first" style="left:0%"><div class="dot" style="background:var(--keep)"></div><b>Today</b><br>${[...new Set(buy.map((r) => esc(names[r.memberId])))].join(", ") || "nothing"}</div>
+          ${[...new Set(held.map((h) => h.holdUntilDay))].map((d) => `<div class="tick" style="left:${x(d)}%"><div class="dot" style="background:var(--wait)"></div><b>Day ${d}</b>${held.filter((h) => h.holdUntilDay === d).map((h) => `<br>${esc(names[h.memberId])} · ${usd(h.heldCost)}`).join("")}</div>`).join("")}
         </div>`;
     } else $("timelineWrap").innerHTML = "";
     $("ordered").hidden = false;

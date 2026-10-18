@@ -7,7 +7,7 @@ import { photonStatus } from "./channels/photon.ts";
 import { claimedHandles } from "./claims.ts";
 import { savedMemberIds } from "./data.ts";
 import { deliver, describeChanges, snapshot } from "./feed.ts";
-import { priceTrack } from "./engine.ts";
+import { cartLabel, priceTrack } from "./engine.ts";
 import { logActivity, state, world } from "./store.ts";
 import { callTool } from "./tools.ts";
 import { wasWelcomed } from "./setup.ts";
@@ -73,19 +73,21 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
     budget: state.budget ?? null,
     spendToday: state.trial?.now ?? null,
     overBudget: state.trial?.overBudget ?? false,
-    // Price tracker: every phone in the cart, now vs the lowest price coming up (synthetic store prices).
+    // Price tracker: every phone and product in the cart, now vs the lowest price coming up (synthetic store prices).
     tracker: state.cart
-      .filter((i) => i.kind === "device" && i.phoneId)
+      .filter((i) => (i.kind === "device" && i.phoneId) || i.kind === "product")
       .map((i) => {
-        const t = priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120);
-        const p = world.catalog.phones.find((x) => x.id === i.phoneId)!;
-        return { who: world.household.members.find((m) => m.id === i.memberId)?.name ?? "", label: `${p.name} ${i.storageGB}GB`, now: t.now, lowest: t.lowest };
+        const custom = i.custom ? { price: i.custom.price, category: i.custom.category } : undefined;
+        const t = i.kind === "device"
+          ? priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120)
+          : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom);
+        return { who: world.household.members.find((m) => m.id === i.memberId)?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
       }),
     members: world.household.members
       .filter((m) => !saved.length || saved.includes(m.id))
       .map((m) => {
         const handles = [...new Set([...m.handles, ...claimedHandles(m.id)])];
-        const ruling = state.trial?.rulings.find((r) => r.memberId === m.id && r.proposed); // their phone, not an add-on
+        const ruling = state.trial?.rulings.find((r) => r.memberId === m.id && r.proposed?.phoneId); // their phone, not an add-on or product
         return {
           id: m.id,
           name: m.name,

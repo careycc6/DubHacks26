@@ -163,7 +163,7 @@
 
       <section class="card">
         <h2>📈 Price tracker <span>store prices</span></h2>
-        <ul class="feed" id="tracker"><li class="empty-feed">Phones in the cart show up here, with the best day to buy.</li></ul>
+        <ul class="feed" id="tracker"><li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li></ul>
       </section>
 
       <section class="card">
@@ -229,7 +229,7 @@ async function loadDashboard() {
   $("budgetStatus").style.color = d.overBudget ? "var(--cut)" : d.budget != null ? "var(--keep)" : "";
   // Price tracker
   if (d.tracker.length) $("tracker").innerHTML = d.tracker.map((t) => `<li><span class="when">${esc(t.who)}</span><b>${esc(t.label)}</b><br>${usd(t.now)} now${t.lowest.price < t.now ? ` → <b style="color:var(--keep)">${usd(t.lowest.price)}</b> on day ${t.lowest.day}` : " · no drops coming up"}</li>`).join("");
-  else $("tracker").innerHTML = `<li class="empty-feed">Phones in the cart show up here, with the best day to buy.</li>`;
+  else $("tracker").innerHTML = `<li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li>`;
   $("people").innerHTML = d.members.map((m) => `
     <div class="person">
       <span class="avatar">${esc(m.name.slice(0, 1))}</span>

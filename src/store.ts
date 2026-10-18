@@ -3,8 +3,8 @@
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onShutdown, put } from "./db.ts";
-import { runTrial, type Prefs, type TrialOptions } from "./engine.ts";
-import type { CartItem, NestRuling, Trial, World } from "./types.ts";
+import { cartLabel, cartPrice, runTrial, type Prefs, type TrialOptions } from "./engine.ts";
+import type { CartItem, NestRuling, Owned, Trial, World } from "./types.ts";
 
 export interface ChatLine {
   id: string;
@@ -36,7 +36,7 @@ export interface State {
   exhibits: Exhibit[];
   activity: { at: number; day: number; text: string }[]; // public one-liners for the dashboard
   prefs: Record<string, Prefs>; // what each person said they care about (battery, screen, camera…)
-  lastRecs: Record<string, { phoneId: string; storageGB: number }[]>; // so "add the first one" works
+  lastRecs: Record<string, { phoneId?: string; storageGB?: number; productId?: string; variant?: string }[]>; // so "add the first one" works
   budget?: number; // the family's budget for this round of shopping
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
@@ -47,15 +47,17 @@ export const bus = new EventEmitter();
 
 const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, trialRuns: 0 });
 
-// What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone.
-type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }> };
+// What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone
+// and what people said about the things they already own ("the vacuum died").
+type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }>; owned?: Owned[] };
 
 export type Snapshot = Saved;
 
 function fromSaved(saved: Saved | undefined): State {
   if (!saved) return fresh();
-  const { evidence = {}, ...rest } = structuredClone(saved);
+  const { evidence = {}, owned, ...rest } = structuredClone(saved);
   for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
+  if (owned) world.household.owned = owned;
   return { ...fresh(), ...rest };
 }
 export let state: State = fromSaved(get<Saved | undefined>("state", undefined));
@@ -67,6 +69,7 @@ export function snapshot(): Snapshot {
     ...rest,
     chat: rest.chat.map(({ image: _i, ...line }) => line), // simulator photos are big and only matter live
     evidence: Object.fromEntries(world.household.members.map((m) => [m.id, { batteryHealth: m.device.batteryHealth, screenCracked: m.device.screenCracked }])),
+    owned: world.household.owned,
   });
   if (JSON.stringify(saved).length > 12_000_000) {
     saved.exhibits = saved.exhibits.map(({ image: _i, ...e }) => e); // stay well under MongoDB's 16 MB document limit
@@ -108,11 +111,7 @@ export function publicState() {
     household: world.household.name,
     courtNumber: process.env.COURT_NUMBER ?? "", // shown on the case file so judges can text in
     members: world.household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, device: m.device.model })),
-    cart: state.cart.map((i) => {
-      const p = world.catalog.phones.find((x) => x.id === i.phoneId);
-      const a = world.catalog.addons.find((x) => x.id === i.addonId);
-      return { ...i, label: p ? `${p.name} ${i.storageGB}GB` : a?.name, price: p ? p.prices[String(i.storageGB)] : (a?.monthly ?? 0) * 12 };
-    }),
+    cart: state.cart.map((i) => ({ ...i, label: cartLabel(world, i), price: cartPrice(world, i) })),
     trial: state.trial,
     nest: state.nest,
     budget: state.budget,
