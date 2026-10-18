@@ -132,7 +132,7 @@ function normalizeHandle(raw: string): string | undefined {
 const ROLES = ["parent", "teen", "kid", "grandparent", "roommate", "partner", "other"];
 
 setupRouter.get("/api/setup/household", (_req, res) => {
-  const example = loadWorld().household; // pristine example values, shown greyed for unsaved rows
+  const example = loadWorld({ local: false }).household; // pristine example values, shown greyed for unsaved rows
   const saved = loadHouseholdLocal().members;
   res.json({
     roles: ROLES,

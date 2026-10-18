@@ -20,13 +20,14 @@ export function saveHouseholdLocal(local: HouseholdLocal) {
   writeFileSync(localFile, JSON.stringify(local, null, 2));
 }
 
-export function loadWorld(): World {
+/** `local: false` gives the pristine example household (tests use this). */
+export function loadWorld(opts: { local?: boolean } = {}): World {
   const world: World = {
     catalog: load("catalog.json"),
     household: load("household.json"),
     offers: load("offers.json"),
   };
-  const local = loadHouseholdLocal();
+  const local = opts.local === false ? { members: {} } as HouseholdLocal : loadHouseholdLocal();
   for (const m of world.household.members) {
     const o = local.members[m.id];
     if (o?.name) m.name = o.name;

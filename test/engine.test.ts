@@ -4,7 +4,7 @@ import { loadWorld } from "../src/data.ts";
 import { findPhone, leavingNest, readyHolds, recommend, runTrial } from "../src/engine.ts";
 import type { CartItem } from "../src/types.ts";
 
-const world = loadWorld();
+const world = loadWorld({ local: false }); // the example family, never your real household
 const demoCart: CartItem[] = [
   { id: "1", kind: "device", memberId: "marco", phoneId: "iphone-17-pro", storageGB: 256 },
   { id: "2", kind: "device", memberId: "elena", phoneId: "pixel-10-pro", storageGB: 256 },
