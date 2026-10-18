@@ -98,6 +98,9 @@ function fileLinks(msg: Incoming): string | null {
 
 const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 
+/** How the last Gemini attempt went (for the dashboard's preflight panel). */
+export const llmStatus: { at?: number; model?: string; ok?: boolean; billing?: boolean; error?: string } = {};
+
 async function reply_(msg: Incoming): Promise<string> {
   // The verdict is pure engine output: skip the LLM (instant, deterministic, costs no quota).
   if (TRIAL_INTENT.test(msg.text) && !msg.image) return rulesReply(msg);
@@ -109,6 +112,8 @@ async function reply_(msg: Incoming): Promise<string> {
     // Rate limits / outages must never break a live demo. If tools already ran, report what they did;
     // otherwise fall back to rules-only mode.
     console.error("[llm] falling back:", (err as Error).message.slice(0, 160));
+    const text = String((err as Error).message ?? err);
+    Object.assign(llmStatus, { at: Date.now(), ok: false, model: "rules", billing: /"code":\s*402|prepayment credits|billing/i.test(text), error: text.slice(0, 160) });
     return summarizeRuns(applied) ?? rulesReply(msg);
   }
 }
@@ -162,7 +167,9 @@ async function generateWithFallback(
     if (timeLeft < 2_000) break;
     try {
       const abortSignal = AbortSignal.timeout(Math.min(CALL_TIMEOUT_MS, timeLeft));
-      return await ai!.models.generateContent({ ...req, model, config: { ...req.config, abortSignal } });
+      const res = await ai!.models.generateContent({ ...req, model, config: { ...req.config, abortSignal } });
+      Object.assign(llmStatus, { at: Date.now(), ok: true, model, billing: false, error: undefined });
+      return res;
     } catch (err) {
       const text = String((err as Error).message ?? err);
       const slow = (err as Error).name === "TimeoutError" || (err as Error).name === "AbortError" || /abort|timed? ?out/i.test(text);

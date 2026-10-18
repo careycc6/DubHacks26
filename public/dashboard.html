@@ -40,6 +40,13 @@
     details.card summary { cursor: pointer; font-family: var(--serif); font-size: 15px; }
     details.card .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     details.card button { border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+    .pf { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+    .pf li { display: grid; grid-template-columns: 14px 86px 1fr; gap: 8px; align-items: baseline; font-size: 13px; line-height: 1.35; }
+    .pf .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; transform: translateY(1px); }
+    .pf .ok .dot { background: var(--keep); } .pf .warn .dot { background: var(--wait); } .pf .err .dot { background: var(--cut); }
+    .pf b { font-weight: 600; } .pf .d { color: var(--muted); overflow-wrap: anywhere; }
+    .card h2 .pf-sum { font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.5px solid currentColor; }
+    .pf-sum.ok { color: var(--keep); } .pf-sum.warn { color: var(--wait); } .pf-sum.err { color: var(--cut); }
     .tools-h { font-family: var(--serif); font-size: 14px; margin: 14px 0 0; }
     .checkpoints { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
     .checkpoints li { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; font-size: 13px; }
@@ -97,6 +104,11 @@
     </main>
 
     <aside class="side">
+      <section class="card preflight" id="preflightCard">
+        <h2>Ready for judges? <span class="pf-sum" id="pfSum">checking…</span></h2>
+        <ul class="pf" id="preflight"></ul>
+      </section>
+
       <section class="card">
         <h2>The court <span id="cartCount"></span></h2>
         <button class="btn rule-btn" id="rule">⚖️ Rule now</button>
@@ -147,6 +159,10 @@ async function loadDashboard() {
   else if (d.photon.state === "connected") chip("cPhoton", "ok", d.photon.line ? `iMessage · ${d.photon.line}` : "iMessage on");
   else chip("cPhoton", d.photon.state === "error" ? "err" : "wait", `iMessage ${d.photon.state}`);
   $("banner").hidden = d.setUp;
+  const worst = d.preflight.some((c) => c.status === "err") ? "err" : d.preflight.some((c) => c.status === "warn") ? "warn" : "ok";
+  $("pfSum").className = `pf-sum ${worst}`;
+  $("pfSum").textContent = worst === "ok" ? "✓ Ready" : worst === "err" ? "✕ Fix first" : "Needs attention";
+  $("preflight").innerHTML = d.preflight.map((c) => `<li class="${c.status}"><span class="dot"></span><b>${esc(c.label)}</b><span class="d">${esc(c.detail)}</span></li>`).join("");
   $("people").innerHTML = d.members.map((m) => `
     <div class="person">
       <span class="avatar">${esc(m.name.slice(0, 1))}</span>
@@ -209,7 +225,7 @@ $("demoTools").addEventListener("click", (e) => {
 });
 loadCheckpoints();
 loadDashboard();
-setInterval(loadDashboard, 8000);
+setInterval(loadDashboard, 5000);
 </script>
 </body>
 </html>
