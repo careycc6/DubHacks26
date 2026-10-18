@@ -36,8 +36,21 @@
     table.members tr.example input::placeholder { color: #a99f8f; font-style: italic; }
     table.members tr .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
     table.members tr.saved .tag { color: var(--keep); }
-    @media (max-width: 700px) { table.members .c-role, table.members .c-phone, table.members .c-batt { display: none; } }
     table.members .m-batt { width: 70px; }
+    .add-row { margin-top: 8px; }
+    /* Phones: each person becomes a small card with labelled fields, so every field (role and phone included) stays usable. */
+    @media (max-width: 700px) {
+      table.members, table.members tbody { display: block; }
+      table.members tr:first-child { display: none; }
+      table.members tr[data-id] { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; padding: 10px; margin-bottom: 10px; border: 1px solid var(--rule); border-radius: 10px; }
+      table.members td { display: block; padding: 0; }
+      table.members td[data-label]::before { content: attr(data-label); display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 2px; }
+      table.members td.c-name, table.members td.c-texts { grid-column: 1 / -1; }
+      table.members .m-batt { width: 100%; }
+      .step { padding: 14px; }
+      .row input, .row select { min-width: 0; width: 100%; }
+      .row .btn { flex: 1; }
+    }
     ol.sub { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: #3d362d; }
   </style>
 </head>
@@ -80,11 +93,12 @@
         <p>The grey rows are an <b>example family</b>. Type over a row to make it a real person; rows you leave blank aren't part of your family: the court leaves them out, never texts them, and you can fill one in later. To take someone out, clear their name and number and save.
           Then <b>Text everyone</b> texts them all at once ("Welcome to the court, [name]! ⚖️"). Press it again after adding someone and only the new person gets texted. Photon's free plan gives each person their own 1:1 chat with the court (group chats need a paid dedicated line), and every chat shares the same family cart.</p>
         <table class="members" id="members"></table>
+        <button class="btn ghost small add-row" id="hhAdd" type="button">+ Add a person</button>
         <p class="hint"><b>Battery health %</b> is how much charge the battery still holds compared to new (not today's charge). Find it on <b>iPhone</b>: Settings → Battery → Battery Health (Maximum Capacity) · <b>Pixel</b>: Settings → Battery → Battery health · <b>Galaxy</b>: Samsung Members app → Phone diagnostics → Battery status. Optional: leave it blank if you don't know it. Anyone can text "battery health 85%" later, and a worn battery may just need a replacement, not a new phone.</p>
         <div class="row"><button class="btn ghost" id="hhSave">Save household</button><button class="btn" id="hhHello">Text everyone</button><button class="btn ghost" id="hhResend" hidden>Resend to all</button></div>
         <div class="tip" id="usersTip"></div>
         <div class="msg" id="hhMsg"></div>
-        <p class="fine" style="margin-top:6px">Names and numbers are saved only on this computer (<code>data/household.local.json</code>, gitignored). Phone stats, prices and promos stay synthetic.
+        <p class="fine" style="margin-top:6px">Names and numbers are saved with your court (MongoDB when hosted, <code>data/household.local.json</code> on a laptop), never in git. Someone added with <b>+ Add a person</b> starts with typical phone stats; prices and promos stay synthetic.
           Not sure which number an iPhone sends iMessages from? Open <a href="https://debug.photon.codes" target="_blank" rel="noopener">debug.photon.codes</a> on that phone.</p>
       </section>
 
@@ -176,30 +190,48 @@ let roles = [];
 async function loadHousehold() {
   const h = await fetch("/api/setup/household").then((r) => r.json());
   roles = h.roles;
-  $("phoneList")?.remove();
-  document.body.insertAdjacentHTML("beforeend", `<datalist id="phoneList">${h.phones.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>`);
+  phones = h.phones;
   const saved = h.members.filter((m) => m.saved).length;
   chip("hhChip", saved ? "ok" : "no", saved ? `${saved} saved` : "example family");
-  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th class="c-batt" title="Battery health, not today's charge">Battery health %</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => `
+  $("members").innerHTML = `<tr><th>Name</th><th class="c-role">Role</th><th class="c-phone">Current phone</th><th class="c-batt" title="Battery health, not today's charge">Battery health %</th><th>Texts from</th><th></th></tr>` + h.members.map((m) => memberRow(m, saved)).join("");
+  document.querySelectorAll("#members tr[data-id]").forEach(watchRow);
+}
+let phones = [];
+// One person's row. A real dropdown for the phone (a typed-in list only showed matches for what was already there).
+function memberRow(m, saved) {
+  const model = m.phoneModel || "";
+  const phoneOpts = [...new Set([...(model ? [model] : []), ...phones])];
+  return `
     <tr data-id="${m.id}" class="${m.saved ? "saved" : "example"}">
-      <td><input class="m-name" placeholder="e.g. ${esc(m.example.name)}" value="${esc(m.name)}" /></td>
-      <td class="c-role"><select class="m-role">
-        ${m.saved ? "" : `<option value="">e.g. ${esc(cap(m.example.role))}</option>`}
+      <td class="c-name" data-label="Name"><input class="m-name" placeholder="${m.example.name ? `e.g. ${esc(m.example.name)}` : "Name"}" value="${esc(m.name)}" /></td>
+      <td class="c-role" data-label="Role"><select class="m-role">
+        ${m.saved ? "" : `<option value="">${m.example.role ? `e.g. ${esc(cap(m.example.role))}` : "Role"}</option>`}
         ${roles.map((r) => `<option value="${r}" ${r === (m.role || (m.saved ? m.example.role : "")) ? "selected" : ""}>${cap(r)}</option>`).join("")}
       </select></td>
-      <td class="c-phone"><input class="m-model" list="phoneList" placeholder="e.g. ${esc(m.example.phoneModel)}" value="${esc(m.phoneModel)}" /></td>
-      <td class="c-batt"><input class="m-batt" type="number" min="1" max="100" placeholder="e.g. ${m.example.batteryHealth}" value="${m.batteryHealth ?? ""}" title="iPhone: Settings → Battery → Battery Health. Pixel: Settings → Battery → Battery health. Galaxy: Samsung Members → Phone diagnostics → Battery status." /></td>
-      <td><input class="m-phone" placeholder="e.g. +1 206 555 0123" value="${esc(m.handle)}" /></td>
-      <td><span class="tag">${m.saved ? "saved" : saved ? "not in family" : "example"}</span></td>
-    </tr>`).join("");
-  // Typing in a grey example row turns it into a real person.
-  document.querySelectorAll("#members tr[data-id]").forEach((tr) => {
-    tr.addEventListener("input", () => {
-      const filled = tr.querySelector(".m-name").value.trim() || tr.querySelector(".m-phone").value.trim();
-      tr.classList.toggle("example", !filled && !tr.classList.contains("saved"));
-    });
+      <td class="c-phone" data-label="Current phone"><select class="m-model">
+        <option value="">${m.example.phoneModel ? `e.g. ${esc(m.example.phoneModel)}` : "Pick a phone"}</option>
+        ${phoneOpts.map((p) => `<option value="${esc(p)}" ${p === model ? "selected" : ""}>${esc(p)}</option>`).join("")}
+      </select></td>
+      <td class="c-batt" data-label="Battery %"><input class="m-batt" type="number" min="1" max="100" placeholder="${m.example.batteryHealth ? `e.g. ${m.example.batteryHealth}` : "85"}" value="${m.batteryHealth ?? ""}" title="iPhone: Settings → Battery → Battery Health. Pixel: Settings → Battery → Battery health. Galaxy: Samsung Members → Phone diagnostics → Battery status." /></td>
+      <td class="c-texts" data-label="Texts from"><input class="m-phone" type="tel" placeholder="e.g. +1 206 555 0123" value="${esc(m.handle)}" /></td>
+      <td><span class="tag">${m.saved ? "saved" : m.example.name ? (saved ? "not in family" : "example") : "new"}</span></td>
+    </tr>`;
+}
+// Typing in a grey example row turns it into a real person.
+function watchRow(tr) {
+  tr.addEventListener("input", () => {
+    const filled = tr.querySelector(".m-name").value.trim() || tr.querySelector(".m-phone").value.trim();
+    tr.classList.toggle("example", !filled && !tr.classList.contains("saved"));
   });
 }
+$("hhAdd").onclick = () => {
+  const id = "p" + Date.now().toString(36);
+  $("members").insertAdjacentHTML("beforeend", memberRow({ id, saved: false, example: { name: "", role: "", phoneModel: "", batteryHealth: "" }, name: "", role: "", phoneModel: "", batteryHealth: null, handle: "" }, true));
+  const tr = $("members").querySelector(`tr[data-id="${id}"]`);
+  tr.classList.remove("example");
+  watchRow(tr);
+  tr.querySelector(".m-name").focus();
+};
 async function saveHousehold() {
   const members = [...document.querySelectorAll("#members tr[data-id]")].map((tr) => ({
     id: tr.dataset.id,

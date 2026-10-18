@@ -22,6 +22,13 @@ test("a saved family leaves out the slots nobody filled in", () => {
   assert.equal(loadWorld({ local: false }).household.members.length, 4); // tests and setup's blank rows still see every slot
 });
 
+test("a person added past the example slots joins the family", () => {
+  saveHouseholdLocal({ members: { marco: { name: "Carey Chiu", role: "parent" }, pk3x9: { name: "Aunt Lee", role: "other", phoneModel: "Pixel 10" } } });
+  const lee = loadWorld().household.members.find((m) => m.id === "pk3x9")!;
+  assert.deepEqual([lee.name, lee.role, lee.device.model], ["Aunt Lee", "other", "Pixel 10"]);
+  assert.equal(loadWorld().household.members.length, 2);
+});
+
 test("asking for Grandma when she isn't in the family says so", async () => {
   const store = await import("../src/store.ts");
   const { handle } = await import("../src/agent.ts");

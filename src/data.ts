@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { get, put } from "./db.ts";
-import type { World } from "./types.ts";
+import type { Member, World } from "./types.ts";
 
 const dataDir = fileURLToPath(new URL("../data/", import.meta.url));
 const load = (file: string) => JSON.parse(readFileSync(dataDir + file, "utf8"));
@@ -30,6 +30,17 @@ export function loadWorld(opts: { local?: boolean } = {}): World {
   const local = opts.local === false ? { members: {} } as HouseholdLocal : loadHouseholdLocal();
   // Once a family is set up, it's just the people saved on /setup: an example slot left blank (say, grandma) isn't in it.
   if (Object.keys(local.members).length) world.household.members = world.household.members.filter((m) => local.members[m.id]);
+  // People added past the example slots ("Add a person" on /setup) start from typical phone stats.
+  const examples = load("household.json").members as Member[];
+  for (const [id, o] of Object.entries(local.members)) {
+    if (world.household.members.some((m) => m.id === id)) continue;
+    const like = examples.find((m) => m.device.model === o.phoneModel);
+    world.household.members.push({
+      id, name: o.name ?? id, role: o.role ?? "other", age: 30, handles: [],
+      usage: { camera: 3, gaming: 2, dataGBPerMonth: 15 },
+      device: { model: o.phoneModel ?? "Unknown phone", ageMonths: 30, storageGB: 128, storageUsedGB: 64, batteryHealth: 85, installmentsLeft: 0, monthlyInstallment: 0, tradeInValue: like?.device.tradeInValue ?? 0 },
+    });
+  }
   for (const m of world.household.members) {
     const o = local.members[m.id];
     if (o?.name) m.name = o.name;

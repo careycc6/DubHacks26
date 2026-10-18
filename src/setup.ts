@@ -21,7 +21,18 @@ const exampleFile = fileURLToPath(new URL("../.env.example", import.meta.url));
 const EDITABLE = ["GEMINI_API_KEY", "GEMINI_MODELS", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "PUBLIC_URL", "COURT_NUMBER", "MONGODB_URI"] as const;
 type Key = (typeof EDITABLE)[number];
 
+// Choices that aren't secrets (which Gemini model goes first, the court's number) are also saved with the
+// household, so a hosted court (read-only .env, many short-lived copies) keeps them instead of snapping back.
+const KEPT = ["GEMINI_MODELS", "PUBLIC_URL", "COURT_NUMBER"] as const;
+const applyKept = () => {
+  for (const [k, v] of Object.entries(get<Record<string, string>>("settings", {}))) if ((KEPT as readonly string[]).includes(k) && v) process.env[k] = v;
+};
+applyKept();
+onReload(applyKept);
+
 function writeEnv(updates: Partial<Record<Key, string>>) {
+  const kept = Object.fromEntries(Object.entries(updates).filter(([k, v]) => (KEPT as readonly string[]).includes(k) && v));
+  if (Object.keys(kept).length) put("settings", { ...get<Record<string, string>>("settings", {}), ...kept });
   const base = existsSync(envFile) ? readFileSync(envFile, "utf8") : readFileSync(exampleFile, "utf8");
   const lines = base.split(/\r?\n/);
   for (const [k, v] of Object.entries(updates)) {
@@ -213,9 +224,9 @@ setupRouter.get("/api/setup/household", (_req, res) => {
   res.json({
     roles: ROLES,
     phones: [...new Set([...example.members.map((m) => m.device.model), ...world.catalog.phones.map((p) => p.name)])],
-    // Every example slot, so a blank one (someone not in the family) can be filled in again later.
-    members: example.members.map((m) => {
-      const ex = m;
+    // Every example slot (a blank one can be filled in again later), then anyone added past them.
+    members: [...example.members, ...world.household.members.filter((m) => !example.members.some((x) => x.id === m.id))].map((m) => {
+      const ex = example.members.find((x) => x.id === m.id) ?? { name: "", role: "", device: { model: "", batteryHealth: "" } };
       const s = saved[m.id];
       return {
         id: m.id,
@@ -237,7 +248,7 @@ setupRouter.post("/api/setup/household", (req, res) => {
   const slots = new Set(loadWorld({ local: false }).household.members.map((m) => m.id));
   const problems: string[] = [];
   for (const row of input) {
-    if (!slots.has(row.id)) continue;
+    if (!slots.has(row.id) && !/^p[a-z0-9]{3,16}$/.test(row.id)) continue; // an example slot, or a row added with "Add a person"
     const name = (row.name ?? "").trim();
     const phone = (row.phone ?? "").trim();
     if (!name && !phone) {

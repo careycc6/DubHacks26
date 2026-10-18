@@ -19,7 +19,8 @@
     .banner[hidden] { display: none; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; margin-top: 8px; }
     @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .side { order: -1; } }
-    .side { display: grid; gap: 14px; align-content: start; padding-top: 24px; }
+    .side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; padding-top: 24px; }
+    .layout > *, .side > * { min-width: 0; }
     .card { background: #fffdf8; border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; }
     .card h2 { font-family: var(--serif); font-size: 17px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; }
     .card h2 span { font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; }
@@ -33,10 +34,10 @@
     .person .sub { font-size: 12.5px; color: var(--muted); }
     .budget-row { display: flex; gap: 8px; }
     .cart-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-    .cart-list li { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; font-size: 13.5px; padding-bottom: 8px; border-bottom: 1px dashed var(--rule); }
+    .cart-list li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: center; font-size: 13.5px; padding-bottom: 8px; border-bottom: 1px dashed var(--rule); }
     .cart-list li:last-child { border-bottom: 0; }
     .cart-list .who { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
-    .cart-list .acts { display: flex; gap: 4px; align-items: center; }
+    .cart-list .acts { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .cart-list .acts .shop { font-size: 12.5px; font-weight: 600; color: var(--keep); text-decoration: none; margin-right: 4px; white-space: nowrap; }
     .cart-list button, .linkish { border: 1px solid var(--rule); background: #fff; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; color: var(--ink); }
     .cart-list button.buy { border-color: var(--keep); color: var(--keep); }
@@ -84,6 +85,26 @@
     .acct { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
     .acct button { border: 0; background: none; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
     .file { max-width: none; padding: 0; }
+    /* Price tracker: one small line chart per item, the next 120 days, cheapest day marked. */
+    .tracker { max-height: none; }
+    .tracker svg { display: block; width: 100%; height: 64px; margin-top: 6px; overflow: visible; }
+    .tracker .ln { fill: none; stroke: var(--ink); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+    .tracker .area { fill: var(--paper-2); }
+    .tracker .low { fill: var(--keep); }
+    .tracker .axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+    /* Small screens: everything stacks, nothing scrolls sideways. */
+    @media (max-width: 640px) {
+      .dash { padding: 16px 12px 48px; }
+      .brand { font-size: 21px; }
+      .top-actions { width: 100%; }
+      .top-actions .btn { flex: 1; text-align: center; }
+      .pf li { grid-template-columns: 14px 1fr; }
+      .pf li .d { grid-column: 2; }
+      .cart-list .acts { flex-wrap: wrap; }
+      .qrs { grid-template-columns: 1fr 1fr; }
+      .checkpoints li { grid-template-columns: 1fr; }
+      .cue { flex-wrap: wrap; font-size: 14px; }
+    }
     .file header { margin-top: 18px; }
   </style>
 </head>
@@ -94,7 +115,6 @@
     <div class="top-actions">
       <span class="chip no" id="cGemini">AI</span>
       <span class="chip no" id="cPhoton">iMessage</span>
-      <a class="btn ghost small" href="/cart" target="_blank" rel="noopener">Phone view ↗</a>
       <a class="btn ghost small" href="/welcome">Guide</a>
       <a class="btn small" href="/setup">⚙ Settings</a>
       <span class="acct" id="acct" hidden></span>
@@ -186,7 +206,7 @@
 
       <section class="card">
         <h2>📈 Price tracker <span>store prices</span></h2>
-        <ul class="feed" id="tracker"><li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li></ul>
+        <ul class="feed tracker" id="tracker"><li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li></ul>
       </section>
 
       <section class="card">
@@ -231,6 +251,21 @@
 <script src="/casefile.js"></script>
 <script src="/live.js"></script>
 <script>
+// A small step chart of one item's price over the next 120 days; the green mark is the cheapest day.
+function priceChart(t) {
+  const pts = t.points ?? [];
+  if (pts.length < 2) return "";
+  const d0 = pts[0].day, d1 = pts.at(-1).day, lo = Math.min(...pts.map((p) => p.price)), hi = Math.max(...pts.map((p) => p.price));
+  const x = (d) => ((d - d0) / (d1 - d0 || 1)) * 300;
+  const y = (v) => (hi === lo ? 32 : 6 + (1 - (v - lo) / (hi - lo)) * 52);
+  let path = `M0 ${y(pts[0].price)}`;
+  for (const p of pts.slice(1)) path += ` H${x(p.day).toFixed(1)} V${y(p.price).toFixed(1)}`;
+  const lx = x(t.lowest.day).toFixed(1);
+  const mark = t.lowest.price < t.now ? `<line x1="${lx}" x2="${lx}" y1="0" y2="64" stroke="var(--keep)" stroke-width="2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>` : "";
+  return `<svg viewBox="0 0 300 64" preserveAspectRatio="none" role="img" aria-label="${esc(t.label)}: ${usd(t.now)} now, lowest ${usd(t.lowest.price)} on day ${t.lowest.day}">
+    <path class="area" d="${path} V64 H0 Z"/>${mark}<path class="ln" d="${path}"/></svg>
+    <div class="axis"><span>day ${d0}</span>${hi !== lo ? `<span>${usd(lo)}–${usd(hi)}</span>` : ""}<span>day ${d1}</span></div>`;
+}
 const cap = (s) => String(s ?? "").replace(/^./, (c) => c.toUpperCase());
 const post = (u, b) => fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
 const chip = (id, cls, text) => { $(id).className = `chip ${cls}`; $(id).textContent = text; };
@@ -254,7 +289,7 @@ async function loadDashboard() {
   $("budgetStatus").textContent = d.budget == null ? "not set" : used > d.budget ? `over by ${usd(used - d.budget)}` : `${usd(d.budget - used)} left`;
   $("budgetStatus").style.color = d.overBudget ? "var(--cut)" : d.budget != null ? "var(--keep)" : "";
   // Price tracker
-  if (d.tracker.length) $("tracker").innerHTML = d.tracker.map((t) => `<li><span class="when">${esc(t.who)}</span><b>${esc(t.label)}</b><br>${usd(t.now)} now${t.lowest.price < t.now ? ` → <b style="color:var(--keep)">${usd(t.lowest.price)}</b> on day ${t.lowest.day}` : " · no drops coming up"}</li>`).join("");
+  if (d.tracker.length) $("tracker").innerHTML = d.tracker.map((t) => `<li><span class="when">${esc(t.who)}</span><b>${esc(t.label)}</b><br>${usd(t.now)} now${t.lowest.price < t.now ? ` → <b style="color:var(--keep)">${usd(t.lowest.price)}</b> on day ${t.lowest.day}` : " · no drops coming up"}${priceChart(t)}</li>`).join("");
   else $("tracker").innerHTML = `<li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li>`;
   $("people").innerHTML = d.members.map((m) => `
     <div class="person">

@@ -83,7 +83,7 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
         const t = i.kind === "device"
           ? priceTrack(world, i.phoneId!, i.storageGB ?? 128, state.day, 120, undefined, who)
           : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom, who);
-        return { who: who?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
+        return { who: who?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest, points: t.points };
       }),
     members: world.household.members
       .filter((m) => !saved.length || saved.includes(m.id))

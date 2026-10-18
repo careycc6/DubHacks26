@@ -1031,7 +1031,7 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 // src/db.ts
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-var KEYS = ["household", "claims", "welcomed", "state", "checkpoints", "accounts"];
+var KEYS = ["household", "claims", "welcomed", "state", "checkpoints", "accounts", "settings"];
 var dataDir = process.env.CART_COURT_DATA_DIR ? process.env.CART_COURT_DATA_DIR.replace(/[\/]?$/, "/") : fileURLToPath(new URL("../data/", import.meta.url));
 var fileFor = (key) => `${dataDir}${key}.local.json`;
 var readFile = (key) => existsSync(fileFor(key)) ? JSON.parse(readFileSync(fileFor(key), "utf8")) : void 0;
@@ -1141,6 +1141,20 @@ function loadWorld(opts = {}) {
   };
   const local = opts.local === false ? { members: {} } : loadHouseholdLocal();
   if (Object.keys(local.members).length) world2.household.members = world2.household.members.filter((m) => local.members[m.id]);
+  const examples = load("household.json").members;
+  for (const [id, o] of Object.entries(local.members)) {
+    if (world2.household.members.some((m) => m.id === id)) continue;
+    const like = examples.find((m) => m.device.model === o.phoneModel);
+    world2.household.members.push({
+      id,
+      name: o.name ?? id,
+      role: o.role ?? "other",
+      age: 30,
+      handles: [],
+      usage: { camera: 3, gaming: 2, dataGBPerMonth: 15 },
+      device: { model: o.phoneModel ?? "Unknown phone", ageMonths: 30, storageGB: 128, storageUsedGB: 64, batteryHealth: 85, installmentsLeft: 0, monthlyInstallment: 0, tradeInValue: like?.device.tradeInValue ?? 0 }
+    });
+  }
   for (const m of world2.household.members) {
     const o = local.members[m.id];
     if (o?.name) m.name = o.name;
@@ -1846,7 +1860,15 @@ function authRouter(isAdmin2) {
 var envFile = fileURLToPath3(new URL("../.env", import.meta.url));
 var exampleFile = fileURLToPath3(new URL("../.env.example", import.meta.url));
 var EDITABLE = ["GEMINI_API_KEY", "GEMINI_MODELS", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "PUBLIC_URL", "COURT_NUMBER", "MONGODB_URI"];
+var KEPT = ["GEMINI_MODELS", "PUBLIC_URL", "COURT_NUMBER"];
+var applyKept = () => {
+  for (const [k, v] of Object.entries(get("settings", {}))) if (KEPT.includes(k) && v) process.env[k] = v;
+};
+applyKept();
+onReload(applyKept);
 function writeEnv(updates) {
+  const kept = Object.fromEntries(Object.entries(updates).filter(([k, v]) => KEPT.includes(k) && v));
+  if (Object.keys(kept).length) put("settings", { ...get("settings", {}), ...kept });
   const base2 = existsSync3(envFile) ? readFileSync4(envFile, "utf8") : readFileSync4(exampleFile, "utf8");
   const lines = base2.split(/\r?\n/);
   for (const [k, v] of Object.entries(updates)) {
@@ -2007,9 +2029,9 @@ setupRouter.get("/api/setup/household", (_req, res) => {
   res.json({
     roles: ROLES,
     phones: [.../* @__PURE__ */ new Set([...example.members.map((m) => m.device.model), ...world.catalog.phones.map((p) => p.name)])],
-    // Every example slot, so a blank one (someone not in the family) can be filled in again later.
-    members: example.members.map((m) => {
-      const ex = m;
+    // Every example slot (a blank one can be filled in again later), then anyone added past them.
+    members: [...example.members, ...world.household.members.filter((m) => !example.members.some((x) => x.id === m.id))].map((m) => {
+      const ex = example.members.find((x) => x.id === m.id) ?? { name: "", role: "", device: { model: "", batteryHealth: "" } };
       const s = saved[m.id];
       return {
         id: m.id,
@@ -2030,7 +2052,7 @@ setupRouter.post("/api/setup/household", (req, res) => {
   const slots = new Set(loadWorld({ local: false }).household.members.map((m) => m.id));
   const problems = [];
   for (const row of input) {
-    if (!slots.has(row.id)) continue;
+    if (!slots.has(row.id) && !/^p[a-z0-9]{3,16}$/.test(row.id)) continue;
     const name = (row.name ?? "").trim();
     const phone2 = (row.phone ?? "").trim();
     if (!name && !phone2) {
@@ -3841,7 +3863,7 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
       const custom = i.custom ? { price: i.custom.price, category: i.custom.category } : void 0;
       const who = world.household.members.find((m) => m.id === i.memberId);
       const t = i.kind === "device" ? priceTrack(world, i.phoneId, i.storageGB ?? 128, state.day, 120, void 0, who) : priceTrack(world, i.productId ?? `custom:${i.id}`, i.variant ?? "std", state.day, 120, custom, who);
-      return { who: who?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest };
+      return { who: who?.name ?? "", label: cartLabel(world, i), now: t.now, lowest: t.lowest, points: t.points };
     }),
     members: world.household.members.filter((m) => !saved.length || saved.includes(m.id)).map((m) => {
       const handles = [.../* @__PURE__ */ new Set([...m.handles, ...claimedHandles(m.id)])];

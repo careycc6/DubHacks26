@@ -90,7 +90,8 @@ a { color: inherit; }
 
 /* ---------- Simulator */
 .sim { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; height: 100vh; }
-@media (max-width: 900px) { .sim { grid-template-columns: 1fr; height: auto; } .sim iframe { height: 80vh; } }
+@media (max-width: 900px) { .sim { grid-template-columns: minmax(0, 1fr); height: auto; } .sim iframe { height: 80vh; } }
+.sim > * { min-width: 0; } /* the tab strip scrolls inside the phone instead of widening the page */
 .phone { display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--rule); min-height: 0; }
 .tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid #eee; overflow-x: auto; }
 .tab { border: 0; background: #f1f1f4; padding: 6px 10px; border-radius: 999px; font-size: 13px; cursor: pointer; white-space: nowrap; }
