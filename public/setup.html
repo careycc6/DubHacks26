@@ -134,9 +134,9 @@ async function refresh() {
     if (opt) $("model").value = opt.value;
   }
   const p = s.photon;
-  photonConnected = p.state === "connected";
+  photonConnected = p.state === "connected" || p.state === "ready";
   if (!p.configured) chip("pChip", "no", "not connected");
-  else if (photonConnected) chip("pChip", "ok", p.line ? `connected · ${p.line}` : "connected");
+  else if (photonConnected) chip("pChip", "ok", p.state === "ready" ? "ready (webhook)" : p.line ? `connected · ${p.line}` : "connected");
   else if (p.state === "error") chip("pChip", "err", "error");
   else chip("pChip", "wait", p.state);
   if (p.state === "error" && p.error) say("pMsg", "err", p.error);

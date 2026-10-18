@@ -5,7 +5,7 @@ import { existsSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI } from "@google/genai";
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
+import { photonShown, photonStatus, sayHello, startPhoton } from "./channels/photon.ts";
 import { addPhotonUser, dashboardToken } from "./photonUsers.ts";
 import { loadHouseholdLocal, loadWorld, savedMemberIds, saveHouseholdLocal } from "./data.ts";
 import { backend, flush, get, onReload, put } from "./db.ts";
@@ -103,7 +103,7 @@ setupRouter.get("/api/guide", (_req, res) => {
     gemini: !!process.env.GEMINI_API_KEY,
     photon: {
       configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET),
-      state: photonStatus.state,
+      state: photonShown(),
       error: photonStatus.error,
       line: photonStatus.line ?? process.env.COURT_NUMBER ?? "",
       autoUsers: !!dashboardToken(), // the court can add numbers under Photon's Users by itself
@@ -125,6 +125,7 @@ setupRouter.get("/api/setup", (_req, res) => {
     photon: {
       configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET),
       ...photonStatus,
+      state: photonShown(),
       projectHint: mask(process.env.PHOTON_PROJECT_ID),
       autoUsers: !!dashboardToken(), // can the court add numbers under Users by itself?
     },

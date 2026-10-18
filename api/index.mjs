@@ -1598,6 +1598,7 @@ async function sayHello(handle2) {
   return { line };
 }
 var photonReady = () => !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET && photonStatus.state !== "error" && (serverless || photonStatus.state === "connected");
+var photonShown = () => serverless && photonStatus.state === "off" && !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET ? "ready" : photonStatus.state;
 var hasSpace = (spaceId) => spaces.has(spaceId.replace(/^photon:/, ""));
 async function sendToHandle(handle2, text) {
   const a = await ensureApp();
@@ -1909,7 +1910,7 @@ setupRouter.get("/api/guide", (_req, res) => {
     gemini: !!process.env.GEMINI_API_KEY,
     photon: {
       configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET),
-      state: photonStatus.state,
+      state: photonShown(),
       error: photonStatus.error,
       line: photonStatus.line ?? process.env.COURT_NUMBER ?? "",
       autoUsers: !!dashboardToken(),
@@ -1931,6 +1932,7 @@ setupRouter.get("/api/setup", (_req, res) => {
     photon: {
       configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET),
       ...photonStatus,
+      state: photonShown(),
       projectHint: mask(process.env.PHOTON_PROJECT_ID),
       autoUsers: !!dashboardToken()
       // can the court add numbers under Users by itself?
@@ -3803,7 +3805,7 @@ function preflight(saved) {
   );
   const photonOn = !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET);
   checks.push(
-    !photonOn ? { id: "photon", label: "iMessage", status: "warn", detail: "Photon not set up: simulator only (/sim)" } : photonStatus.state === "connected" ? { id: "photon", label: "iMessage", status: "ok", detail: `Connected${photonStatus.line ? ` \xB7 ${photonStatus.line}` : ""}` } : { id: "photon", label: "iMessage", status: photonStatus.state === "error" ? "err" : "warn", detail: `Photon ${photonStatus.state}` }
+    !photonOn ? { id: "photon", label: "iMessage", status: "warn", detail: "Photon not set up: simulator only (/sim)" } : photonShown() === "connected" || photonShown() === "ready" ? { id: "photon", label: "iMessage", status: "ok", detail: photonShown() === "ready" ? "Ready: texts arrive by webhook" : `Connected${photonStatus.line ? ` \xB7 ${photonStatus.line}` : ""}` } : { id: "photon", label: "iMessage", status: photonStatus.state === "error" ? "err" : "warn", detail: `Photon ${photonStatus.state}` }
   );
   checks.push(
     !process.env.GEMINI_API_KEY ? { id: "llm", label: "AI", status: "warn", detail: "No Gemini key: rules mode (every demo line still works)" } : llmStatus.billing ? { id: "llm", label: "AI", status: "err", detail: "Gemini billing error: replies are in rules mode (check ai.studio/projects)" } : llmStatus.ok === false ? { id: "llm", label: "AI", status: "warn", detail: "Last reply fell back to rules mode (rate limit or timeout)" } : { id: "llm", label: "AI", status: "ok", detail: llmStatus.ok ? `Last reply from ${llmStatus.model}` : "Key set, no replies yet" }
@@ -3827,7 +3829,7 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
   res.json({
     preflight: preflight(saved),
     gemini: { configured: !!process.env.GEMINI_API_KEY, model: (process.env.GEMINI_MODELS ?? "").split(",")[0] || "gemini-3.5-flash-lite" },
-    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonStatus.state, line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
+    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonShown(), line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
     publicUrl: process.env.PUBLIC_URL ?? "",
     setUp: saved.length > 0,
     budget: state.budget ?? null,

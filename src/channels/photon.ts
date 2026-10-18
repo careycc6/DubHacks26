@@ -234,6 +234,11 @@ export async function sayHello(handle: string): Promise<{ line?: string }> {
 export const photonReady = () =>
   !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET && photonStatus.state !== "error" && (serverless || photonStatus.state === "connected");
 
+/** What to show for Photon. On Vercel each request starts fresh and connects only when it sends, so a configured
+ *  court that hasn't sent yet is "ready" (texts arrive by webhook), not "off". */
+export const photonShown = (): "off" | "connecting" | "connected" | "error" | "ready" =>
+  serverless && photonStatus.state === "off" && !!process.env.PHOTON_PROJECT_ID && !!process.env.PHOTON_PROJECT_SECRET ? "ready" : photonStatus.state;
+
 /** Text one person in their 1:1 chat with the court (reuses the chat, or opens it). Returns the space id. */
 /** Is this Photon conversation reachable from this process (a group the court has seen since it started)? */
 export const hasSpace = (spaceId: string) => spaces.has(spaceId.replace(/^photon:/, ""));

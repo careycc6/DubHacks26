@@ -3,7 +3,7 @@
 import { Router } from "express";
 import { llmStatus } from "./agent.ts";
 import { backend } from "./db.ts";
-import { photonStatus } from "./channels/photon.ts";
+import { photonShown, photonStatus } from "./channels/photon.ts";
 import { claimedHandles } from "./claims.ts";
 import { savedMemberIds } from "./data.ts";
 import { deliver, describeChanges, snapshot } from "./feed.ts";
@@ -28,8 +28,8 @@ function preflight(saved: string[]): Check[] {
   checks.push(
     !photonOn
       ? { id: "photon", label: "iMessage", status: "warn", detail: "Photon not set up: simulator only (/sim)" }
-      : photonStatus.state === "connected"
-        ? { id: "photon", label: "iMessage", status: "ok", detail: `Connected${photonStatus.line ? ` · ${photonStatus.line}` : ""}` }
+      : photonShown() === "connected" || photonShown() === "ready"
+        ? { id: "photon", label: "iMessage", status: "ok", detail: photonShown() === "ready" ? "Ready: texts arrive by webhook" : `Connected${photonStatus.line ? ` · ${photonStatus.line}` : ""}` }
         : { id: "photon", label: "iMessage", status: photonStatus.state === "error" ? "err" : "warn", detail: `Photon ${photonStatus.state}` },
   );
   checks.push(
@@ -67,7 +67,7 @@ dashboardRouter.get("/api/dashboard", (_req, res) => {
   res.json({
     preflight: preflight(saved),
     gemini: { configured: !!process.env.GEMINI_API_KEY, model: (process.env.GEMINI_MODELS ?? "").split(",")[0] || "gemini-3.5-flash-lite" },
-    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonStatus.state, line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
+    photon: { configured: !!(process.env.PHOTON_PROJECT_ID && process.env.PHOTON_PROJECT_SECRET), state: photonShown(), line: photonStatus.line ?? process.env.COURT_NUMBER ?? "" },
     publicUrl: process.env.PUBLIC_URL ?? "",
     setUp: saved.length > 0,
     budget: state.budget ?? null,

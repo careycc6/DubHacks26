@@ -241,7 +241,7 @@ async function loadDashboard() {
   const d = await fetch("/api/dashboard").then((r) => r.json());
   d.gemini.configured ? chip("cGemini", "ok", `AI · ${d.gemini.model.replace("gemini-", "")}`) : chip("cGemini", "no", "AI off · rules mode");
   if (!d.photon.configured) chip("cPhoton", "no", "iMessage off");
-  else if (d.photon.state === "connected") chip("cPhoton", "ok", d.photon.line ? `iMessage · ${d.photon.line}` : "iMessage on");
+  else if (d.photon.state === "connected" || d.photon.state === "ready") chip("cPhoton", "ok", d.photon.line ? `iMessage · ${d.photon.line}` : "iMessage on");
   else chip("cPhoton", d.photon.state === "error" ? "err" : "wait", `iMessage ${d.photon.state}`);
   $("banner").hidden = d.setUp;
   const worst = d.preflight.some((c) => c.status === "err") ? "err" : d.preflight.some((c) => c.status === "warn") ? "warn" : "ok";

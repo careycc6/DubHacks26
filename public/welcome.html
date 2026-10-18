@@ -211,7 +211,7 @@ $("pSave").onclick = async () => {
   await post("/api/setup", { PHOTON_PROJECT_ID: $("pid").value, PHOTON_PROJECT_SECRET: $("psecret").value });
   $("pid").value = ""; $("psecret").value = "";
   const g = await fetch("/api/guide").then((r) => r.json());
-  g.photon.state === "connected" ? say("pMsg", "ok", "✓ Connected.") : say("pMsg", "err", g.photon.error ? `Photon says: ${g.photon.error}` : "Saved, still connecting. Check the keys if this doesn't turn green.");
+  g.photon.state === "connected" || g.photon.state === "ready" ? say("pMsg", "ok", "✓ Connected.") : say("pMsg", "err", g.photon.error ? `Photon says: ${g.photon.error}` : "Saved, still connecting. Check the keys if this doesn't turn green.");
   refresh();
 };
 document.addEventListener("click", (e) => {
