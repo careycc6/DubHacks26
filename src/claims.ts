@@ -3,7 +3,8 @@
 // ("I'm Maya") and the claim is saved (db.ts: MongoDB or data/claims.local.json) so it survives restarts.
 import { savedMemberIds } from "./data.ts";
 import { get, onReload, put } from "./db.ts";
-import { world } from "./store.ts";
+import { tradeIn, usd } from "./engine.ts";
+import { state, world } from "./store.ts";
 
 const claims = get<Record<string, string>>("claims", {});
 onReload(() => {
@@ -67,9 +68,36 @@ export function welcomeQuestion() {
   return `⚖️ Welcome to Cart Court, the honest phone-shopping assistant for ${world.household.name}. Who's texting? Reply with your name: ${names.slice(0, -1).join(", ")} or ${names.at(-1)}.`;
 }
 
+/** The first reply after someone says who they are: what the court knows about them and what to text next. */
 export function welcome(memberId: string) {
   const m = world.household.members.find((x) => x.id === memberId)!;
-  return `Welcome to the court, ${m.name}! ⚖️`;
+  const first = m.name.split(/\s+/)[0];
+  const d = m.device;
+  const smartphone = d.storageGB >= 16;
+  const mine = state.cart.filter((i) => i.memberId === m.id && i.kind === "device" && i.phoneId)
+    .map((i) => `${world.catalog.phones.find((p) => p.id === i.phoneId)?.name ?? "a phone"} ${i.storageGB}GB`);
+  const inCart = mine.length ? `\n📥 Already in the family cart for you: ${mine.join(", ")}.` : "";
+
+  // Grandparents get the short, plain version: no jargon, one thing to try.
+  if (m.role === "grandparent") {
+    return `Welcome to the court, ${first}! ⚖️ I help the family pick phones without overspending.${inCart}\nJust text me in your own words, like "I want a phone that's easy to read" or "what phone should I get?"`;
+  }
+  const facts = [
+    smartphone && `${d.batteryHealth}% battery health`,
+    d.installmentsLeft > 0 && `${d.installmentsLeft} payment${d.installmentsLeft === 1 ? "" : "s"} of ${usd(d.monthlyInstallment)} left`,
+    tradeIn(m).value > 0 && `worth ${usd(tradeIn(m).value)} in trade${d.screenCracked ? " (cracked screen)" : ""}`,
+  ].filter(Boolean);
+  const manager = m.role === "parent" || m.role === "partner";
+  return [
+    `Welcome to the court, ${first}! ⚖️`,
+    `On file: your ${d.model}${facts.length ? ` (${facts.join(" · ")})` : ""}. Changed? Text me, like "battery health 79%".${inCart}`,
+    "Try:",
+    `• "what phone should I get?" (say what matters: camera, battery, budget)`,
+    "• Paste a store link to add it to the family cart",
+    manager
+      ? `• "our phone budget is $2,000", then "court, rule" when everyone's in`
+      : `• "court, rule" when everyone's in. The court decides what to buy now and what should wait.`,
+  ].join("\n");
 }
 
 /** Where to find battery health on this phone (it decides whether a phone can wait). */

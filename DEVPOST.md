@@ -34,7 +34,7 @@ Cart Court is an agent with a real phone number (via **Photon 2.0**) that you ad
 - **Life changes.** When a kid leaves for college, it compares the family line ($20/mo) with a solo plan ($40/mo) and rules **STAY**. When the kid grows up, the roles flip, and they're the one shopping for Grandma.
 - **A live case file** (shared link) shows the cart, every ruling with its stamp, the evidence, a "when to buy" timeline, and the savings.
 
-In our demo household the court takes the cart from **$3,933 to $709 spent today**, holds $976 for the right moments, and saves **$2,348**.
+In our demo household the court takes the cart from **$3,933 to $709 spent today**, holds $976 for the right moments, and saves **$2,248**.
 
 ## How we built it
 - **Photon 2.0 / Spectrum SDK** connects the agent to iMessage. It handles group chats and direct messages, image attachments and replies. A local chat simulator mirrors the same flow for development.

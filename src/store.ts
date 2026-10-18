@@ -3,8 +3,9 @@
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onReload, onShutdown, put } from "./db.ts";
-import { runTrial, shopLinks, shopUrl, type Prefs, type TrialOptions } from "./engine.ts";
-import type { CartItem, NestRuling, Trial, World } from "./types.ts";
+import { cartLabel, cartLinks, cartPrice, runTrial, type Prefs, type TrialOptions } from "./engine.ts";
+import type { CartItem, NestRuling, Owned, Trial, World } from "./types.ts";
+import type { AppealRecord } from "./appeal.ts";
 
 export interface ChatLine {
   id: string;
@@ -13,6 +14,7 @@ export interface ChatLine {
   text: string;
   private: boolean; // DM ("approach the bench") vs group
   image?: string; // data URL (simulator only)
+  effect?: "slam" | "confetti"; // iMessage send effect (the simulator animates it too)
   at: number;
 }
 
@@ -53,7 +55,7 @@ export interface State {
   exhibits: Exhibit[];
   activity: { at: number; day: number; text: string }[]; // public one-liners for the dashboard
   prefs: Record<string, Prefs>; // what each person said they care about (battery, screen, camera…)
-  lastRecs: Record<string, ({ phoneId: string; storageGB: number } | { accessoryId: string })[]>; // so "add the first one" works
+  lastRecs: Record<string, ({ phoneId?: string; storageGB?: number; productId?: string; variant?: string } | { accessoryId: string })[]>; // so "add the first one" works
   budget?: number; // the family's budget for this round of shopping
   seenIds: string[]; // Photon message ids already handled (delivery is at-least-once)
   purchases: Purchase[];
@@ -61,7 +63,11 @@ export interface State {
   pendingClear?: Record<string, number>; // memberId -> when their "cart clear" confirmation expires (ms)
   // memberId -> a purchase waiting on a receipt photo (or a receipt waiting on its total)
   pendingReceipt?: Record<string, { until: number; seen?: boolean; paid?: number; phoneId?: string; accessory?: string; owner?: string }>;
+  // memberId -> a store link the court couldn't read, waiting on what it is and what it costs
+  pendingLink?: Record<string, { url: string; forWhom: string; until: number; name?: string; price?: number }>;
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
+  appeals?: AppealRecord[]; // appeals, overrules and reinstatements, oldest first (public: they're about rulings)
+  pendingAppeal?: Record<string, { until: number; about: string }>; // memberId -> the court asked "tell me why"
 }
 
 export const world: World = loadWorld();
@@ -69,39 +75,55 @@ export const bus = new EventEmitter();
 
 const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, seenIds: [], purchases: [], trialRuns: 0 });
 
-// What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone.
-type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }> };
+// What gets saved: the state minus photos still waiting to be filed, plus what evidence revealed about each phone
+// and what people said about the things they already own ("the vacuum died").
+type Saved = Omit<State, "pendingImage"> & { evidence?: Record<string, { batteryHealth: number; screenCracked?: boolean }>; owned?: Owned[] };
 
-function restore(): State {
-  const saved = get<Saved | undefined>("state", undefined);
+export type Snapshot = Saved;
+
+function fromSaved(saved: Saved | undefined): State {
   if (!saved) return fresh();
-  const { evidence = {}, ...rest } = saved;
+  const { evidence = {}, owned, ...rest } = structuredClone(saved);
   for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
+  if (owned) world.household.owned = owned;
   return { ...fresh(), ...rest };
 }
-export let state: State = restore();
+export let state: State = fromSaved(get<Saved | undefined>("state", undefined));
+
+/** Everything a restart (or a demo checkpoint) needs to put the court back exactly where it was. */
+export function snapshot(): Snapshot {
+  const { pendingImage: _p, ...rest } = state;
+  const saved: Saved = structuredClone({
+    ...rest,
+    chat: rest.chat.map(({ image: _i, ...line }) => line), // simulator photos are big and only matter live
+    evidence: Object.fromEntries(world.household.members.map((m) => [m.id, { batteryHealth: m.device.batteryHealth, screenCracked: m.device.screenCracked }])),
+    owned: world.household.owned,
+  });
+  if (JSON.stringify(saved).length > 12_000_000) {
+    saved.exhibits = saved.exhibits.map(({ image: _i, ...e }) => e); // stay well under MongoDB's 16 MB document limit
+  }
+  return saved;
+}
+
+/** Put the court back at a snapshot. Household setup (names, numbers) is untouched. */
+export function restoreSnapshot(snap: Snapshot) {
+  Object.assign(world, loadWorld()); // start from the pristine phones, then re-apply that moment's evidence
+  state = fromSaved(snap);
+  changed();
+}
 
 // Another copy of the court (serverless) may have changed things: start from what's saved.
 onReload(() => {
   Object.assign(world, loadWorld());
-  state = restore();
+  state = fromSaved(get<Saved | undefined>("state", undefined));
   lastSaved = "";
 });
 
 let lastSaved = "";
 /** Save now (also called at the end of every serverless request). */
 export function persist() {
-  const { pendingImage: _p, ...rest } = state;
-  const saved: Saved = {
-    ...rest,
-    chat: rest.chat.map(({ image: _i, ...line }) => line), // simulator photos are big and only matter live
-    evidence: Object.fromEntries(world.household.members.map((m) => [m.id, { batteryHealth: m.device.batteryHealth, screenCracked: m.device.screenCracked }])),
-  };
-  let json = JSON.stringify(saved);
-  if (json.length > 12_000_000) {
-    saved.exhibits = saved.exhibits.map(({ image: _i, ...e }) => e); // stay well under MongoDB's 16 MB document limit
-    json = JSON.stringify(saved);
-  }
+  const saved = snapshot();
+  const json = JSON.stringify(saved);
   if (json === lastSaved) return;
   lastSaved = json;
   put("state", saved);
@@ -126,12 +148,11 @@ export function publicState() {
     courtNumber: process.env.COURT_NUMBER ?? "", // shown on the case file so judges can text in
     members: world.household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, device: m.device.model })),
     cart: state.cart.map((i) => {
-      const p = world.catalog.phones.find((x) => x.id === i.phoneId);
-      const a = world.catalog.addons.find((x) => x.id === i.addonId);
-      const acc = (world.catalog.accessories ?? []).find((x) => x.id === i.accessoryId);
-      if (acc) return { ...i, label: acc.name, price: acc.price, shopUrl: shopUrl(acc), shopLinks: acc.url ? undefined : shopLinks(acc.name, acc.brands) };
-      if (p) return { ...i, label: `${p.name} ${i.storageGB}GB`, price: p.prices[String(i.storageGB)], shopUrl: shopLinks(p.name, [p.brand])[0].url, shopLinks: shopLinks(p.name, [p.brand]) };
-      return { ...i, label: a?.name, price: (a?.monthly ?? 0) * 12 };
+      // Links for what the court said to buy (a swap links the swapped-in phone, not the one argued for).
+      const r = state.trial?.rulings.find((x) => x.itemId === i.id);
+      const ruled = r?.proposed && (r.proposed.phoneId || r.proposed.productId) ? { ...i, ...r.proposed } : i;
+      const links = cartLinks(world, ruled);
+      return { ...i, label: cartLabel(world, i), price: cartPrice(world, i), shopUrl: links?.[0]?.url, shopLinks: links, checked: checkedOn(ruled) };
     }),
     trial: state.trial,
     nest: state.nest,
@@ -140,7 +161,15 @@ export function publicState() {
     spent: spent(),
     exhibits: state.exhibits.filter((e) => !e.private).map(({ private: _p, ...e }) => e),
     activity: state.activity.slice(-40),
+    // The latest appeal / overrule per cart item, for the badge on its ruling.
+    appeals: Object.values(Object.fromEntries((state.appeals ?? []).map((a) => [a.itemId, a]))),
   };
+}
+
+/** The day the catalog price was read off the maker's store (shown on the case file). */
+function checkedOn(i: CartItem): string | undefined {
+  const c = world.catalog;
+  return (c.phones.find((x) => x.id === i.phoneId) ?? (c.accessories ?? []).find((x) => x.id === i.accessoryId) ?? (c.products ?? []).find((x) => x.id === i.productId))?.checked;
 }
 
 export function addChat(line: Omit<ChatLine, "id" | "at">) {

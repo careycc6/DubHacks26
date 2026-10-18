@@ -8,13 +8,18 @@ import { forgetClaims, memberForHandle } from "./claims.ts";
 import { registerChannel, sendTo } from "./channels/index.ts";
 import { handleWebhook, photonStatus } from "./channels/photon.ts";
 import { isAdmin, setupRouter } from "./setup.ts";
+import { authRouter } from "./auth.ts";
+import { savedMemberIds } from "./data.ts";
 import { backend, flush, reload } from "./db.ts";
 import { background, keepAlive, serverless, settle } from "./runtime.ts";
 import { dashboardRouter } from "./dashboard.ts";
+import { demoRouter, seedCart } from "./demo.ts";
+import { shareRouter } from "./share.ts";
 import { deliver } from "./feed.ts";
-import { advanceTrial, readyHolds, usd } from "./engine.ts";
+import { advanceTrial, cartPrice, readyHolds, usd } from "./engine.ts";
 import { addChat, bus, changed, logActivity, persist, publicState, reset, state, trialOpts, world } from "./store.ts";
-import { callTool } from "./tools.ts";
+import { tapbackLog, tapbackText } from "./tapback.ts";
+import { caseFileUrl } from "./share.ts";
 
 export const app = express();
 app.set("trust proxy", true); // hosted: req.secure / protocol come from the host's proxy
@@ -53,6 +58,7 @@ app.post("/api/photon/webhook", express.raw({ type: "*/*", limit: "25mb" }), asy
 });
 
 app.use(express.json({ limit: "12mb" }));
+app.use(authRouter(isAdmin)); // Sign in with Google / Apple for parents
 app.use(setupRouter); // before static files, so /setup stays local-only
 
 // Opening the app once through a tunnel (cloudflared/ngrok/localtunnel) or a host's default address teaches
@@ -70,9 +76,16 @@ app.use((req, _res, next) => {
 // Health check for hosts (and a quick "is it saving to MongoDB?" from the terminal).
 app.get("/healthz", (_req, res) => res.json({ ok: true, db: backend, photon: photonStatus.state, day: state.day, cart: state.cart.length }));
 
-// Home: the dashboard for whoever runs the court; anyone else (a phone via the tunnel) gets the family's case file.
-app.get("/", (req, res) => (isAdmin(req) ? res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url))) : res.redirect("/cart")));
+// Home: a brand-new court starts at setup (signing in first when hosted); after that, the dashboard for
+// whoever runs the court, and the family's case file for anyone else (a phone via the tunnel).
+app.get("/", (req, res) => {
+  const fresh = savedMemberIds().length === 0;
+  if (isAdmin(req)) return fresh ? res.redirect("/welcome") : res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url)));
+  res.redirect(fresh ? "/login?next=%2Fwelcome" : "/cart");
+});
 app.use(dashboardRouter);
+app.use(demoRouter);
+app.use(shareRouter);
 app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { extensions: ["html"] }));
 
 
@@ -104,16 +117,24 @@ app.get("/api/state", (req, res) =>
 registerChannel("sim", async () => {}); // messages already land in the store via sendTo -> addChat
 
 app.post("/api/sim/message", async (req, res) => {
-  const body = req.body as { memberId: string; text?: string; dm?: boolean; image?: string };
-  const { text = "", dm = false, image } = body;
+  const body = req.body as { memberId: string; text?: string; dm?: boolean; image?: string; tapback?: string; lineId?: string };
+  let { text = "", dm = false, image } = body;
   // "new:<phone>" simulates a phone the court has never seen (tests in-chat onboarding)
   const phone = body.memberId.startsWith("new:") ? body.memberId.slice(4) : undefined;
   const memberId = phone ? memberForHandle(phone) : body.memberId;
   const spaceId = dm ? `sim:dm:${body.memberId}` : "sim:group";
-  addChat({ spaceId, from: memberId ?? "unknown", text, private: dm, image });
+  if (body.tapback) {
+    // Same rules as a real iMessage tapback (tapback.ts): 👎 on a ruling appeals, ❓ asks why, the rest are applause.
+    const target = state.chat.find((l) => l.id === body.lineId);
+    addChat({ spaceId, from: memberId ?? "unknown", text: tapbackLog(body.tapback, target?.text), private: dm });
+    const asked = memberId ? tapbackText(body.tapback, target?.text, target?.from === "court") : undefined;
+    if (!asked) return void res.json({ ok: true, replied: false });
+    text = asked;
+    image = undefined;
+  } else addChat({ spaceId, from: memberId ?? "unknown", text, private: dm, image });
   const img = image?.match(/^data:(.+?);base64,(.+)$/);
   try {
-    const reply = await handle({ spaceId, isGroup: !dm, memberId, handle: phone, text, image: img ? { mimeType: img[1], base64: img[2] } : undefined });
+    const reply = await handle({ spaceId, isGroup: !dm, memberId, handle: phone, text, addressed: !!body.tapback, image: img ? { mimeType: img[1], base64: img[2] } : undefined });
     if (reply) await sendTo(spaceId, reply, dm);
     res.json({ ok: true, replied: !!reply });
   } catch (err) {
@@ -134,20 +155,13 @@ app.post("/api/demo/advance", async (req, res) => {
   // Held items whose day has come: tell everyone (each person's iMessage chat, plus the simulator group).
   for (const r of due) {
     const who = (world.household.members.find((m) => m.id === r.memberId)?.name ?? "").split(/\s+/)[0];
-    const text = `⏳➡️✅ ${who}, it's time. Your ${r.proposed?.label} is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. Waiting saved ${usd(r.savings)}. Case file: ${process.env.PUBLIC_URL ?? "http://localhost:3000"}/cart`;
+    const text = `⏳➡️✅ ${who}, it's time. Your ${r.proposed?.label} is ready at ${usd(r.heldCost)} instead of ${usd(r.originalCost)}. Waiting saved ${usd(r.savings)}. Case file: ${caseFileUrl()}`;
     logActivity([text]);
     await deliver(text, undefined, "photon"); // the family group chat if there is one, else each 1:1 chat
     if (!state.groupSpaceId?.startsWith("photon:")) await sendTo(state.groupSpaceId ?? "sim:group", text);
   }
   res.json({ day: state.day, announced: due.length });
 });
-
-// The "family argued all evening" cart for the demo.
-function seedCart() {
-  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17-pro-max", storageGB: 512, addedBy: "maya" });
-  callTool("add_phone_to_cart", { member: "marco", phone: "iphone-17-pro", storageGB: 256, addedBy: "marco" });
-  callTool("add_phone_to_cart", { member: "elena", phone: "pixel-10-pro", storageGB: 256, addedBy: "elena" });
-}
 
 app.post("/api/demo/seed", (_req, res) => {
   seedCart();
@@ -181,7 +195,7 @@ async function playArgument(spaceId: string) {
       await new Promise((r) => setTimeout(r, 1100));
     }
     seedCart();
-    const sticker = state.cart.reduce((s, i) => s + (world.catalog.phones.find((p) => p.id === i.phoneId)?.prices[String(i.storageGB)] ?? 0), 0);
+    const sticker = state.cart.reduce((s, i) => s + cartPrice(world, i), 0);
     await sendTo(spaceId, `📥 Entered into the family cart: 17 Pro Max 512GB (Maya), 17 Pro 256GB (Marco), Pixel 10 Pro 256GB (Elena). Sticker total ${usd(sticker)}. Nobody checks out until the court rules. Say "court, rule".`);
   } finally {
     arguing = false;

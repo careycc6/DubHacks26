@@ -1,0 +1,61 @@
+{
+  "_checked": "2026-10-18",
+  "_notes": "Brand stores (Apple price API, Samsung/LG/Nintendo/PlayStation/Anker/Google page data, us.tcl.com, dell.com) and Best Buy offer data read in a browser. Amazon blocks automated reads, so Amazon links are searches without a price. Best Buy marketplace (third-party) prices are left out. Court price = the brand's regular price; a brand sale shows on its link.",
+  "items": [
+    {"id": "macbook-air-13", "name": "MacBook Air 13 (M5)", "prices": {"512GB": 1299, "1TB": 1599}, "verified": true, "replaces": "the M4 MacBook Air (no 256GB model anymore)", "buy": [
+      {"store": "Apple", "url": "https://www.apple.com/shop/buy-mac/macbook-air/13-inch-midnight-m5-chip-10-core-cpu-8-core-gpu-16gb-memory-512gb-storage"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/apple-macbook-air-13-inch-laptop-m5-chip-with-10-core-cpu-and-8-core-gpu-16gb-memory-512gb-ssd-midnight/JJGCQLKXL7", "price": 1299}]},
+    {"id": "macbook-pro-14", "name": "MacBook Pro 14 (M5)", "prices": {"1TB": 1999}, "verified": true, "note": "Base model is 1TB now; there's no 512GB.", "buy": [
+      {"store": "Apple", "url": "https://www.apple.com/shop/buy-mac/macbook-pro/14-inch-space-black-standard-display-apple-m5-chip-10-core-cpu-10-core-gpu-16gb-memory-1tb-storage"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/apple-macbook-pro-14-inch-laptop-m5-chip-with-10-core-cpu-and-10-core-gpu-16gb-memory-1tb-ssd-space-black/JJGCQL8L2P", "price": 1999}]},
+    {"id": "dell-xps-13", "name": "Dell XPS 13 (2026)", "prices": {"512GB": 1000}, "verified": true, "note": "16GB/512GB; an 8GB model is $799.99.", "buy": [
+      {"store": "Dell", "url": "https://www.dell.com/en-us/shop/laptop-computers/spd/xps13dx13260"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/dell-xps-13-4-3k-touchscreen-laptop-intel-core-5-series-3-320-2026-16gb-memory-512gb-storage-sky/J3K4L6QKWP/sku/6683772", "price": 1000}]},
+    {"id": "chromebook-plus", "name": "Acer Chromebook Plus 514", "prices": {"128GB": 400}, "verified": false, "buy": [
+      {"store": "Acer", "url": "https://store.acer.com/en-us/acer-chromebook-plus-514-cb514-3ht-r8rb"}]},
+    {"id": "ipad-pro-11", "name": "iPad Pro 11 (M5)", "prices": {"256GB": 1199, "512GB": 1399, "1TB": 1799}, "verified": true, "buy": [
+      {"store": "Apple", "url": "https://www.apple.com/shop/buy-ipad/ipad-pro"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/apple-11-inch-ipad-pro-m5-chip-wi-fi-256gb-with-oled-space-black/JJGCQL7GHK", "price": 1199}]},
+    {"id": "ipad-11", "name": "iPad (A16)", "prices": {"128GB": 449, "256GB": 549, "512GB": 749}, "verified": true, "buy": [
+      {"store": "Apple", "url": "https://www.apple.com/shop/buy-ipad/ipad"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/apple-11-inch-ipad-a16-chip-with-wi-fi-128gb-silver/JJGCQG39VG", "price": 449}]},
+    {"id": "galaxy-tab-s10-fe", "name": "Galaxy Tab S10 FE", "prices": {"128GB": 550}, "verified": true, "buy": [
+      {"store": "Samsung", "url": "https://www.samsung.com/us/tablets/galaxy-tab-s10-fe/buy/galaxy-tab-s10-fe-blue-128gb-sku-sm-x520nlbaxar/"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/samsung-galaxy-tab-s10-fe-10-9-128gb-wi-fi-with-s-pen-blue/J3ZYGXC9H3", "price": 550}]},
+    {"id": "lg-oled-c5", "name": "LG OLED C6", "prices": {"55in": 2000, "65in": 2700}, "verified": true, "replaces": "the LG C5 (2025)", "note": "LG has it on sale from $1,399.99 (55in) right now.", "buy": [
+      {"store": "LG", "url": "https://www.lg.com/us/tvs/lg-oled65c6pua-oled-4k-tv", "price": 1400},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/lg-55-class-c6-oled-evo-ai-4k-smart-webos-tv-with-perfect-black-perfect-color-and-brightness-booster-2026/JJ8VPZKKP3", "price": 1400}]},
+    {"id": "samsung-qled-q70", "name": "Samsung QLED Q7F", "prices": {"55in": 530, "65in": 630}, "verified": true, "note": "Samsung has it on sale from $399.99 (55in) right now; sold as Q70F outside the US.", "buy": [
+      {"store": "Samsung", "url": "https://www.samsung.com/us/tvs/qled-tv/55-class-qled-tv-q7f-sku-qn55q7faafxza/", "price": 400}]},
+    {"id": "tcl-qm7", "name": "TCL QM7L", "prices": {"55in": 1200, "65in": 1500}, "verified": true, "replaces": "the TCL QM7K (2025)", "note": "TCL sells it for $699.99 (55in) right now.", "buy": [
+      {"store": "TCL", "url": "https://us.tcl.com/products/qm7l-series-sqd-mini-led-4k-uhd-hdr-smart-tv-with-google-tv", "price": 700}]},
+    {"id": "sony-wh-1000xm6", "name": "Sony WH-1000XM6", "prices": {"std": 460}, "verified": false, "note": "sony.com wouldn't load; $459.99 list.", "buy": [
+      {"store": "Sony", "url": "https://electronics.sony.com/audio/headphones/headband/p/wh1000xm6-b"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/sony-wh-1000xm6-best-wireless-noise-cancelling-headphones-black/J7XSRH5RCF", "price": 458},
+      {"store": "Amazon", "url": "https://www.amazon.com/dp/B0F3PQHWTZ"}]},
+    {"id": "airpods-pro-3", "name": "AirPods Pro 3", "prices": {"std": 249}, "verified": true, "buy": [
+      {"store": "Apple", "url": "https://www.apple.com/shop/product/MFHP4LL/A/airpods-pro-3"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/apple-airpods-pro-3-wireless-active-noise-cancelling-earbuds-with-heart-rate-sensing-feature-white/JJGCQLYK5F", "price": 200}]},
+    {"id": "soundcore-q30", "name": "Soundcore Life Q30", "prices": {"std": 80}, "verified": true, "buy": [
+      {"store": "Soundcore", "url": "https://www.soundcore.com/products/a3028011"}]},
+    {"id": "ps5-pro", "name": "PlayStation 5 Pro", "prices": {"std": 900}, "verified": true, "note": "Unavailable on PlayStation Direct right now.", "buy": [
+      {"store": "PlayStation", "url": "https://direct.playstation.com/en-us/buy-consoles/playstation5-pro-console-2-tb"}]},
+    {"id": "ps5-slim", "name": "PlayStation 5 Slim", "prices": {"std": 650}, "verified": true, "note": "Digital Edition is $599.99.", "buy": [
+      {"store": "PlayStation", "url": "https://direct.playstation.com/en-us/buy-consoles/playstation5-console-1-tb"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/playstation-5-slim-console-1tb/JXHQ37TYLC", "price": 650}]},
+    {"id": "switch-2", "name": "Nintendo Switch 2", "prices": {"std": 500}, "verified": true, "buy": [
+      {"store": "Nintendo", "url": "https://www.nintendo.com/us/store/products/nintendo-switch-2-system-123669/"},
+      {"store": "Best Buy", "url": "https://www.bestbuy.com/product/switch-2-system/J7GSL57TGH", "price": 500}]}
+  ],
+  "accessories": [
+    {"id": "clear-case-magsafe", "price": 49, "buy": [{"store": "Apple", "url": "https://www.apple.com/shop/product/MGF24LL/A/iphone-17-clear-case-with-magsafe"}]},
+    {"id": "pixel-case", "price": 50, "name": "Pixelsnap Case", "buy": [{"store": "Google Store", "url": "https://store.google.com/us/product/pixel_10_pro_phone_case?hl=en-US"}]},
+    {"id": "galaxy-case", "price": 55, "buy": [{"store": "Samsung", "url": "https://www.samsung.com/us/mobile-accessories/galaxy-s26-silicone-magnet-case-black-sku-ef-es942cbegus/"}]},
+    {"id": "magsafe-charger", "price": 39, "buy": [{"store": "Apple", "url": "https://www.apple.com/shop/product/MGD74LL/A/magsafe-charger-1-m"}]},
+    {"id": "power-bank", "price": 26, "buy": [{"store": "Anker", "url": "https://www.anker.com/products/a1229"}]},
+    {"id": "usbc-25w", "price": 12, "buy": [{"store": "Anker", "url": "https://www.anker.com/products/a2656"}]},
+    {"id": "airpods-4", "price": 129, "name": "AirPods 5", "buy": [{"store": "Apple", "url": "https://www.apple.com/shop/buy-airpods/airpods-5"}, {"store": "Best Buy", "url": "https://www.bestbuy.com/product/apple-airpods-5-true-wireless-active-noise-cancelling-earbuds-with-wireless-charging-case-white/JJGCQP634G", "price": 149}]},
+    {"id": "pixel-buds", "price": 129, "name": "Pixel Buds 2a", "buy": [{"store": "Google Store", "url": "https://store.google.com/product/pixel_buds_2a?hl=en-US"}]},
+    {"id": "galaxy-buds", "price": 150, "name": "Galaxy Buds3 FE", "buy": [{"store": "Samsung", "url": "https://www.samsung.com/us/mobile-audio/galaxy-buds3-fe/buy/"}]}
+  ]
+}

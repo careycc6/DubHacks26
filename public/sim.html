@@ -46,15 +46,77 @@ function renderTabs() {
   if (tab.startsWith("sim:dm:")) $("who").value = tab.slice("sim:dm:".length);
 }
 
+// Tapbacks (src/tapback.ts logs them the way iMessage does: Disliked “…”). 👎 appeals a ruling, ❓ asks why.
+const TAPS = [["👍", "Liked"], ["👎", "Disliked", "appeal"], ["❓", "Questioned", "why?"], ["❤️", "Loved"], ["😂", "Laughed at"], ["‼️", "Emphasized"]];
+const TAP_LINE = /^(Liked|Disliked|Questioned|Loved|Laughed at|Emphasized) “(.*?)(…)?”$/;
+const nameOf = (id) => members.find((m) => m.id === id)?.name ?? id;
+
 function renderThread() {
   const me = $("who").value;
-  $("thread").innerHTML = lines.filter((l) => l.spaceId === tab).map((l) => {
+  const shown = lines.filter((l) => l.spaceId === tab);
+  const badges = {}; // court line id -> { member: their tapback } (one each, like iMessage: a new one replaces the old)
+  for (const [i, l] of shown.entries()) {
+    const t = l.from !== "court" && l.text.match(TAP_LINE);
+    if (!t) continue;
+    const target = shown.slice(0, i).reverse().find((x) => x.from === "court" && x.text.split("\n")[0].startsWith(t[2]));
+    if (target) (badges[target.id] ??= {})[l.from] = TAPS.find(([, v]) => v === t[1])[0];
+  }
+  $("thread").innerHTML = shown.map((l) => {
+    const t = l.from !== "court" && l.text.match(TAP_LINE);
+    if (t) return `<div class="tapnote">${esc(nameOf(l.from))} ${esc(TAPS.find(([, v]) => v === t[1])[0])} ${esc(t[1].toLowerCase())} “${esc(t[2])}${t[3] ?? ""}”</div>`;
     const cls = l.from === "court" ? "court" : l.from === me ? "me" : "them";
-    const name = l.from === "court" ? "⚖️ Cart Court" : members.find((m) => m.id === l.from)?.name ?? l.from;
-    return `<div class="who ${cls === "me" ? "right" : ""}">${esc(name)}</div><div class="bubble ${cls}">${l.image ? `<img src="${l.image}">` : ""}${esc(l.text)}</div>`;
+    const name = l.from === "court" ? "⚖️ Cart Court" : nameOf(l.from);
+    const extra = cls === "court" ? `${badges[l.id] ? `<span class="taps">${[...new Set(Object.values(badges[l.id]))].join("")}</span>` : ""}<button class="react-btn" type="button" title="React (👎 appeals, ❓ asks why)" aria-label="React to this message">☺</button>` : "";
+    return `<div class="who ${cls === "me" ? "right" : ""}">${esc(name)}</div><div class="bubble ${cls}${l.fresh && l.effect ? ` fx-${l.effect}` : ""}" ${cls === "court" ? `data-line="${l.id}"` : ""}>${l.image ? `<img src="${l.image}">` : ""}${esc(l.text)}${extra}</div>`;
   }).join("");
   $("thread").scrollTop = 1e9;
+  if (lines.some((l) => l.fresh && l.effect === "confetti" && l.spaceId === tab)) confetti();
+  for (const l of lines) delete l.fresh; // animate once, on arrival
 }
+
+// "it's time" arrives like iMessage confetti (reduced-motion users get the plain bubble).
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const r = $("thread").getBoundingClientRect(), colors = ["#ff375f", "#ffd60a", "#30d158", "#0a84ff", "#bf5af2"];
+  for (let i = 0; i < 60; i++) {
+    const p = document.createElement("i");
+    p.className = "confetti";
+    p.style.cssText = `left:${r.left + Math.random() * r.width}px;top:${r.top - 12}px;--fall:${r.height + 24}px;background:${colors[i % colors.length]};animation-delay:${Math.random() * 0.4}s;--drift:${(Math.random() - 0.5) * 120}px;--spin:${Math.random() * 720}deg`;
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 2600);
+  }
+}
+
+function closeTapbar() {
+  document.querySelector(".tapbar")?.remove();
+  document.querySelector(".bubble.picking")?.classList.remove("picking");
+}
+function openTapbar(bubble) {
+  closeTapbar();
+  bubble.classList.add("picking");
+  const bar = document.createElement("div");
+  bar.className = "tapbar" + (bubble.offsetTop - $("thread").scrollTop < 56 ? " below" : "");
+  bar.setAttribute("role", "menu");
+  bar.innerHTML = TAPS.map(([e, verb, acts]) => `<button type="button" role="menuitem" data-tap="${e}" title="${verb}${acts ? `: ${acts}` : ""}" aria-label="${verb}${acts ? `: ${acts}` : ""}">${e}${acts ? `<small>${acts}</small>` : ""}</button>`).join("");
+  bubble.append(bar);
+  bar.querySelector("button").focus();
+}
+$("thread").addEventListener("click", async (e) => {
+  const tap = e.target.closest("[data-tap]");
+  if (tap) {
+    const line = tap.closest("[data-line]").dataset.line;
+    closeTapbar();
+    $("typing").textContent = "Cart Court is typing…";
+    await fetch("/api/sim/message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberId: $("who").value, dm: tab !== "sim:group", tapback: tap.dataset.tap, lineId: line }) });
+    $("typing").textContent = "";
+    return;
+  }
+  const btn = e.target.closest(".react-btn");
+  if (btn) return openTapbar(btn.closest(".bubble"));
+  closeTapbar();
+});
+$("thread").addEventListener("dblclick", (e) => { const b = e.target.closest(".bubble.court"); if (b) { window.getSelection()?.removeAllRanges(); openTapbar(b); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTapbar(); });
 
 $("tabs").onclick = (e) => { const t = e.target.closest("[data-tab]"); if (t) { tab = t.dataset.tab; renderTabs(); renderThread(); } };
 $("who").onchange = renderThread;
@@ -87,7 +149,7 @@ live({
     renderTabs();
   }
   },
-  onChat: (c) => { lines.push(c); renderThread(); },
+  onChat: (c) => { lines.push({ ...c, fresh: true }); renderThread(); },
 });
 </script>
 </body>

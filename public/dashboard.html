@@ -52,6 +52,37 @@
     details.card summary { cursor: pointer; font-family: var(--serif); font-size: 15px; }
     details.card .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     details.card button { border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+    .pf { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+    .pf li { display: grid; grid-template-columns: 14px 86px 1fr; gap: 8px; align-items: baseline; font-size: 13px; line-height: 1.35; }
+    .pf .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; transform: translateY(1px); }
+    .pf .ok .dot { background: var(--keep); } .pf .warn .dot { background: var(--wait); } .pf .err .dot { background: var(--cut); }
+    .pf b { font-weight: 600; } .pf .d { color: var(--muted); overflow-wrap: anywhere; }
+    .card h2 .pf-sum { font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.5px solid currentColor; }
+    .pf-sum.ok { color: var(--keep); } .pf-sum.warn { color: var(--wait); } .pf-sum.err { color: var(--cut); }
+    .cue { margin-top: 14px; display: flex; align-items: center; gap: 12px; background: var(--ink); color: var(--paper); border-radius: 10px; padding: 10px 14px; font-size: 15px; }
+    .cue[hidden], .keys[hidden] { display: none; }
+    .cue-label { font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .7; }
+    .cue-text { flex: 1; line-height: 1.4; }
+    .cue-text kbd, .keys kbd { font-family: var(--mono); font-size: 12px; border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; }
+    .cue-x { background: none; border: 0; color: inherit; opacity: .6; cursor: pointer; font-size: 14px; }
+    .keys { position: fixed; inset: 0; background: rgba(20, 16, 10, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
+    .keys-box { background: var(--paper); border-radius: 14px; padding: 20px 24px; max-width: 380px; width: 100%; }
+    .keys-box h2 { font-family: var(--serif); margin: 0 0 12px; font-size: 19px; }
+    .keys dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 16px; font-size: 14px; }
+    .keys dt { font-family: var(--mono); font-weight: 700; }
+    .keys dd { margin: 0; }
+    .file:fullscreen { background: var(--paper); overflow-y: auto; padding: 32px max(32px, calc((100vw - 1100px) / 2)); }
+    .qrs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .qrs figure { margin: 0; text-align: center; font-size: 12.5px; }
+    .qrs img { width: 100%; max-width: 150px; aspect-ratio: 1; display: block; margin: 0 auto 4px; border: 1px solid var(--rule); border-radius: 8px; }
+    .tools-h { font-family: var(--serif); font-size: 14px; margin: 14px 0 0; }
+    .checkpoints { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+    .checkpoints li { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; font-size: 13px; }
+    .checkpoints .when { font-family: var(--mono); font-size: 11px; color: var(--muted); display: block; }
+    .checkpoints .none { color: var(--muted); font-style: italic; display: block; }
+    details.card button.x { border-color: var(--rule); color: var(--muted); }
+    .acct { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    .acct button { border: 0; background: none; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
     .file { max-width: none; padding: 0; }
     .file header { margin-top: 18px; }
   </style>
@@ -64,13 +95,37 @@
       <span class="chip no" id="cGemini">AI</span>
       <span class="chip no" id="cPhoton">iMessage</span>
       <a class="btn ghost small" href="/cart" target="_blank" rel="noopener">Phone view ↗</a>
-      <a class="btn small" href="/setup">⚙ Setup</a>
+      <a class="btn ghost small" href="/welcome">Guide</a>
+      <a class="btn small" href="/setup">⚙ Settings</a>
+      <span class="acct" id="acct" hidden></span>
     </div>
   </div>
 
   <div class="banner" id="banner" hidden>
     <span>👋 You're looking at an <b>example family</b>. Add your household's names and numbers and the court will text them.</span>
-    <a class="btn small" href="/setup">Set up your household →</a>
+    <a class="btn small" href="/welcome">Set up your household →</a>
+  </div>
+
+  <div class="cue" id="cue" hidden>
+    <span class="cue-label">Next</span><span class="cue-text" id="cueText"></span>
+    <button class="cue-x" id="cueHide" title="Hide cues (press ? for shortcuts)">✕</button>
+  </div>
+
+  <div class="keys" id="keys" hidden>
+    <div class="keys-box">
+      <h2>Keyboard shortcuts</h2>
+      <dl>
+        <dt>R</dt><dd>Rule now</dd>
+        <dt>S</dt><dd>Load the pre-trial scene</dd>
+        <dt>1 · 2 · 3</dt><dd>+41 days · +120 days · +2 years</dd>
+        <dt>Shift+R</dt><dd>Reset cart (asks first)</dd>
+        <dt>F</dt><dd>Case file full screen</dd>
+        <dt>P</dt><dd>Replay the verdict stamps (no texts)</dd>
+        <dt>C</dt><dd>Show or hide the cue strip</dd>
+        <dt>?</dt><dd>This list</dd>
+      </dl>
+      <button class="btn small" id="keysClose">Got it</button>
+    </div>
   </div>
 
   <div class="layout">
@@ -104,6 +159,11 @@
     </main>
 
     <aside class="side">
+      <section class="card preflight" id="preflightCard">
+        <h2>Ready for judges? <span class="pf-sum" id="pfSum">checking…</span></h2>
+        <ul class="pf" id="preflight"></ul>
+      </section>
+
       <section class="card">
         <h2>The court <span id="cartCount"></span></h2>
         <button class="btn rule-btn" id="rule">⚖️ Rule now</button>
@@ -126,7 +186,7 @@
 
       <section class="card">
         <h2>📈 Price tracker <span>store prices</span></h2>
-        <ul class="feed" id="tracker"><li class="empty-feed">Phones in the cart show up here, with the best day to buy.</li></ul>
+        <ul class="feed" id="tracker"><li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li></ul>
       </section>
 
       <section class="card">
@@ -135,19 +195,34 @@
       </section>
 
       <section class="card">
+        <h2>Let a judge try <span>scan with a phone</span></h2>
+        <div class="qrs" id="qrs"></div>
+        <div class="msg" id="qrNote"></div>
+      </section>
+
+      <section class="card">
         <h2>Activity <span>what everyone's phones saw</span></h2>
         <ul class="feed" id="feed"><li class="empty-feed">Nothing yet. Text the court from a phone to get started.</li></ul>
       </section>
 
-      <details class="card">
+      <details class="card" id="demoTools" open>
         <summary>Demo tools</summary>
         <div class="row">
-          <button data-days="41">+41 days</button>
-          <button data-days="120">+120 days</button>
-          <button data-days="730">+2 years</button>
-          <button data-reset>Reset cart</button>
+          <button data-scene title="Shortcut: S">🎬 Load pre-trial scene</button>
         </div>
-        <div class="msg">Time skips show the court texting people when held phones are ready.</div>
+        <div class="row">
+          <button data-days="41" title="Shortcut: 1">+41 days</button>
+          <button data-days="120" title="Shortcut: 2">+120 days</button>
+          <button data-days="730" title="Shortcut: 3">+2 years</button>
+          <button data-reset title="Shortcut: Shift+R">Reset cart</button>
+        </div>
+        <div class="row">
+          <button data-replay title="Shortcut: P">🔁 Replay stamps</button>
+        </div>
+        <div class="msg">The scene files the three demo phones and Kairui's private note, so a round starts at the trial. Nothing is texted.</div>
+        <h3 class="tools-h">Checkpoints</h3>
+        <div class="row"><button data-save>💾 Save checkpoint</button></div>
+        <ul class="checkpoints" id="checkpoints"></ul>
       </details>
     </aside>
   </div>
@@ -169,6 +244,10 @@ async function loadDashboard() {
   else if (d.photon.state === "connected") chip("cPhoton", "ok", d.photon.line ? `iMessage · ${d.photon.line}` : "iMessage on");
   else chip("cPhoton", d.photon.state === "error" ? "err" : "wait", `iMessage ${d.photon.state}`);
   $("banner").hidden = d.setUp;
+  const worst = d.preflight.some((c) => c.status === "err") ? "err" : d.preflight.some((c) => c.status === "warn") ? "warn" : "ok";
+  $("pfSum").className = `pf-sum ${worst}`;
+  $("pfSum").textContent = worst === "ok" ? "✓ Ready" : worst === "err" ? "✕ Fix first" : "Needs attention";
+  $("preflight").innerHTML = d.preflight.map((c) => `<li class="${c.status}"><span class="dot"></span><b>${esc(c.label)}</b><span class="d">${esc(c.detail)}</span></li>`).join("");
   // Budget
   if (document.activeElement !== $("budget")) $("budget").value = d.budget ?? "";
   const used = (d.spent ?? 0) + (d.planned ?? 0); // bought + planned (now and later)
@@ -176,7 +255,7 @@ async function loadDashboard() {
   $("budgetStatus").style.color = d.overBudget ? "var(--cut)" : d.budget != null ? "var(--keep)" : "";
   // Price tracker
   if (d.tracker.length) $("tracker").innerHTML = d.tracker.map((t) => `<li><span class="when">${esc(t.who)}</span><b>${esc(t.label)}</b><br>${usd(t.now)} now${t.lowest.price < t.now ? ` → <b style="color:var(--keep)">${usd(t.lowest.price)}</b> on day ${t.lowest.day}` : " · no drops coming up"}</li>`).join("");
-  else $("tracker").innerHTML = `<li class="empty-feed">Phones in the cart show up here, with the best day to buy.</li>`;
+  else $("tracker").innerHTML = `<li class="empty-feed">Everything in the cart shows up here, with the best day to buy.</li>`;
   $("people").innerHTML = d.members.map((m) => `
     <div class="person">
       <span class="avatar">${esc(m.name.slice(0, 1))}</span>
@@ -247,12 +326,109 @@ $("rule").onclick = async () => {
   $("ruleMsg").className = `msg ${r.ok ? "ok" : "err"}`;
   $("ruleMsg").textContent = r.ok ? (r.told ? `✓ Ruled. Texted ${r.told} ${r.told === 1 ? "person" : "people"} the verdict.` : "✓ Ruled. (Nobody's phone is connected yet, so no texts went out.)") : r.error;
 };
-document.querySelectorAll("details.card button").forEach((b) => b.onclick = async () => {
-  if (b.dataset.reset !== undefined) { if (confirm("Clear the cart, rulings and activity?")) await post("/api/demo/reset"); return; }
-  await post("/api/demo/advance", { days: Number(b.dataset.days) });
+// ---- Demo tools: time skips, reset, the pre-trial scene, checkpoints
+const demo = {
+  advance: (days) => post("/api/demo/advance", { days }),
+  reset: async () => { if (confirm("Clear the cart, rulings and activity? (People and numbers stay saved.)")) await post("/api/demo/reset"); },
+  scene: async () => { await post("/api/demo/scene/prefiled"); loadCheckpoints(); },
+  save: async () => {
+    const name = prompt("Name this checkpoint", "");
+    if (name === null) return;
+    await post("/api/demo/checkpoints", { name });
+    loadCheckpoints();
+  },
+  restore: (id) => post(`/api/demo/checkpoints/${id}/restore`),
+  forget: async (id) => { await fetch(`/api/demo/checkpoints/${id}`, { method: "DELETE" }); loadCheckpoints(); },
+};
+async function loadCheckpoints() {
+  const list = await fetch("/api/demo/checkpoints").then((r) => r.json());
+  $("checkpoints").innerHTML = list.length
+    ? list.map((c) => `<li><span>${esc(c.name)}<span class="when">day ${c.day} · ${c.cart} in cart${c.ruled ? " · ruled" : ""} · ${ago(c.at)}</span></span>
+        <button data-restore="${esc(c.id)}">Restore</button><button class="x" data-forget="${esc(c.id)}" title="Delete">✕</button></li>`).join("")
+    : `<li><span class="none">None yet. Save one right before the trial to replay it for the next judge.</span></li>`;
+}
+$("demoTools").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.days) demo.advance(Number(d.days));
+  else if (d.reset !== undefined) demo.reset();
+  else if (d.scene !== undefined) demo.scene();
+  else if (d.replay !== undefined) replayStamps();
+  else if (d.save !== undefined) demo.save();
+  else if (d.restore) demo.restore(d.restore);
+  else if (d.forget) demo.forget(d.forget);
 });
+loadCheckpoints();
+
+// ---- Presenter: the next beat from DEMO.md, worked out from what's on screen
+let last;
+const first = (id) => (last?.members.find((m) => m.id === id)?.name ?? id).split(/\s+/)[0];
+function cueFor(s) {
+  const teen = first("maya"), dad = first("marco"), mom = first("elena");
+  if (!s.cart.length) return `${teen}, ${dad} and ${mom} paste their store links (or press <kbd>S</kbd> to load the scene)`;
+  if (!s.trial) return `${mom} texts the court privately: <i>money is tight this month</i>. Then press <kbd>R</kbd> to rule`;
+  const t = s.trial;
+  if (s.day < 41) return `Read it out: spend today <b>${usd(t.before)} → ${usd(t.now)}</b>, saved <b>${usd(t.savings)}</b>. Point at ${dad}'s witness statement. Then <kbd>1</kbd> (+41 days)`;
+  if (s.day < 730) return `"Waiting is part of buying." Optional: <kbd>2</kbd> (+120 days). Then <kbd>3</kbd> (+2 years)`;
+  if (!s.nest) return `${mom} texts: <i>court, ${teen} is leaving for college in August</i>`;
+  return `${teen} texts: <i>court, what phone should grandma get?</i> Then close, and click <b>Proceed to checkout</b>`;
+}
+let cueHidden = false;
+try { cueHidden = localStorage.getItem("cc-cue-hidden") === "1"; } catch {}
+function showCue() {
+  $("cue").hidden = cueHidden || !last;
+  if (last) $("cueText").innerHTML = cueFor(last);
+}
+function toggleCue() {
+  cueHidden = !cueHidden;
+  try { localStorage.setItem("cc-cue-hidden", cueHidden ? "1" : "0"); } catch {}
+  showCue();
+}
+es.addEventListener("state", (e) => { last = JSON.parse(e.data); showCue(); });
+$("cueHide").onclick = toggleCue;
+
+// ---- Keyboard shortcuts (same endpoints as the buttons; ignored while typing)
+const keysBox = (open) => { $("keys").hidden = !open; };
+$("keysClose").onclick = () => keysBox(false);
+$("keys").onclick = (e) => { if (e.target === $("keys")) keysBox(false); };
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  const k = e.key;
+  if (k === "Escape") return keysBox(false);
+  if (k === "?") return keysBox($("keys").hidden);
+  if (k === "R" && e.shiftKey) return demo.reset();
+  if (k === "r") return $("rule").click();
+  if (k === "s") return demo.scene();
+  if (k === "1") return demo.advance(41);
+  if (k === "2") return demo.advance(120);
+  if (k === "3") return demo.advance(730);
+  if (k === "c") return toggleCue();
+  if (k === "p") return replayStamps();
+  if (k === "f") {
+    const file = document.querySelector("main.file");
+    return document.fullscreenElement ? document.exitFullscreen() : file.requestFullscreen?.();
+  }
+});
+async function loadQrs() {
+  const sh = await fetch("/api/share").then((r) => r.json());
+  $("qrs").innerHTML = `<figure><img src="/api/qr?for=cart" alt="QR code: case file"><b>Case file</b><br>${esc(sh.cartUrl.replace(/^https?:\/\//, ""))}</figure>` +
+    (sh.textUrl ? `<figure><img src="/api/qr?for=text" alt="QR code: text the court"><b>Text the court</b><br>“${esc(sh.firstText)}”</figure>` : "");
+  $("qrNote").textContent = sh.textUrl
+    ? "Texting only works once the judge's number is under Users in Photon (app.photon.codes), or added on Setup."
+    : "The texting QR appears once the court's number is known (Photon connected, or COURT_NUMBER set).";
+}
+loadQrs();
 loadDashboard();
-setInterval(loadDashboard, 8000);
+setInterval(loadDashboard, 5000);
+setInterval(loadQrs, 30000);
+// Signed in with Google/Apple: show who, with a sign-out link.
+fetch("/api/auth/me").then((r) => r.json()).then((me) => {
+  if (!me.user) return;
+  $("acct").hidden = false;
+  $("acct").innerHTML = `${esc(me.user.name || me.user.email)} · <button id="signOut">Sign out</button>`;
+  $("signOut").onclick = async () => { await post("/api/auth/logout"); location.href = "/login"; };
+});
 </script>
 </body>
 </html>

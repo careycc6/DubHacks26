@@ -138,6 +138,27 @@ a { color: inherit; }
   .timeline .tick { font-size: 11px; }
 }
 
+/* Show the math: the engine's receipt under a ruling */
+.math { margin-top: 10px; border-top: 1px dashed var(--rule); padding-top: 8px; }
+.math summary { cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; list-style: none; }
+.math summary::-webkit-details-marker { display: none; }
+.math summary::before { content: "▸ "; }
+.math[open] summary::before { content: "▾ "; }
+.math table { width: 100%; border-collapse: collapse; margin-top: 8px; font-family: var(--mono); font-size: 12.5px; }
+.math td { padding: 3px 0; vertical-align: top; }
+.math td:last-child { text-align: right; white-space: nowrap; padding-left: 12px; }
+.math tr.sum td { border-top: 1.5px solid var(--ink); font-weight: 700; padding-top: 5px; }
+.math tr.note td { color: var(--muted); }
+.math .by { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 6px; letter-spacing: 0.5px; }
+
+/* Case file on a big screen: QR codes to join (hidden on phones) */
+.join-qr { display: flex; gap: 14px; justify-content: flex-end; margin-top: 14px; }
+.join-qr[hidden] { display: none; }
+.join-qr figure { margin: 0; text-align: center; }
+.join-qr img { width: 110px; height: 110px; display: block; border: 1px solid var(--rule); border-radius: 8px; }
+.join-qr figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+@media (max-width: 899px) { .join-qr { display: none !important; } }
+
 /* ---------- Price tracker, protection advice, budget */
 .tracker { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: var(--swap); flex-wrap: wrap; }
 .tracker svg { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; flex: none; }
@@ -155,4 +176,31 @@ a { color: inherit; }
 /* Accessories: buy it yourself */
 .shop-link { display: inline-block; margin: 6px 0 2px; font-size: 13px; font-weight: 600; color: var(--keep, #24543a); text-decoration: none; }
 .shop-link:hover { text-decoration: underline; }
+.shop { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.shop .checked { font-size: 11.5px; color: var(--muted, #6b6358); }
 .tradein { font-size: 13px; margin: 6px 0 2px; color: var(--ink, #222); }
+/* Appeals: a small docket note on the ruling it changed */
+.appeal-note { display: inline-block; margin: 2px 0 8px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: var(--paper-2); color: #4a4136; }
+.appeal-note.GRANTED, .appeal-note.PARTLY { background: #e6efe5; color: var(--keep); }
+.appeal-note.DENIED { color: var(--muted); }
+.appeal-note.OVERRULED { background: #f6e7d6; color: var(--wait); }
+
+/* Simulator tapbacks: react to a court message like in iMessage (👎 appeals, ❓ asks why). */
+.bubble.court { position: relative; cursor: default; }
+.react-btn { position: absolute; right: -34px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--rule); background: #fff; color: #8a8a8e; font-size: 13px; line-height: 1; padding: 0; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.bubble.court:hover .react-btn, .react-btn:focus-visible, .bubble.court.picking .react-btn { opacity: 1; }
+.tapbar { position: absolute; left: 0; bottom: calc(100% + 6px); display: flex; gap: 2px; background: #fff; border-radius: 22px; box-shadow: 0 4px 18px rgba(0,0,0,.2); padding: 4px 6px; z-index: 5; font-family: system-ui, sans-serif; }
+.tapbar.below { bottom: auto; top: calc(100% + 6px); }
+.tapbar button { border: 0; background: none; font-size: 20px; width: 40px; height: 40px; border-radius: 12px; cursor: pointer; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.tapbar button:hover, .tapbar button:focus-visible { background: #f0f0f2; }
+.tapbar button small { font-size: 9.5px; color: #6d6457; margin-top: 2px; font-weight: 600; }
+.bubble .taps { position: absolute; top: -12px; right: -8px; background: #fff; color: #1f1b16; border: 1px solid var(--rule); border-radius: 12px; padding: 1px 6px; font-size: 13px; font-family: system-ui, sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.tapnote { align-self: center; font-size: 11px; color: #8a8a8e; text-align: center; max-width: 90%; }
+
+/* iMessage send effects in the simulator: Slam for the verdict, confetti for "it's time". */
+.bubble.fx-slam { animation: slam .55s cubic-bezier(.2, .9, .3, 1.2) both; transform-origin: left center; }
+@keyframes slam { 0% { transform: scale(2.2); opacity: 0; } 55% { transform: scale(.94); opacity: 1; } 75% { transform: scale(1.03) rotate(-.4deg); } 100% { transform: none; } }
+.confetti { position: fixed; z-index: 5; width: 7px; height: 11px; border-radius: 2px; pointer-events: none; animation: confetti 2.2s ease-in forwards; }
+@keyframes confetti { to { transform: translate(var(--drift), var(--fall)) rotate(var(--spin)); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bubble.fx-slam { animation: none; } }
+.header-side .acct { padding: 8px 14px; font-size: 14px; }

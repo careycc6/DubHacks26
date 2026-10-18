@@ -1,0 +1,204 @@
+[
+ {
+  "id": "ikea-markus",
+  "name": "IKEA MARKUS Office Chair",
+  "prices": {
+   "std": 299.99
+  },
+  "buy": [
+   {
+    "store": "IKEA",
+    "url": "https://www.ikea.com/us/en/p/markus-office-chair-vissle-dark-gray-90289172/"
+   }
+  ]
+ },
+ {
+  "id": "breville-barista",
+  "name": "Breville Barista Express",
+  "prices": {
+   "std": 699.95
+  },
+  "buy": [
+   {
+    "store": "Breville",
+    "url": "https://www.breville.com/en-us/product/bes870"
+   }
+  ],
+  "note": "out of stock on breville.com"
+ },
+ {
+  "id": "purple-mattress",
+  "name": "PurplePlus Mattress",
+  "prices": {
+   "Twin": 1599,
+   "Queen": 2099
+  },
+  "buy": [
+   {
+    "store": "Purple",
+    "url": "https://purple.com/mattresses/plus"
+   },
+   {
+    "store": "Amazon",
+    "url": "https://www.amazon.com/dp/B09GXG53YS"
+   }
+  ]
+ },
+ {
+  "id": "casper-original",
+  "replacedBy": "Casper One",
+  "name": "Casper One",
+  "prices": {
+   "Twin": 874,
+   "Queen": 1149
+  },
+  "sale": {
+   "Twin": 699,
+   "Queen": 899
+  },
+  "buy": [
+   {
+    "store": "Casper",
+    "url": "https://casper.com/products/casper-one-foam?variant=41670971261009"
+   }
+  ]
+ },
+ {
+  "id": "zinus-foam",
+  "name": "Zinus Balanced Comfort Green Tea 12in",
+  "prices": {
+   "Twin": 549,
+   "Queen": 749
+  },
+  "buy": [
+   {
+    "store": "Zinus",
+    "url": "https://www.zinus.com/products/balanced-comfort-signature-memory-foam-mattress"
+   },
+   {
+    "store": "Amazon",
+    "url": "https://www.amazon.com/dp/B00Q7EPSHI"
+   }
+  ]
+ },
+ {
+  "id": "aeron-chair",
+  "name": "Herman Miller Aeron (Size B)",
+  "prices": {
+   "std": 2070
+  },
+  "buy": [
+   {
+    "store": "Herman Miller",
+    "url": "https://store.hermanmiller.com/office-chairs/aeron-chair/2195348.html"
+   }
+  ],
+  "note": "cheapest Size B configuration; the page's default build is $2,305"
+ },
+ {
+  "id": "branch-ergo-chair",
+  "name": "Branch Ergonomic Chair",
+  "prices": {
+   "std": 369
+  },
+  "buy": [
+   {
+    "store": "Branch",
+    "url": "https://www.branchfurniture.com/products/ergonomic-chair"
+   },
+   {
+    "store": "Amazon",
+    "url": "https://www.amazon.com/dp/B0C15C11D9",
+    "price": 389
+   }
+  ],
+  "note": "$369 in Black on branchfurniture.com, $389 in other colors"
+ },
+ {
+  "id": "nike-pegasus-41",
+  "name": "Nike Pegasus 42",
+  "prices": {
+   "std": 145
+  },
+  "buy": [
+   {
+    "store": "Nike",
+    "url": "https://www.nike.com/t/pegasus-42-mens-road-running-shoes-S1bYkOza"
+   },
+   {
+    "store": "Amazon",
+    "url": "https://www.amazon.com/dp/B0GWP162BN"
+   }
+  ],
+  "note": "Pegasus 41 gone from nike.com (404); one colorway on sale $102.97",
+  "verified": true
+ },
+ {
+  "id": "hoka-clifton-10",
+  "name": "Hoka Clifton 11",
+  "prices": {
+   "std": 155
+  },
+  "buy": [
+   {
+    "store": "HOKA",
+    "url": "https://www.hoka.com/en/us/mens-everyday-running-gear/clifton-11/1176572.html"
+   },
+   {
+    "store": "Amazon",
+    "url": "https://www.amazon.com/dp/B0FXFCPZ23"
+   }
+  ],
+  "verified": false,
+  "note": "hoka.com blocked; $155 from hoka.com search snippet, matches retailers"
+ },
+ {
+  "id": "asics-gel-contend",
+  "name": "ASICS Gel-Contend 10",
+  "prices": {
+   "std": 80
+  },
+  "buy": [
+   {
+    "store": "ASICS",
+    "url": "https://www.asics.com/us/en-us/gel-contend-10/p/ANA_1011C249-003.html"
+   },
+   {
+    "store": "Amazon",
+    "url": "https://www.amazon.com/dp/B0GZCZ85PX"
+   }
+  ],
+  "verified": false,
+  "note": "asics.com 403; $80 from snippet, retailers agree"
+ },
+ {
+  "id": "patagonia-down-sweater",
+  "name": "Patagonia Down Sweater",
+  "prices": {
+   "std": 289
+  },
+  "buy": [
+   {
+    "store": "Patagonia",
+    "url": "https://www.patagonia.com/product/mens-down-sweater/84675.html"
+   }
+  ],
+  "verified": false,
+  "note": "patagonia.com unavailable to fetch; $289 from snippet"
+ },
+ {
+  "id": "uniqlo-ultra-light-down",
+  "name": "Uniqlo PUFFTECH Jacket",
+  "prices": {
+   "std": 79.9
+  },
+  "buy": [
+   {
+    "store": "Uniqlo",
+    "url": "https://www.uniqlo.com/us/en/products/E486171-000/00"
+   }
+  ],
+  "verified": true,
+  "note": "Ultra Light Down out of stock / not listed on uniqlo.com/us; PUFFTECH is the current budget jacket"
+ }
+]

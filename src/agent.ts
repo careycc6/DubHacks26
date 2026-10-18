@@ -1,12 +1,15 @@
 // Cart Court's brain: decides WHEN to speak (taste), then talks via Gemini + tools.
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
-import { accessoryType, familyBudget, findAccessory, findPhone, hasPrefs, mergePrefs, parsePrefs, recommendAccessories, usd } from "./engine.ts";
+import {
+  accessoryType, bestMatch, familyBudget, findAccessory, findCategory, findPhone, hasPrefs, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
+} from "./engine.ts";
 import { state, world } from "./store.ts";
-import { callTool, caseFileUrl, findCartItems, formatVerdict, tools } from "./tools.ts";
+import { callTool, caseFileUrl, findCartItems, formatMonthly, formatOldPhone, formatStatus, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
 import { broadcastChanges, snapshot } from "./feed.ts";
 import { later } from "./runtime.ts";
+import { APPEAL, OVERRULE, REINSTATE, WHY, appeal, appealPending, explain, isArgument, overrule, reinstate } from "./appeal.ts";
 
 export interface Incoming {
   spaceId: string;
@@ -15,6 +18,7 @@ export interface Incoming {
   handle?: string; // the sender's real phone number / Apple ID (Photon only)
   text: string;
   image?: { mimeType: string; base64: string };
+  addressed?: boolean; // a tapback on the court's own message speaks to the court, even in a group
 }
 
 const transcripts = new Map<string, string[]>();
@@ -32,7 +36,8 @@ export function remember(spaceId: string, line: string) {
 
 /** Taste: in a group, only speak when addressed or handed shopping material. DMs always get a reply. */
 export function shouldRespond(msg: Incoming) {
-  return !msg.isGroup || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image;
+  // After a 👎 the court asked "tell me why": the answer is for the court even without "court,".
+  return !msg.isGroup || !!msg.addressed || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image || continuesAppeal(msg);
 }
 
 export async function handle(msg: Incoming): Promise<string | null> {
@@ -66,11 +71,18 @@ async function respond(msg: Incoming): Promise<string | null> {
   // Remember what people say they care about ("I want long battery life"), even mid-argument.
   const said = parsePrefs(msg.text.replace(URLS, " "));
   const about = mentionedMember(msg.text)?.id ?? msg.memberId;
-  if (about && hasPrefs(said)) state.prefs[about] = mergePrefs(state.prefs[about], said);
+  // (Phone wishes only: "a TV under $500" is not a phone budget.)
+  const aboutOtherThings = !!findCategory(world, msg.text) && !/\bphones?\b/i.test(msg.text);
+  if (about && hasPrefs(said) && !aboutOtherThings) state.prefs[about] = mergePrefs(state.prefs[about], said);
   const confirmed = confirmClear(msg);
   if (confirmed) {
     remember(msg.spaceId, `Cart Court: ${confirmed}`);
     return confirmed;
+  }
+  const linked = finishLink(msg);
+  if (linked) {
+    remember(msg.spaceId, `Cart Court: ${linked}`);
+    return linked;
   }
   if (!shouldRespond(msg)) return null;
 
@@ -94,14 +106,63 @@ function fileLinks(msg: Incoming): string | null {
   const forWhom = mentionedMember(msg.text)?.id ?? msg.memberId;
   if (!forWhom) return null;
   const added: string[] = [];
+  const unread: string[] = [];
   for (const url of urls) {
     const r = callTool("add_from_link", { url, member: forWhom }) as { added?: string; price?: number };
     if (r.added) added.push(`${r.added} (${usd(r.price ?? 0)})`);
+    else unread.push(url);
   }
-  if (!added.length) return null;
-  return `📎 Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`;
+  const lines: string[] = [];
+  if (added.length) lines.push(`📎 Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`);
+  if (unread.length) {
+    // Not in the catalog: never guess a price. Ask, and file it with their number (the link stays on the case file).
+    const url = unread[0];
+    const name = nameFromLink(url);
+    const price = priceIn(msg.text.replace(URLS, " "));
+    if (name && price) {
+      const r = callTool("add_product_to_cart", { member: forWhom, product: name, price, url, addedBy: msg.memberId }) as { added?: string; error?: string };
+      if (r.added) lines.push(`📎 Filed into the family cart: ${r.added} (${usd(price)}, the price you gave). Nobody checks out until the court rules.`);
+    } else {
+      (state.pendingLink ??= {})[msg.memberId ?? forWhom] = { url, forWhom, until: Date.now() + RECEIPT_MS, name, price };
+      const store = storeName(url);
+      lines.push(name
+        ? `🔎 The court can't read prices from ${store} yet. Is that the ${name}? Text what it costs (like "$90") and it goes in the cart.`
+        : `🔎 The court can't read that ${store} link yet. What is it, and what does it cost? (like "air purifier, $90")`);
+    }
+  }
+  return lines.join("\n");
 }
 
+// The answer to "what does it cost?" after a link the court couldn't read: "$90", "it's a Levoit air purifier, 90 bucks".
+const FILLER = /\b(it'?s|its|it|is|was|that'?s|this|the|a|an|about|like|around|costs?|for|price|yes|yeah|yep|y|ok|okay|one|bucks|dollars|usd)\b/gi;
+function finishLink(msg: Incoming): string | null {
+  const p = msg.memberId ? state.pendingLink?.[msg.memberId] : undefined;
+  if (!p || !msg.memberId) return null;
+  if (p.until < Date.now() || URLS.test(msg.text)) {
+    URLS.lastIndex = 0;
+    delete state.pendingLink![msg.memberId];
+    return null;
+  }
+  const price = priceIn(msg.text) ?? (/^\W*\$?\s*\d[\d,]*(\.\d{1,2})?\W*$/.test(msg.text) ? Number(msg.text.replace(/[^\d.]/g, "")) : undefined);
+  const said = msg.text.replace(PRICE, " ").replace(/\d[\d,.]*/g, " ").replace(FILLER, " ").replace(/[^\w\s'-]/g, " ").replace(/\s+/g, " ").trim();
+  const name = said.split(" ").length <= 6 && /[a-z]{3}/i.test(said) && !/\?/.test(msg.text) ? said : undefined;
+  if (price === undefined && !(name && p.price !== undefined && !p.name)) return null; // not an answer: carry on as usual
+  const done = { ...p, price: price ?? p.price, name: name ?? p.name };
+  if (!done.name) {
+    state.pendingLink![msg.memberId] = done;
+    return `Got it, ${usd(done.price!)}. What is it? (like "air purifier")`;
+  }
+  delete state.pendingLink![msg.memberId];
+  const r = callTool("add_product_to_cart", { member: done.forWhom, product: done.name, price: done.price, url: done.url, addedBy: msg.memberId }) as { added?: string; error?: string };
+  return r.added ? `📥 Added to the family cart: ${r.added} (${usd(done.price!)}, the price you gave). Nobody checks out until the court rules.` : `Objection: ${r.error}`;
+}
+
+// "what's in the cart?", "where do we stand?", "status": answered from the cart itself, instantly.
+const STATUS = /\b(what'?s|whats|what is|show( me)?|see|view|check)\b[^?.!]{0,15}\b(in )?(the |our |my )?cart\b|\bwhere do we stand\b|\bwhere are we at\b|\b(what'?s|whats|what is) the status\b|\bstatus (update|check)\b|^\W*(court,?\s*)?(status|cart)\W*$/i;
+// "what do we pay a month?", "monthly", "how much per month": not "a month ago" or "one month left".
+const MONTHLY = /\b(pay|paying|cost|costs|bill|total|how much)\b[^.?!]{0,25}\b(a|per|each|every) month\b|^\W*(court,?\s*)?monthly\W*$|\bmonthly (cost|total|bill|payments?)\b/i;
+const OLD_PHONE = /\b(what (happens|do i do|should i do) (to|with)|who gets|trade in|keep)\b[^.?!]{0,10}\bmy (old |current )?phone\b/i;
+const CHATTER = /^[\s\p{Extended_Pictographic}\p{Emoji_Modifier}‍️!?.]*(lol|lmao|haha+|omg|bruh)?[\s\p{Extended_Pictographic}\p{Emoji_Modifier}‍️!?.]*$/iu;
 const PROTECTION_ASK = /\badd (?:device |phone )?(?:protection|insurance)\b/i;
 const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 // Cart editing and purchases (deterministic: instant, no LLM needed).
@@ -125,10 +186,19 @@ const priceIn = (text: string) => {
   return m ? Number((m[1] ?? m[2]).replace(/,/g, "")) : undefined;
 };
 
+/** How the last Gemini attempt went (for the dashboard's preflight panel). */
+export const llmStatus: { at?: number; model?: string; ok?: boolean; billing?: boolean; error?: string } = {};
+
 async function reply_(msg: Incoming): Promise<string> {
   // The verdict is pure engine output: skip the LLM (instant, deterministic, costs no quota).
   // Verdicts, budgets and protection are pure engine work: answer instantly, no LLM.
   if (batteryReport(msg)) return rulesReply(msg);
+  if (courtroom(msg)) return rulesReply(msg);
+  if (STATUS.test(msg.text) && !URLS.test(msg.text) && !msg.image) return formatStatus(msg.memberId);
+  URLS.lastIndex = 0;
+  if (MONTHLY.test(msg.text) && !URLS.test(msg.text) && !msg.image && !accessoryType(msg.text)) return formatMonthly();
+  if (OLD_PHONE.test(msg.text) && !msg.image) return formatOldPhone(msg.memberId);
+  URLS.lastIndex = 0;
   const cartEdit = CLEAR_CART.test(msg.text) || (REASSIGN.test(msg.text) && state.purchases.length > 0 && !!mentionedMember(msg.text)) || REMOVE_ITEM.test(msg.text) || CHANGE_ITEM.test(msg.text) || (BOUGHT.test(msg.text) && priceIn(msg.text) !== undefined);
   if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text) || cartEdit) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
@@ -139,6 +209,8 @@ async function reply_(msg: Incoming): Promise<string> {
     // Rate limits / outages must never break a live demo. If tools already ran, report what they did;
     // otherwise fall back to rules-only mode.
     console.error("[llm] falling back:", (err as Error).message.slice(0, 160));
+    const text = String((err as Error).message ?? err);
+    Object.assign(llmStatus, { at: Date.now(), ok: false, model: "rules", billing: /"code":\s*402|prepayment credits|billing/i.test(text), error: text.slice(0, 160) });
     return summarizeRuns(applied) ?? rulesReply(msg);
   }
 }
@@ -157,7 +229,9 @@ function summarizeRuns(runs: ToolRun[]): string | null {
         const u = r.updatedRuling;
         return `🗂️ ${r.exhibit} entered.` + (typeof u === "string" ? " It will count when the cart goes on trial." : ` Updated ruling: ${u.stamp}. ${u.reasons[0]}.`);
       }
-      case "add_phone_to_cart": case "add_from_link": case "add_addon_to_cart": return `📥 Added: ${r.added}.`;
+      case "add_phone_to_cart": case "add_product_to_cart": case "add_from_link": case "add_addon_to_cart": return `📥 Added: ${r.added}.`;
+      case "recommend_products": return `The court's ${r.category} picks:\n` + r.picks.map((x: any, i: number) => `${i + 1}. ${x.name}, ${usd(x.price)}: ${x.why.slice(0, 2).join("; ")}`).join("\n");
+      case "report_owned_item": return `🗂️ Noted: ${r.owned.name}${r.owned.broken ? " (broken)" : ""}.` + (typeof r.updatedRuling === "string" ? "" : ` Updated ruling: ${r.updatedRuling.stamp}.`);
       case "run_trial": return r.verdictText;
       case "leaving_nest": return `🏠 ${r.stamp}: ${r.reasons.join(". ")}.`;
       case "recommend_phones": return `${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks:\n` + r.picks.map((x: any, i: number) => `${i + 1}. ${x.name} ${x.storageGB}GB, ${usd(x.price)}: ${reasons(x.why, r.remembered)}`).join("\n");
@@ -192,7 +266,9 @@ async function generateWithFallback(
     if (timeLeft < 2_000) break;
     try {
       const abortSignal = AbortSignal.timeout(Math.min(CALL_TIMEOUT_MS, timeLeft));
-      return await ai!.models.generateContent({ ...req, model, config: { ...req.config, abortSignal } });
+      const res = await ai!.models.generateContent({ ...req, model, config: { ...req.config, abortSignal } });
+      Object.assign(llmStatus, { at: Date.now(), ok: true, model, billing: false, error: undefined });
+      return res;
     } catch (err) {
       const text = String((err as Error).message ?? err);
       const slow = (err as Error).name === "TimeoutError" || (err as Error).name === "AbortError" || /abort|timed? ?out/i.test(text);
@@ -220,7 +296,7 @@ function systemPrompt(msg: Incoming) {
   const notes = msg.isGroup
     ? Object.entries(state.privateNotes).map(([id, n]) => `- ${nameOf(id)} told you privately: ${n.slice(-5).join(" | ")}`).join("\n")
     : (state.privateNotes[msg.memberId ?? ""] ?? []).slice(-5).map((n) => `- ${n}`).join("\n");
-  return `You are Cart Court, an honest phone-shopping assistant living in a household's group chat (iMessage/SMS).
+  return `You are Cart Court, an honest shopping assistant living in a household's group chat (iMessage/SMS). You handle anything a family buys: phones, laptops, TVs, headphones, game consoles, appliances, furniture, mattresses, shoes, clothes, and things the store doesn't carry.
 You turn the mess of links, screenshots and arguments into ONE shared cart, put the cart on trial before checkout, and often rule WAIT, because buying at the right moment is the point.
 
 Voice: a witty but kind judge. Short texts (max ~6 lines; this is a phone). One light courtroom joke at most. No sales pressure, ever.
@@ -230,6 +306,8 @@ Hard rules:
 - NEVER invent prices, dates, savings, battery numbers or promos. Get every number from a tool.
 - When someone wants to buy or check out, or asks you to rule, call run_trial and send its verdictText (you may add one short line before it).
 - If someone wants a phone, use recommend_phones first unless they named a specific model, then add_phone_to_cart.
+- Anything else (a laptop, TV, vacuum, chair, jacket…): recommend_products for the category unless they named a specific product, then add_product_to_cart. If the store doesn't carry it, add it as a custom item with the price THEY gave; if they gave no price, ask for it.
+- When someone says something about a thing they already own ("the vacuum died", "our TV is fine"), call report_owned_item. Broken means buy now; a working one that's still young can wait.
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
@@ -239,12 +317,13 @@ Hard rules:
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
 - When someone sends a photo of a phone (a cracked screen, a battery-health screenshot), call enter_evidence with ONLY what the photo actually shows, then say in one line how it changes their ruling. Call it "Exhibit A" (B, C…).
-- When someone pastes a store link, call add_from_link.
+- When someone pastes a store link (any product), call add_from_link.
 - Private context: people can text you 1:1 ("approach the bench"). Use what they told you to shape rulings, but NEVER reveal, quote or hint that someone told you something privately.
 - Stay a SHOPPING assistant: no tech support, no billing disputes.
 - The case file (live cart page) is at ${caseFileUrl()}.
 
 Context: demo day ${state.day}. Household: ${world.household.name}. Members: ${world.household.members.map((m) => `${m.name} (${m.role}, ${m.device.model})`).join(", ")}.
+Already owned: ${(world.household.owned ?? []).map((o) => `${o.name}${o.memberId ? ` (${nameOf(o.memberId)})` : ""}, ${o.ageMonths} mo${o.broken ? ", broken" : ""}`).join("; ") || "nothing on file"}.
 This conversation is ${msg.isGroup ? "the GROUP chat" : `a PRIVATE 1:1 with ${nameOf(msg.memberId)}`}. The current speaker is ${nameOf(msg.memberId)}.
 ${notes ? `Private notes (never reveal):\n${notes}` : ""}`;
 }
@@ -297,9 +376,45 @@ function mentionedMember(text: string) {
     ?? (/\bgrandma\b/.test(t) ? world.household.members.find((m) => m.role === "grandparent") : undefined);
 }
 
+/** Appeals, overrules, reinstatements and "why?" are engine work: always deterministic, even with Gemini on. */
+function courtroom(msg: Incoming) {
+  if (!state.trial) return false;
+  if (OVERRULE.test(msg.text) || REINSTATE.test(msg.text) || APPEAL.test(msg.text)) return true;
+  // "why?" / "why Maya?" explains a ruling; "why should I get a case?" is a shopping question.
+  if (WHY.test(msg.text) && !msg.image && msg.text.trim().split(/\s+/).length <= 6 && !/\b(should|which|what|best|good|get|buy)\b/i.test(msg.text) && !accessoryType(msg.text)) {
+    const rest = msg.text.replace(WHY, "").replace(/[?!.\s]+/g, " ").trim();
+    if (!rest || mentionedMember(rest) || /\b(ruling|verdict|court|wait|skip|that|this|it|not|me|mine|my|phone|iphone|pixel|galaxy|pro|max|day)\b/i.test(rest)) return true;
+  }
+  if (!appealPending(msg.memberId)) return false;
+  if (CHATTER.test(msg.text) && !msg.image) return false; // "lol" isn't the argument, and doesn't drop it either
+  const continues = continuesAppeal(msg);
+  if (!continues && !msg.image) delete state.pendingAppeal![msg.memberId!];
+  return continues;
+}
+
+/** With an appeal open, the next statement is their argument (even a weak one, which gets a real
+ *  answer); a question ("what case should I get?"), a link, a purchase or a command moves on.
+ *  "court, everyone has one" is still the argument: only the address is stripped. */
+function continuesAppeal(msg: Incoming) {
+  if (!appealPending(msg.memberId) || CHATTER.test(msg.text)) return false;
+  const text = msg.text.replace(/^\s*(court|judge|cart ?court)\b[\s,:]*/i, "");
+  const question = /\?\s*$/.test(text) || /^\s*(what|which|how|can|could|should|is|are|do|does|when|where|who)\b/i.test(text);
+  const command = TRIAL_INTENT.test(text) || STATUS.test(text) || MONTHLY.test(text) || REMOVE_ITEM.test(text) || CLEAR_CART.test(text);
+  const continues = (isArgument(text) || (!question && !command)) && !URLS.test(text) && !BOUGHT.test(text) && !accessoryType(text);
+  URLS.lastIndex = 0;
+  return continues;
+}
+
 function rulesReply(msg: Incoming): string {
   const text = msg.text;
   const target = mentionedMember(text)?.id ?? msg.memberId ?? "marco";
+  if (courtroom(msg)) {
+    const about = mentionedMember(text)?.id;
+    if (REINSTATE.test(text)) return reinstate(msg.memberId, about, canManage);
+    if (OVERRULE.test(text)) return overrule(msg.memberId, about, canManage);
+    if (WHY.test(text) && !APPEAL.test(text)) return explain(msg.memberId, about, canManage);
+    return appeal(text, msg.memberId, about ?? appealPending(msg.memberId), canManage);
+  }
 
   const batt = text.match(/(\d{2,3})\s*%/);
   const cracked = /\b(crack(ed)?|shattered|smashed)\b/i.test(text);
@@ -313,6 +428,25 @@ function rulesReply(msg: Incoming): string {
     const u = r.updatedRuling;
     return `🗂️ ${r.exhibit} entered for ${nameOf(target)}: ${finding}.` + (typeof u === "string" ? "" : ` Updated ruling: ${u.stamp}. ${u.reasons[1] ?? u.reasons[0]}.`);
   }
+  // "my screen is cracked" in a DM: say what the court needs, rather than the menu.
+  if (!msg.isGroup && cracked && !BOUGHT.test(text)) {
+    return `📸 The court needs to see it. Send a photo of the screen with "cracked screen" as the caption, and it goes into evidence.`;
+  }
+
+  // "the vacuum died" / "my laptop is broken" / "our TV still works fine"
+  const ownedCat = findCategory(world, text);
+  const broke = /\b(died|dead|broke|broken|stopped working|doesn'?t work|won'?t turn on)\b/i.test(text);
+  const fine = /\b(still works|works fine|works great|is fine)\b/i.test(text);
+  if (ownedCat && (broke || fine) && !/\b(add|get|buy)\b/i.test(text)) {
+    const mine = /\b(my|mine)\b/i.test(text);
+    const r = callTool("report_owned_item", { member: mine ? target : undefined, category: ownedCat, broken: broke }) as {
+      owned?: { name: string }; updatedRuling?: { stamp: string; reasons: string[] } | string; error?: string;
+    };
+    if (r.error) return `Objection: ${r.error}`;
+    const u = r.updatedRuling;
+    return `🗂️ Noted for the record: the ${r.owned!.name} ${broke ? "is broken. Replacing it can't wait" : "still works. No rush"}.` +
+      (u && typeof u !== "string" ? ` Updated ruling: ${u.stamp}. ${u.reasons[0]}.` : "");
+  }
 
   if (/\b(trial|verdict|rule|checkout|check out|session)\b/i.test(text)) {
     return (callTool("run_trial", {}) as { verdictText: string }).verdictText;
@@ -324,7 +458,20 @@ function rulesReply(msg: Incoming): string {
   // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
   const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
   if (add) {
-    const forWhom = /^(me|myself|mine)$/i.test(add[2]) ? (msg.memberId ?? target) : add[2];
+    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? (msg.memberId ?? target) : add[2];
+    // Not a phone? A catalog product, or a custom item with the price they gave ("a $90 air purifier").
+    const what = add[1].replace(/\$\s*\d[\d,.]*/g, "").replace(/\s+/g, " ").trim();
+    const phoneHit = bestMatch(world.catalog.phones, what);
+    const productHit = bestMatch(world.catalog.products ?? [], what);
+    const stated = (add[1].match(/\$\s*(\d[\d,]*(?:\.\d+)?)/) ?? text.match(/\$\s*(\d[\d,]*(?:\.\d+)?)/))?.[1];
+    if (!phoneHit || (productHit && productHit.score > phoneHit.score) || (!productHit && stated)) {
+      const qty = what.match(/^(\d+)\s+(?:x\s+)?/i);
+      const r = callTool("add_product_to_cart", {
+        member: forWhom, product: qty ? what.slice(qty[0].length) : what, quantity: qty ? Number(qty[1]) : undefined,
+        price: stated ? Number(stated.replace(/,/g, "")) : undefined, addedBy: msg.memberId,
+      }) as { added?: string; error?: string };
+      return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
+    }
     const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
     const phone = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
     const r = callTool("add_phone_to_cart", { member: forWhom, phone, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId });
@@ -466,6 +613,21 @@ function rulesReply(msg: Incoming): string {
     const r = callTool("add_recommended", { member: target, pick: n }) as { added?: string; error?: string };
     return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
   }
+  // "what laptop should I get?" / "we need a new vacuum under $400"
+  const category = findCategory(world, text);
+  const shopping = /\b(recommend|suggest|which|what|should (i|we|she|he|they) get|need|looking for|want|best|cheap(est)?)\b/i;
+  if (category && shopping.test(text) && !/\bphones?\b/i.test(text)) {
+    const budget = text.replace(/,(\d{3})/g, "$1").match(/(?:under|below|less than|max|up to)\s*\$?\s*(\d{2,5})/i)?.[1];
+    const r = callTool("recommend_products", {
+      member: target, category, budget: budget ? Number(budget) : undefined,
+      cheap: /\b(cheap(est)?|budget|affordable)\b/i.test(text), best: /\b(best|top|high[- ]end)\b/i.test(text),
+    }) as { forWhom: string; category: string; picks: { name: string; price: number; why: string[]; priceDrop?: { price: number; inDays: number } }[]; error?: string };
+    if (r.error) return `Objection: ${r.error}`;
+    const whoFor = target === msg.memberId ? "you" : r.forWhom.split(/\s+/)[0];
+    const drop = (p: { priceDrop?: { price: number; inDays: number } }) => (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "");
+    return `The court's ${r.category} picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name}, ${usd(p.price)}${drop(p)}: ${p.why.slice(0, 2).join("; ")}`).join("\n")}\nSay "add the first one" to put it in the family cart.`;
+  }
+
   // "I want a phone with long battery life" / "what phone should Grandma get?"
   const said = parsePrefs(text.replace(URLS, " "));
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
@@ -491,12 +653,17 @@ function rulesReply(msg: Incoming): string {
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
     return "Noted. That stays between us, and the court will keep it in mind. ⚖️";
   }
+  // Small talk gets a short answer, not the whole menu (the menu is for "hi", "help" and things the court didn't follow).
+  if (/^\W*(thanks|thank you|thx|ty|tysm)\b[\s\w,!.]{0,20}$/i.test(text)) return "⚖️ Anytime. The court stands by.";
+  if (/^\W*((ok(ay)?|k+|fine|alright)([\s,]+(fine|then|cool))?|cool|got it|sounds good|nice|bet|lol|lmao|haha+)\W*$/i.test(text)) return "⚖️ Noted.";
   return [
     "⚖️ The court is listening. You can:",
     "• Paste a store link to add it to the family cart",
-    "• Ask \"what phone should I get?\" (say what matters: battery, big screen, camera, budget)",
+    "• Ask \"what phone should I get?\" (say what matters: battery, big screen, camera, budget), or \"what laptop should Maya get?\"",
+    "• Add anything with its price: \"add a $90 air purifier for us\"",
     "• Ask for a case, charger, screen protector or earbuds",
     "• Say \"remove my phone\", \"cart clear\" (parents), or \"bought it for $899\"",
+    "• Ask \"what's in the cart?\" to see where everything stands",
     "• Say \"court, rule\" when the family is ready to check out",
   ].join("\n");
 }

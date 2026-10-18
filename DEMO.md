@@ -30,6 +30,19 @@ Every line below works **without Gemini** (rules mode). If Gemini is on, the cou
       - Kairui: `https://store.example.com/pixel-10-pro-256gb`
 - [ ] **Projector:** `http://localhost:3000`, the dashboard. Open **Demo tools** and click **Reset cart**.
 - [ ] Backup video open in a browser tab, in case the Wi-Fi dies.
+- [ ] **Ready for judges?** card on the dashboard: every row is green, or you know why it's amber.
+
+## Between judges (30 seconds)
+
+1. Press **Shift+R** to reset, or **S** to load the pre-trial scene (three links filed plus Kairui's private aside; it starts at 0:45).
+2. Glance at **Ready for judges?** The Cart row should say empty or awaiting trial.
+3. Mid-demo walk-up? Press **P** to replay the stamps instead of re-ruling. To come back to a moment later,
+   use **Demo tools → Save checkpoint**, then Restore. Restoring never texts anyone.
+4. "Can I try?" Point them at the **Let a judge try** QR codes. On Photon's free plan, add their number under Users first.
+
+**Dashboard shortcuts** (ignored while typing): **R** Rule now · **1 / 2 / 3** +41 days / +120 days / +2 years ·
+**S** pre-trial scene · **Shift+R** reset · **P** replay stamps · **F** case file full screen · **C** hide the cue strip · **?** list.
+The cue strip at the top always shows the next beat and the numbers to say.
 
 ---
 
@@ -63,11 +76,11 @@ The stamps land on the projector. **Read the projector:**
 | Who | Ruling | Why |
 |---|---|---|
 | Kairui | **SWAP** Pixel 10 Pro → Pixel 10 | Battery at 71%, so buy now, but the Pixel 10 has the camera she actually uses. **$709** after trade-in and the launch credit (this is the private DM at work) |
-| Jaret | **WAIT** until day 120, as iPhone 17 256GB | Battery 88%, 4 payments left, uses 61GB and no Pro features. **$1,399 → $569** |
+| Jaret | **WAIT** until day 120, as iPhone 17 256GB | Battery 88%, 4 payments left, uses 61GB and no Pro features. **$1,399 → $669** |
 | Carey | **WAIT** until day 41 | Battery 89%, and a $312 trade-in promo starts in 41 days. **$1,099 → $407** |
 | Account | **CUT** ×2 | Protection on a dead tablet, plus Hotspot nobody used. **$336/yr** |
 
-> "Spend today: **$3,933 → $709**. The court saved this family **$2,348**, and Carey's old phone gets to testify."
+> "Spend today: **$3,933 → $709**. The court saved this family **$2,248**, and Carey's old phone gets to testify."
 
 Point at Carey's **witness statement** on the projector: *"I am Carey Chiu's iPhone 15 Pro… I'd like to be heard before I'm replaced."*
 
@@ -75,7 +88,7 @@ Point at Carey's **witness statement** on the projector: *"I am Carey Chiu's iPh
 Every phone gets: *"⏳➡️✅ Carey, it's time. Your iPhone 17 Pro 256GB is ready at $407 instead of $1,099. Waiting saved $692."*
 > "WAIT isn't 'no sale.' It's a held cart that comes back when the price is right. That's how you earn trust."
 
-(Optional: **+120 days**. Jaret's iPhone 17 is ready at $569 instead of $1,399.)
+(Optional: **+120 days**. Jaret's iPhone 17 is ready at $669 instead of $1,399.)
 
 ### 2:10, the kid grows up (Driver: **+2 years**)
 - **Kairui** texts: **`court, Jaret is leaving for college in August`**
@@ -139,5 +152,5 @@ Synthetic only, per T-Mobile's rules. The engine takes plain JSON, so real catal
 ## Numbers cheat sheet
 - Sticker total as argued: **$3,597** · first-year cart including unused add-ons: **$3,933**
 - Spend today after the ruling: **$709** (without Kairui's DM it would be **$909**)
-- Held: **$976** · Total saved: **$2,348**
-- Carey: day 41, $1,099 → $407 · Jaret: day 120, $1,399 → $569 · Jaret stays on the plan: $240/yr
+- Held: **$976** · Total saved: **$2,248**
+- Carey: day 41, $1,099 → $407 · Jaret: day 120, $1,399 → $669 · Jaret stays on the plan: $240/yr
