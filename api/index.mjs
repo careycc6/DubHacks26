@@ -2158,11 +2158,12 @@ shareRouter.get(["/case", "/cart", "/cart.html"], (_req, res) => {
 });
 
 // src/tools.ts
+var unique = (xs) => xs.length === 1 ? xs[0] : void 0;
 function resolveMember(nameOrId) {
-  const q = String(nameOrId).toLowerCase().trim();
-  const m = world.household.members.find(
-    (x) => x.id === q || x.name.toLowerCase() === q || x.role === q || q === "dad" && x.id === "marco" || q === "mom" && x.id === "elena" || q === "grandma" && x.role === "grandparent"
-  );
+  const q = String(nameOrId).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
+  const all = world.household.members;
+  const words = (x) => x.name.toLowerCase().split(/\s+/);
+  const m = all.find((x) => x.id === q || x.name.toLowerCase() === q || x.role === q || q === "dad" && x.id === "marco" || q === "mom" && x.id === "elena" || q === "grandma" && x.role === "grandparent") ?? unique(all.filter((x) => words(x).includes(q) || q.split(" ").every((w) => words(x).includes(w)))) ?? unique(all.filter((x) => q.length >= 2 && x.name.toLowerCase().startsWith(q)));
   if (!m) throw new Error(`No household member "${nameOrId}". Members: ${world.household.members.map((x) => x.name).join(", ")}`);
   return m;
 }
@@ -3412,7 +3413,9 @@ function rulesReply(msg) {
   }
   const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
   if (add) {
-    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? msg.memberId ?? target : add[2];
+    const after = text.slice(text.toLowerCase().lastIndexOf(" for ") + 5).toLowerCase();
+    const fullName = world.household.members.find((m) => after.startsWith(m.name.toLowerCase()))?.name;
+    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? msg.memberId ?? target : fullName ?? add[2];
     const what = add[1].replace(/\$\s*\d[\d,.]*/g, "").replace(/\s+/g, " ").trim();
     const phoneHit = bestMatch(world.catalog.phones, what);
     const productHit = bestMatch(world.catalog.products ?? [], what);
@@ -3431,7 +3434,11 @@ function rulesReply(msg) {
     const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
     const phone2 = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
     const r = callTool("add_phone_to_cart", { member: forWhom, phone: phone2, storageGB: gb ? Number(gb) : void 0, addedBy: msg.memberId });
-    return "error" in r ? `Objection: ${r.error}` : `\u{1F4E5} Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
+    if ("error" in r) return `Objection: ${r.error}`;
+    const asked2 = phone2.toLowerCase().split(/\s+/);
+    const extra = phoneHit.item.name.toLowerCase().split(/\s+/).filter((w) => !asked2.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
+    const closest = extra.length ? ` (closest match for "${phone2}": there's no exact model by that name)` : "";
+    return `\u{1F4E5} Added to the family cart: ${r.added}${closest}. Nobody checks out until the court rules.`;
   }
   if (CLEAR_CART.test(text)) {
     if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")} You can take out your own things, like "remove my phone".`;

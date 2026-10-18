@@ -11,11 +11,17 @@ import type { Accessory, Promo, Ruling, Stamp, Trial } from "./types.ts";
 
 
 
+const unique = <T,>(xs: T[]) => (xs.length === 1 ? xs[0] : undefined);
+
 function resolveMember(nameOrId: string) {
-  const q = String(nameOrId).toLowerCase().trim();
-  const m = world.household.members.find(
-    (x) => x.id === q || x.name.toLowerCase() === q || x.role === q || (q === "dad" && x.id === "marco") || (q === "mom" && x.id === "elena") || (q === "grandma" && x.role === "grandparent"),
-  );
+  const q = String(nameOrId).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
+  const all = world.household.members;
+  const words = (x: (typeof all)[number]) => x.name.toLowerCase().split(/\s+/);
+  // Exact id / full name / role first, then a first or last name ("kairui", "cheng"), then a name that starts with it.
+  const m =
+    all.find((x) => x.id === q || x.name.toLowerCase() === q || x.role === q || (q === "dad" && x.id === "marco") || (q === "mom" && x.id === "elena") || (q === "grandma" && x.role === "grandparent")) ??
+    unique(all.filter((x) => words(x).includes(q) || q.split(" ").every((w) => words(x).includes(w)))) ??
+    unique(all.filter((x) => q.length >= 2 && x.name.toLowerCase().startsWith(q)));
   if (!m) throw new Error(`No household member "${nameOrId}". Members: ${world.household.members.map((x) => x.name).join(", ")}`);
   return m;
 }

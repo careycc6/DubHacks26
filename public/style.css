@@ -204,3 +204,6 @@ a { color: inherit; }
 @keyframes confetti { to { transform: translate(var(--drift), var(--fall)) rotate(var(--spin)); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bubble.fx-slam { animation: none; } }
 .header-side .acct { padding: 8px 14px; font-size: 14px; }
+
+/* "hidden" always wins over a class that sets display (buttons, banners, the Apple sign-in button). */
+[hidden] { display: none !important; }

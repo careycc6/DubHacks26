@@ -458,7 +458,10 @@ function rulesReply(msg: Incoming): string {
   // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
   const add = text.match(/\b(?:add|get|buy)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+for\s+(\w+)(?:\s+(\d+)\s*gb)?\b/i);
   if (add) {
-    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? (msg.memberId ?? target) : add[2];
+    // "for kairui cheng": prefer a whole name typed after "for" over just its first word.
+    const after = text.slice(text.toLowerCase().lastIndexOf(" for ") + 5).toLowerCase();
+    const fullName = world.household.members.find((m) => after.startsWith(m.name.toLowerCase()))?.name;
+    const forWhom = /^(me|myself|mine|us)$/i.test(add[2]) ? (msg.memberId ?? target) : (fullName ?? add[2]);
     // Not a phone? A catalog product, or a custom item with the price they gave ("a $90 air purifier").
     const what = add[1].replace(/\$\s*\d[\d,.]*/g, "").replace(/\s+/g, " ").trim();
     const phoneHit = bestMatch(world.catalog.phones, what);
@@ -475,7 +478,12 @@ function rulesReply(msg: Incoming): string {
     const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
     const phone = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
     const r = callTool("add_phone_to_cart", { member: forWhom, phone, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId });
-    return "error" in (r as object) ? `Objection: ${(r as { error: string }).error}` : `📥 Added to the family cart: ${(r as { added: string }).added}. Nobody checks out until the court rules.`;
+    if ("error" in (r as object)) return `Objection: ${(r as { error: string }).error}`;
+    // "iphone 18" -> iPhone 18 Pro: say it was the closest model, so nobody's surprised by the price.
+    const asked = phone.toLowerCase().split(/\s+/);
+    const extra = phoneHit.item.name.toLowerCase().split(/\s+/).filter((w) => !asked.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
+    const closest = extra.length ? ` (closest match for "${phone}": there's no exact model by that name)` : "";
+    return `📥 Added to the family cart: ${(r as { added: string }).added}${closest}. Nobody checks out until the court rules.`;
   }
   // "add the first one" / "add #2" after a recommendation
   // ---- Editing the cart

@@ -38,6 +38,16 @@ const PHONES = {
   "galaxy-a37": { prices: { 128: 490, 256: 610 }, name: "Galaxy A37 5G" },
   "galaxy-a17-easy": { prices: { 128: 270 }, research: "galaxy-a17" },
 };
+// Phones the catalog didn't have yet: Apple's current lineup (there's no plain iPhone 18 until spring 2027).
+const NEW_PHONES = [
+  { id: "iphone-18-pro-max", name: "iPhone 18 Pro Max", brand: "Apple", tier: "flagship", camera: 5, gaming: 5, batteryHours: 37, screenIn: 6.9, prices: { 256: 1299, 512: 1499, 1024: 1899 } },
+  { id: "iphone-18-pro", name: "iPhone 18 Pro", brand: "Apple", tier: "flagship", camera: 5, gaming: 5, batteryHours: 31, screenIn: 6.3, prices: { 256: 1199, 512: 1399, 1024: 1799 } },
+  { id: "iphone-air", name: "iPhone Air", brand: "Apple", tier: "flagship", camera: 4, gaming: 5, batteryHours: 27, screenIn: 6.5, prices: { 256: 1099, 512: 1299, 1024: 1699 } },
+];
+for (const n of NEW_PHONES) {
+  if (!catalog.phones.some((p) => p.id === n.id)) catalog.phones.push(n);
+  PHONES[n.id] ??= { prices: n.prices };
+}
 for (const p of catalog.phones) {
   const plan = PHONES[p.id];
   if (!plan) continue; // e.g. Easy Flip 5: a stand-in senior phone with no real listing

@@ -402,6 +402,113 @@
         }
       ],
       "checked": "2026-10-18"
+    },
+    {
+      "id": "iphone-18-pro-max",
+      "name": "iPhone 18 Pro Max",
+      "brand": "Apple",
+      "tier": "flagship",
+      "camera": 5,
+      "gaming": 5,
+      "batteryHours": 37,
+      "screenIn": 6.9,
+      "prices": {
+        "256": 1299,
+        "512": 1499,
+        "1024": 1899
+      },
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-iphone/iphone-18-pro",
+          "price": 1299
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-18-pro-max",
+          "price": 1300
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/product/apple-iphone-18-pro-max-256gb-burgundy-at-t/JCQ6HHJV5T"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%2018%20Pro%20Max%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "iphone-18-pro",
+      "name": "iPhone 18 Pro",
+      "brand": "Apple",
+      "tier": "flagship",
+      "camera": 5,
+      "gaming": 5,
+      "batteryHours": 31,
+      "screenIn": 6.3,
+      "prices": {
+        "256": 1199,
+        "512": 1399,
+        "1024": 1799
+      },
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-iphone/iphone-18-pro",
+          "price": 1199
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-18-pro",
+          "price": 1200
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/searchpage.jsp?st=iPhone%2018%20Pro%20unlocked"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%2018%20Pro%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18"
+    },
+    {
+      "id": "iphone-air",
+      "name": "iPhone Air",
+      "brand": "Apple",
+      "tier": "flagship",
+      "camera": 4,
+      "gaming": 5,
+      "batteryHours": 27,
+      "screenIn": 6.5,
+      "prices": {
+        "256": 1099,
+        "512": 1299,
+        "1024": 1699
+      },
+      "buy": [
+        {
+          "store": "Apple",
+          "url": "https://www.apple.com/shop/buy-iphone/iphone-air",
+          "price": 1099
+        },
+        {
+          "store": "T-Mobile",
+          "url": "https://www.t-mobile.com/cell-phone/apple-iphone-air"
+        },
+        {
+          "store": "Best Buy",
+          "url": "https://www.bestbuy.com/site/searchpage.jsp?st=iPhone%20Air%20unlocked"
+        },
+        {
+          "store": "Amazon",
+          "url": "https://www.amazon.com/s?k=iPhone%20Air%20unlocked"
+        }
+      ],
+      "checked": "2026-10-18"
     }
   ],
   "addons": [
