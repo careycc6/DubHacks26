@@ -1178,7 +1178,10 @@ var fresh = () => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [],
 function fromSaved(saved) {
   if (!saved) return fresh();
   const { evidence = {}, owned, ...rest } = structuredClone(saved);
-  for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
+  for (const m of world.household.members) {
+    if (rest.devices?.[m.id]) m.device = structuredClone(rest.devices[m.id]);
+    Object.assign(m.device, evidence[m.id] ?? {});
+  }
   if (owned) world.household.owned = owned;
   for (const m of world.household.members) Object.assign(m.usage, rest.usage?.[m.id] ?? {});
   return { ...fresh(), ...rest };
@@ -2737,7 +2740,8 @@ var tools = {
       const inCart = findCartItems({ member: m.id, phone: a.phone }).find((i) => i.kind === "device") ?? findCartItems({ member: m.id }).find((i) => i.kind === "device");
       const named = a.phone ? world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone) : void 0;
       const ph = named ?? (inCart?.phoneId ? phone(world, inCart.phoneId) : void 0);
-      const gb = inCart?.storageGB ?? (ph ? Object.keys(ph.prices).map(Number).sort((x, y) => x - y)[0] : void 0);
+      const sameAsCart = inCart && (!ph || ph.id === inCart.phoneId);
+      const gb = (ph && a.storageGB && ph.prices[String(a.storageGB)] ? a.storageGB : void 0) ?? (sameAsCart ? inCart.storageGB : void 0) ?? (ph ? Object.keys(ph.prices).map(Number).sort((x, y) => x - y)[0] : void 0);
       const ruling = inCart ? state.trial?.rulings.find((r) => r.itemId === inCart.id) : void 0;
       const purchase = {
         id: newId("p"),
@@ -2753,6 +2757,7 @@ var tools = {
         source: a.fromReceipt ? "receipt" : "text"
       };
       state.purchases.push(purchase);
+      if (ph && gb) newPhone(m.id, purchase);
       if (inCart) {
         const gone = (i) => i.memberId === m.id && (i.id === inCart.id || i.kind === "addon");
         purchase.fromCart = state.cart.filter(gone);
@@ -2786,6 +2791,8 @@ var tools = {
       if (!p) throw new Error("There's no purchase to move yet");
       if (p.memberId === m.id) return { recorded: `${m.name}: ${p.label}`, unchanged: true };
       const was = resolveMember(p.memberId).name;
+      const hadPhone = !!p.prevDevice;
+      if (hadPhone) oldPhoneBack(p);
       if (p.fromCart?.length) state.cart.push(...p.fromCart.filter((i) => !state.cart.some((c) => c.id === i.id)));
       const theirs = state.cart.filter((i) => i.memberId === m.id);
       const match = p.accessoryId ? theirs.find((i) => i.accessoryId === p.accessoryId) : theirs.find((i) => i.kind === "device" && i.phoneId === p.phoneId) ?? theirs.find((i) => i.kind === "device");
@@ -2793,6 +2800,7 @@ var tools = {
       p.fromCart = state.cart.filter(gone);
       state.cart = state.cart.filter((i) => !gone(i));
       p.memberId = m.id;
+      if (hadPhone) newPhone(m.id, p);
       const ruling = match ? state.trial?.rulings.find((r) => r.itemId === match.id) : void 0;
       p.courtPrice = ruling ? ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost : void 0;
       if (!state.cart.length) state.trial = void 0;
@@ -2841,6 +2849,33 @@ function callTool(name, args) {
     return { error: e.message };
   }
 }
+function newPhone(memberId, p) {
+  const m = resolveMember(memberId);
+  const ph = p.phoneId ? world.catalog.phones.find((x) => x.id === p.phoneId) : void 0;
+  if (!ph || !p.storageGB) return;
+  p.prevDevice = structuredClone(m.device);
+  m.device = {
+    model: ph.name,
+    ageMonths: 0,
+    storageGB: p.storageGB,
+    storageUsedGB: Math.min(m.device.storageUsedGB, p.storageGB),
+    batteryHealth: 100,
+    installmentsLeft: 0,
+    monthlyInstallment: 0,
+    tradeInValue: Math.round((p.sticker ?? p.paid) * 0.5)
+    // a new phone trades in for about half what it cost
+  };
+  (state.devices ??= {})[m.id] = structuredClone(m.device);
+}
+function oldPhoneBack(p) {
+  if (!p.prevDevice) return;
+  const m = resolveMember(p.memberId);
+  m.device = structuredClone(p.prevDevice);
+  if (state.devices) delete state.devices[m.id];
+  const earlier = state.purchases.filter((x) => x !== p && x.memberId === m.id && x.prevDevice).at(-1);
+  if (earlier) (state.devices ??= {})[m.id] = structuredClone(m.device);
+  p.prevDevice = void 0;
+}
 function recordAccessory(memberId, a) {
   const m = resolveMember(memberId);
   const accs = world.catalog.accessories ?? [];
@@ -2853,7 +2888,7 @@ function recordAccessory(memberId, a) {
   const purchase = {
     id: newId("p"),
     memberId: m.id,
-    label: acc?.name ?? a.accessory ?? "an accessory",
+    label: acc?.name ?? (inCart ? cartItemLabel(inCart) : void 0) ?? a.accessory ?? "an accessory",
     accessoryId: acc?.id,
     paid: Math.round(a.paid * 100) / 100,
     sticker: acc?.price,
@@ -3752,10 +3787,10 @@ Not ${first4}'s? A parent can text "this is for <name>".`);
   if (CHANGE_ITEM.test(text)) {
     const gb = Number(text.match(/(\d{3,4})\s*gb/i)?.[1]) || void 0;
     const after = text.split(/\bto\b/i).slice(1).join(" to ");
-    const newPhone = after ? findPhone(world, after)?.id : void 0;
+    const newPhone2 = after ? findPhone(world, after)?.id : void 0;
     const denied = guard(msg.memberId, "change_cart_item", { member: target });
     if (denied) return `Objection: ${denied}`;
-    const r = callTool("change_cart_item", { member: target, newPhone, storageGB: gb });
+    const r = callTool("change_cart_item", { member: target, newPhone: newPhone2, storageGB: gb });
     return r.error ? `Objection: ${r.error}` : `\u270F\uFE0F Changed ${r.from} \u2192 ${r.to} (${usd(r.price ?? 0)}).${r.storageNote ? ` ${r.storageNote}.` : ""}`;
   }
   if (REMOVE_ITEM.test(text)) {
@@ -3984,8 +4019,28 @@ dashboardRouter.post("/api/dashboard/cart/bought", async (req, res) => {
   if (!r.error) state.purchases[state.purchases.length - 1].source = "dashboard";
   res.json({ ...r, told: await announce(before) });
 });
+dashboardRouter.post("/api/dashboard/checkout", async (_req, res) => {
+  const t = state.trial;
+  if (!t) return res.json({ error: "Put the cart on trial first." });
+  const buy = t.rulings.filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.nowCost > 0 && !r.itemId.startsWith("account:"));
+  const before = snapshot2();
+  const bought = [];
+  for (const r of buy) {
+    const item = state.cart.find((i) => i.id === r.itemId);
+    if (!item || item.kind === "addon") continue;
+    const res_ = item.kind === "device" ? callTool("record_purchase", { member: item.memberId, paid: r.nowCost, phone: r.proposed?.phoneId ?? item.phoneId, storageGB: r.proposed?.storageGB ?? item.storageGB }) : callTool("record_purchase", { member: item.memberId, paid: r.nowCost, itemId: item.id });
+    if (res_.recorded) {
+      state.purchases[state.purchases.length - 1].source = "dashboard";
+      bought.push(res_.recorded);
+    }
+  }
+  const spent2 = state.purchases.reduce((s, p) => s + p.paid, 0);
+  res.json({ bought, spent: spent2, budgetLeft: state.budget === void 0 ? void 0 : Math.max(0, state.budget - spent2), told: await announce(before) });
+});
 dashboardRouter.post("/api/dashboard/purchase/undo", (req, res) => {
   const before = state.purchases.length;
+  const gone = state.purchases.find((p) => p.id === req.body?.id);
+  if (gone) oldPhoneBack(gone);
   state.purchases = state.purchases.filter((p) => p.id !== req.body?.id);
   refreshTrial();
   changed();

@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onReload, onShutdown, put } from "./db.ts";
 import { cartLabel, cartLinks, cartPrice, managers, runTrial, type Prefs, type TrialOptions } from "./engine.ts";
-import type { CartItem, NestRuling, Owned, Trial, World } from "./types.ts";
+import type { CartItem, Member, NestRuling, Owned, Trial, World } from "./types.ts";
 import type { AppealRecord } from "./appeal.ts";
 
 export interface ChatLine {
@@ -56,6 +56,7 @@ export interface Purchase {
   at: number;
   source: "text" | "receipt" | "dashboard";
   fromCart?: CartItem[]; // what left the cart when it was logged (restored if it was for someone else)
+  prevDevice?: Member["device"]; // the phone they had before this one (put back if the purchase is undone or moved)
 }
 
 export interface State {
@@ -83,6 +84,7 @@ export interface State {
   appeals?: AppealRecord[]; // appeals, overrules and reinstatements, oldest first (public: they're about rulings)
   pendingAppeal?: Record<string, { until: number; about: string }>; // memberId -> the court asked "tell me why"
   requests?: CartRequest[]; // kids' adds waiting on a parent
+  devices?: Record<string, Member["device"]>; // memberId -> the phone they bought through the court (replaces the one on file)
   usage?: Record<string, { camera: number; gaming: number }>; // memberId -> how they said they use a phone (1-5)
   pendingUsage?: Record<string, { forWhom: string; until: number }>; // sender -> the court asked how someone uses a phone
 }
@@ -101,7 +103,10 @@ export type Snapshot = Saved;
 function fromSaved(saved: Saved | undefined): State {
   if (!saved) return fresh();
   const { evidence = {}, owned, ...rest } = structuredClone(saved);
-  for (const m of world.household.members) Object.assign(m.device, evidence[m.id] ?? {});
+  for (const m of world.household.members) {
+    if (rest.devices?.[m.id]) m.device = structuredClone(rest.devices[m.id]); // a phone bought through the court
+    Object.assign(m.device, evidence[m.id] ?? {});
+  }
   if (owned) world.household.owned = owned;
   for (const m of world.household.members) Object.assign(m.usage, rest.usage?.[m.id] ?? {}); // what they told the court
   return { ...fresh(), ...rest };

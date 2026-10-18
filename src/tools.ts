@@ -562,14 +562,15 @@ export const tools = {
       fromReceipt: { type: "boolean", description: "true if read from a receipt / order confirmation" },
     },
     required: ["member", "paid"],
-    run: (a: { member: string; paid: number; phone?: string; accessory?: string; fromReceipt?: boolean; itemId?: string }) => {
+    run: (a: { member: string; paid: number; phone?: string; accessory?: string; fromReceipt?: boolean; itemId?: string; storageGB?: number }) => {
       const m = resolveMember(a.member);
       if (!(a.paid > 0) || a.paid > 20_000) throw new Error("That price doesn't look right");
       if (a.accessory || a.itemId) return recordAccessory(m.id, a);
       const inCart = findCartItems({ member: m.id, phone: a.phone }).find((i) => i.kind === "device") ?? findCartItems({ member: m.id }).find((i) => i.kind === "device");
       const named = a.phone ? world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone) : undefined;
       const ph = named ?? (inCart?.phoneId ? phone(world, inCart.phoneId) : undefined);
-      const gb = inCart?.storageGB ?? (ph ? Object.keys(ph.prices).map(Number).sort((x, y) => x - y)[0] : undefined);
+      const sameAsCart = inCart && (!ph || ph.id === inCart.phoneId);
+      const gb = (ph && a.storageGB && ph.prices[String(a.storageGB)] ? a.storageGB : undefined) ?? (sameAsCart ? inCart.storageGB : undefined) ?? (ph ? Object.keys(ph.prices).map(Number).sort((x, y) => x - y)[0] : undefined);
       const ruling = inCart ? state.trial?.rulings.find((r) => r.itemId === inCart.id) : undefined;
       const purchase: Purchase = {
         id: newId("p"),
@@ -585,6 +586,7 @@ export const tools = {
         source: a.fromReceipt ? "receipt" : "text",
       };
       state.purchases.push(purchase);
+      if (ph && gb) newPhone(m.id, purchase);
       // Bought: the phone (and its add-ons like protection) leave the cart.
       if (inCart) {
         const gone = (i: (typeof state.cart)[number]) => i.memberId === m.id && (i.id === inCart.id || i.kind === "addon");
@@ -617,6 +619,8 @@ export const tools = {
       if (!p) throw new Error("There's no purchase to move yet");
       if (p.memberId === m.id) return { recorded: `${m.name}: ${p.label}`, unchanged: true };
       const was = resolveMember(p.memberId).name;
+      const hadPhone = !!p.prevDevice;
+      if (hadPhone) oldPhoneBack(p); // the new phone is someone else's: the first person keeps their old one
       // Undo what the first logging took out of the wrong person's cart…
       if (p.fromCart?.length) state.cart.push(...p.fromCart.filter((i) => !state.cart.some((c) => c.id === i.id)));
       // …and take the new owner's matching item out instead.
@@ -628,6 +632,7 @@ export const tools = {
       p.fromCart = state.cart.filter(gone);
       state.cart = state.cart.filter((i) => !gone(i));
       p.memberId = m.id;
+      if (hadPhone) newPhone(m.id, p);
       const ruling = match ? state.trial?.rulings.find((r) => r.itemId === match.id) : undefined;
       p.courtPrice = ruling ? (ruling.stamp === "WAIT" ? ruling.heldCost : ruling.nowCost) : undefined;
       if (!state.cart.length) state.trial = undefined;
@@ -682,6 +687,32 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
 export { resolveMember, caseFileUrl, STAMP_ICON, findCartItems };
 
 /** An accessory was bought (by text, or with the dashboard's Bought… button). */
+/** A phone bought through the court replaces the one on file: new, 100% battery, nothing owed on it. */
+export function newPhone(memberId: string, p: Purchase) {
+  const m = resolveMember(memberId);
+  const ph = p.phoneId ? world.catalog.phones.find((x) => x.id === p.phoneId) : undefined;
+  if (!ph || !p.storageGB) return;
+  p.prevDevice = structuredClone(m.device);
+  m.device = {
+    model: ph.name, ageMonths: 0, storageGB: p.storageGB, storageUsedGB: Math.min(m.device.storageUsedGB, p.storageGB),
+    batteryHealth: 100, installmentsLeft: 0, monthlyInstallment: 0,
+    tradeInValue: Math.round((p.sticker ?? p.paid) * 0.5), // a new phone trades in for about half what it cost
+  };
+  (state.devices ??= {})[m.id] = structuredClone(m.device);
+}
+
+/** Undo newPhone: the person has their old phone again. */
+export function oldPhoneBack(p: Purchase) {
+  if (!p.prevDevice) return;
+  const m = resolveMember(p.memberId);
+  m.device = structuredClone(p.prevDevice);
+  if (state.devices) delete state.devices[m.id];
+  // An earlier phone bought through the court is still theirs.
+  const earlier = state.purchases.filter((x) => x !== p && x.memberId === m.id && x.prevDevice).at(-1);
+  if (earlier) (state.devices ??= {})[m.id] = structuredClone(m.device);
+  p.prevDevice = undefined;
+}
+
 function recordAccessory(memberId: string, a: { paid: number; accessory?: string; fromReceipt?: boolean; itemId?: string }) {
   const m = resolveMember(memberId);
   const accs = world.catalog.accessories ?? [];
@@ -696,7 +727,7 @@ function recordAccessory(memberId: string, a: { paid: number; accessory?: string
   const purchase: Purchase = {
     id: newId("p"),
     memberId: m.id,
-    label: acc?.name ?? a.accessory ?? "an accessory",
+    label: acc?.name ?? (inCart ? cartItemLabel(inCart) : undefined) ?? a.accessory ?? "an accessory",
     accessoryId: acc?.id,
     paid: Math.round(a.paid * 100) / 100,
     sticker: acc?.price,

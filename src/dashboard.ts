@@ -9,7 +9,7 @@ import { savedMemberIds } from "./data.ts";
 import { deliver, describeChanges, snapshot } from "./feed.ts";
 import { cartLabel, priceTrack } from "./engine.ts";
 import { changed, logActivity, refreshTrial, state, world } from "./store.ts";
-import { callTool } from "./tools.ts";
+import { callTool, oldPhoneBack } from "./tools.ts";
 import { wasWelcomed } from "./setup.ts";
 
 export const dashboardRouter = Router();
@@ -153,9 +153,34 @@ dashboardRouter.post("/api/dashboard/cart/bought", async (req, res) => {
   res.json({ ...(r as object), told: await announce(before) });
 });
 
+/** "Place mock order" on /checkout: everything the court said to buy today is bought at the court's price.
+ *  The money comes off the family budget and each new phone replaces the one on file (100% battery). */
+dashboardRouter.post("/api/dashboard/checkout", async (_req, res) => {
+  const t = state.trial;
+  if (!t) return res.json({ error: "Put the cart on trial first." });
+  const buy = t.rulings.filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.nowCost > 0 && !r.itemId.startsWith("account:"));
+  const before = snapshot();
+  const bought: string[] = [];
+  for (const r of buy) {
+    const item = state.cart.find((i) => i.id === r.itemId);
+    if (!item || item.kind === "addon") continue; // add-ons (protection) go with the phone
+    const res_ = (item.kind === "device"
+      ? callTool("record_purchase", { member: item.memberId, paid: r.nowCost, phone: r.proposed?.phoneId ?? item.phoneId, storageGB: r.proposed?.storageGB ?? item.storageGB })
+      : callTool("record_purchase", { member: item.memberId, paid: r.nowCost, itemId: item.id })) as { recorded?: string; error?: string };
+    if (res_.recorded) {
+      state.purchases[state.purchases.length - 1].source = "dashboard";
+      bought.push(res_.recorded);
+    }
+  }
+  const spent = state.purchases.reduce((s, p) => s + p.paid, 0);
+  res.json({ bought, spent, budgetLeft: state.budget === undefined ? undefined : Math.max(0, state.budget - spent), told: await announce(before) });
+});
+
 /** Undo a purchase recorded by mistake (it doesn't go back into the cart; add it again if needed). */
 dashboardRouter.post("/api/dashboard/purchase/undo", (req, res) => {
   const before = state.purchases.length;
+  const gone = state.purchases.find((p) => p.id === req.body?.id);
+  if (gone) oldPhoneBack(gone); // they still have the phone they had before
   state.purchases = state.purchases.filter((p) => p.id !== req.body?.id);
   refreshTrial();
   changed();

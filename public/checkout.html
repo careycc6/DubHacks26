@@ -31,7 +31,26 @@ fetch("/api/state").then((r) => r.json()).then((s) => {
   document.getElementById("totals").innerHTML = `<div class="total"><div class="label">Due today</div><div class="value">${usd(t.now)}</div></div>
     <div class="total savings"><div class="label">Saved vs. original cart</div><div class="value">${usd(t.savings)}</div></div>`;
 });
-document.getElementById("place").onclick = (e) => { e.target.textContent = "✓ Mock order placed"; e.target.disabled = true; };
+// Buys what the court said to buy today: the money comes off the family budget and each new phone
+// replaces the one on file (new, 100% battery). Only whoever runs the court (signed in) can place it.
+document.getElementById("place").onclick = async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = "Placing…";
+  const r = await fetch("/api/dashboard/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const d = r.ok ? await r.json() : { error: r.status === 403 ? "Only a parent signed in to Cart Court can place the order." : "Couldn't place the order." };
+  const note = document.createElement("div");
+  note.className = "empty";
+  if (d.error || !d.bought?.length) {
+    btn.disabled = false;
+    btn.textContent = "Place mock order";
+    note.textContent = d.error ?? "Nothing to buy today.";
+  } else {
+    btn.textContent = "✓ Mock order placed";
+    note.innerHTML = `Bought: ${d.bought.map(esc).join("<br>")}<br><b>${usd(d.spent)}</b> spent so far${d.budgetLeft !== undefined ? ` · <b>${usd(d.budgetLeft)}</b> left in the phone budget` : ""}. New phones are on file at 100% battery.`;
+  }
+  document.querySelector(".actions").after(note);
+};
 </script>
 </body>
 </html>
