@@ -37,8 +37,9 @@ On the same **/setup** page:
 3. **Step 3, "Your household":** the grey rows are an example family. Type over a row with a real person's name,
    role, current phone and number. Rows you leave blank stay examples and are never saved or texted. Then click **Text everyone**.
    Each person gets "Welcome to the court, [name]! ⚖️" from the court's number. Save it as a contact called "Cart Court".
-4. **Step 4 (so the links it texts open on phones):** in a second terminal run `npm run tunnel` and open
-   the `https://…trycloudflare.com` address it prints once.
+
+Hosted court? The case-file links it texts open on phones automatically. Running it on a laptop instead? Run
+`npm run tunnel` in a second terminal and open the `https://…trycloudflare.com` address it prints once.
 
 Skipped step 3? That's fine. If an unknown number texts the court, it asks "Who's texting?", and a reply like "I'm Maya"
 links that number for good.
@@ -49,10 +50,11 @@ links that number for good.
 - Only numbers added under **Users** can text the court.
 - If your texts aren't arriving, iMessage may be sending from your email instead of your number. Open **debug.photon.codes** on your iPhone to see which handle it uses, and add that one.
 
-## 4. Give it a memory with MongoDB Atlas (optional, 5 min, free)
+## 4. For whoever runs the server: MongoDB Atlas (5 min, free)
 
-Without it, the court saves to `data/*.local.json` on the laptop running it. With MongoDB, the cart, rulings, household
-and chat survive restarts and can move to a hosted server (see "Host it" in the README).
+Family members never see this. It's for the person hosting the court. Without it, the court saves to `data/*.local.json`
+on the machine running it. With MongoDB, the cart, rulings, household and chat survive restarts and can move to a hosted
+server (see "Host it" in the README).
 
 1. Sign up at **[mongodb.com/cloud/atlas/register](https://www.mongodb.com/cloud/atlas/register)** (Google sign-in works).
 2. **Create a cluster** and choose the **free M0** tier. Any provider or region is fine (pick one near you).
@@ -60,11 +62,12 @@ and chat survive restarts and can move to a hosted server (see "Host it" in the 
 4. **Network Access → Add IP Address**: add your current IP. For a hackathon on changing Wi-Fi, `0.0.0.0/0` (anywhere)
    is simplest. Remove it afterwards.
 5. **Connect → Drivers → Node.js**: copy the connection string (`mongodb+srv://…`) and replace `<db_password>` with your password.
-6. Open **localhost:3000/setup**, go to **step 5**, paste it, and click **Test & connect**. The court checks the connection,
-   saves it to `.env`, restarts onto MongoDB, and copies over everything already saved on the laptop.
+6. Add it to `.env` as `MONGODB_URI=mongodb+srv://…` (or to your host's environment variables) and restart the server.
+   The first start copies over everything already saved on that machine.
 
-The setup page explains common problems in plain words: a wrong password, an IP that isn't allowed yet, or a mistyped address.
-Check it any time at `localhost:3000/healthz`: it should say `"db":"mongodb"`.
+Check it at `/healthz`: it should say `"db":"mongodb"`, and the server log prints `[db] MongoDB (cartcourt)`.
+If it can't connect, it says why in the log and keeps saving to files. Common causes: a wrong password, an IP not
+allowed yet, or a mistyped address.
 
 ## Things to try
 
