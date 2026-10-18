@@ -205,6 +205,12 @@ a { color: inherit; }
 @keyframes confetti { to { transform: translate(var(--drift), var(--fall)) rotate(var(--spin)); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bubble.fx-slam { animation: none; } }
 .header-side .acct { padding: 8px 14px; font-size: 14px; }
+/* Case file header: title with Day and setup on one line under it, QR codes on the far right. */
+.file header.case-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.case-head .header-side { flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px 14px; margin-top: 14px; }
+.case-head .textline { text-align: left; }
+.case-head .textline:empty { display: none; }
+.case-head .join-qr { margin-top: 0; }
 
 /* "hidden" always wins over a class that sets display (buttons, banners, the Apple sign-in button). */
 [hidden] { display: none !important; }
