@@ -95,6 +95,8 @@ export interface Ruling {
   witness?: string; // the old phone's statement, for WAIT rulings
   // The engine's receipt: lines that add up to nowCost (heldCost for WAIT), so the case file can show its work.
   math?: { label: string; amount: number }[];
+  protection?: { verdict: "ADD" | "SKIP" | "OPTIONAL"; monthly: number; reason: string };
+  track?: { points: { day: number; price: number }[]; now: number; lowest: { day: number; price: number } };
 }
 
 export interface Trial {
@@ -104,6 +106,8 @@ export interface Trial {
   now: number;
   held: number;
   savings: number;
+  budget?: number; // the family's budget for today, if set
+  overBudget?: boolean;
 }
 
 export interface NestRuling {

@@ -63,6 +63,69 @@ export interface TrialOptions {
   tightBudget?: boolean;
   /** What each person said they care about (battery, screen, camera…), by member id. */
   prefs?: Record<string, Prefs>;
+  /** The family's budget for this round of shopping (what can be spent today). */
+  budget?: number;
+}
+
+// ---------------------------------------------------------------- plain-English verdicts
+
+/** What people see: BUY / WAIT / SKIP / STAY instead of the court's internal stamps. */
+export const VERDICT: Record<string, { word: string; hint: string }> = {
+  KEEP: { word: "BUY", hint: "good to go" },
+  SWAP: { word: "BUY", hint: "a better pick" },
+  WAIT: { word: "WAIT", hint: "price drops later" },
+  CUT: { word: "SKIP", hint: "cancel it" },
+  STAY: { word: "STAY", hint: "on the family plan" },
+  LEAVE: { word: "GO SOLO", hint: "own plan" },
+};
+
+// ---------------------------------------------------------------- price tracker
+
+/** Store price of a phone on a given demo day (sticker minus any promo running that day). */
+export function priceOn(world: World, phoneId: string, gb: number, day: number): number {
+  const p = phone(world, phoneId);
+  const sticker = p.prices[String(gb)] ?? Math.min(...Object.values(p.prices));
+  const promo = world.offers.promos.find((x) => x.phones.includes(phoneId) && x.startsOnDay <= day && day < x.endsOnDay);
+  return sticker - (promo?.credit ?? 0);
+}
+
+export interface PriceTrack {
+  points: { day: number; price: number }[];
+  now: number;
+  lowest: { day: number; price: number };
+}
+
+/** Price over the next `span` days, with every promo start/end as its own point, so drops show exactly. */
+export function priceTrack(world: World, phoneId: string, gb: number, fromDay: number, span = 120): PriceTrack {
+  const days = new Set<number>();
+  for (let d = fromDay; d <= fromDay + span; d += 10) days.add(d);
+  for (const x of world.offers.promos.filter((x) => x.phones.includes(phoneId))) {
+    for (const d of [x.startsOnDay - 1, x.startsOnDay, x.endsOnDay - 1, x.endsOnDay]) if (d >= fromDay && d <= fromDay + span) days.add(d);
+  }
+  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world, phoneId, gb, day) }));
+  const lowest = points.reduce((best, p) => (p.price < best.price ? p : best), points[0]);
+  return { points, now: points[0].price, lowest };
+}
+
+// ---------------------------------------------------------------- protection plans
+
+export const PROTECTION_MONTHLY = 18;
+
+/** Is Device Protection worth it for this person and this phone? */
+export function protectionAdvice(m: Member, phonePrice: number): { verdict: "ADD" | "SKIP" | "OPTIONAL"; monthly: number; reason: string } {
+  const yearly = PROTECTION_MONTHLY * 12;
+  const young = m.age < 20 || ["teen", "kid"].includes(m.role);
+  if (phonePrice >= 800 && (young || m.device.screenCracked)) {
+    return {
+      verdict: "ADD",
+      monthly: PROTECTION_MONTHLY,
+      reason: `${m.device.screenCracked ? "Their current screen is already cracked" : "Teens drop phones"}: ${usd(PROTECTION_MONTHLY)}/mo protects a ${usd(phonePrice)} phone`,
+    };
+  }
+  if (phonePrice < 600) {
+    return { verdict: "SKIP", monthly: PROTECTION_MONTHLY, reason: `Skip it: ${usd(yearly)}/yr is a lot next to a ${usd(phonePrice)} phone. A good case does the job` };
+  }
+  return { verdict: "OPTIONAL", monthly: PROTECTION_MONTHLY, reason: `Optional: ${usd(yearly)}/yr vs a ${usd(SCREEN_REPAIR)} screen repair if it ever breaks` };
 }
 
 function witnessStatement(m: Member): string {
@@ -82,7 +145,10 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
   let target = picked;
   if (overkill(picked, m, opts.prefs?.[m.id])) {
     const mid = world.catalog.phones.find((p) => p.brand === picked.brand && p.tier === "mid");
-    if (mid) {
+    // Don't downgrade away from what they told the court they want (a big screen, long battery).
+    const wants = opts.prefs?.[m.id] ?? {};
+    const losesWhatTheyWant = !!mid && ((wants.bigScreen && mid.screenIn < picked.screenIn) || (wants.battery && mid.batteryHours < picked.batteryHours - 1));
+    if (mid && !losesWhatTheyWant) {
       target = mid;
       reasons.push(`Pro features ${m.name} won't use (camera ${m.usage.camera}/5, gaming ${m.usage.gaming}/5), so the ${mid.name} is the better fit`);
     }
@@ -95,6 +161,16 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     if (mid && mid.camera >= m.usage.camera && mid.gaming >= m.usage.gaming) {
       target = mid;
       reasons.push(`Keeping this month's total in check: the ${mid.name} has the ${mid.camera}/5 camera ${m.name} actually uses`);
+    }
+  }
+
+  // 1c. Their own budget ("under $600"): swap to the best pick for them that fits it.
+  const myBudget = opts.prefs?.[m.id]?.budget;
+  if (myBudget && target.prices[String(neededStorage(target, m))] > myBudget) {
+    const fit = recommend(world, m.id, { prefs: opts.prefs?.[m.id] }).find((r) => r.price <= myBudget);
+    if (fit) {
+      target = phone(world, fit.phoneId);
+      reasons.push(`Over ${m.name.split(/\s+/)[0]}'s ${usd(myBudget)} budget: the ${target.name} fits it`);
     }
   }
 
@@ -166,14 +242,28 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
     proposed: { phoneId: target.id, storageGB: gb, label: `${target.name} ${gb}GB` },
     witness: stamp === "WAIT" ? witnessStatement(m) : undefined,
     math,
+    protection: protectionAdvice(m, target.prices[String(gb)]),
+    track: priceTrack(world, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40)),
   };
 }
 
-function reviewAddon(world: World, item: CartItem): Ruling {
+function reviewAddon(world: World, item: CartItem, cart: CartItem[] = []): Ruling {
   const addon = world.catalog.addons.find((a) => a.id === item.addonId);
   if (!addon) throw new Error(`Unknown add-on "${item.addonId}"`);
   const m = member(world, item.memberId);
   const yearly = addon.monthly * 12;
+  // Protection on their new phone: judged on its own merits, not as a duplicate of an old plan.
+  const device = cart.find((c) => c.kind === "device" && c.memberId === m.id);
+  if (addon.id === "protection-360" && device?.phoneId) {
+    const p = phone(world, device.phoneId);
+    const advice = protectionAdvice(m, p.prices[String(device.storageGB)] ?? Math.min(...Object.values(p.prices)));
+    const keep = advice.verdict !== "SKIP";
+    return {
+      itemId: item.id, memberId: m.id, label: `${m.name} · ${addon.name}`, stamp: keep ? "KEEP" : "CUT",
+      reasons: [advice.reason], originalCost: yearly, nowCost: keep ? yearly : 0, heldCost: 0, savings: keep ? 0 : yearly,
+      math: [{ label: `${addon.name}: 12 × ${usd(addon.monthly)}`, amount: yearly }, ...(keep ? [] : [{ label: "Struck: not worth it for this phone", amount: -yearly }])],
+    };
+  }
   const dupe = world.household.accountAddons.find((a) => a.id === addon.id);
   if (dupe && !dupe.usedInLast12Months) {
     return {
@@ -192,7 +282,7 @@ function reviewAddon(world: World, item: CartItem): Ruling {
 
 /** Put the whole cart (plus the account's dead weight) on trial. */
 export function runTrial(world: World, cart: CartItem[], day: number, opts: TrialOptions = {}): Trial {
-  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day, opts) : reviewAddon(world, item)));
+  const rulings = cart.map((item) => (item.kind === "device" ? reviewDevice(world, item, day, opts) : reviewAddon(world, item, cart)));
   for (const a of world.household.accountAddons) {
     if (a.usedInLast12Months) continue;
     const yearly = a.monthly * 12;
@@ -204,13 +294,50 @@ export function runTrial(world: World, cart: CartItem[], day: number, opts: Tria
     });
   }
   const sum = (f: (r: Ruling) => number) => rulings.reduce((t, r) => t + f(r), 0);
+
+  // Protection follows its phone: if the phone waits, so does the plan.
+  const holdAddonsWithPhones = () => {
+    for (const r of rulings) {
+      if (r.stamp !== "KEEP" || !r.label.includes("Protection") || !r.memberId) continue;
+      const phoneRuling = rulings.find((x) => x.memberId === r.memberId && x.proposed && x.stamp === "WAIT");
+      if (!phoneRuling) continue;
+      r.stamp = "WAIT";
+      r.holdUntilDay = phoneRuling.holdUntilDay;
+      r.heldCost = r.nowCost;
+      r.nowCost = 0;
+      r.reasons.unshift("Starts the day the new phone does");
+    }
+  };
+  holdAddonsWithPhones();
+
+  // Family budget: if today's spend is over it, hold the purchases that can most afford to wait
+  // (healthiest current phone first). Phones that are failing are never held for budget.
+  if (opts.budget !== undefined && sum((r) => r.nowCost) > opts.budget) {
+    const canWait = rulings
+      .filter((r) => (r.stamp === "KEEP" || r.stamp === "SWAP") && r.memberId && r.proposed)
+      .map((r) => ({ r, m: member(world, r.memberId!) }))
+      .filter(({ m }) => m.device.batteryHealth >= 75 && !m.device.screenCracked)
+      .sort((a, b) => b.m.device.batteryHealth - a.m.device.batteryHealth);
+    for (const { r } of canWait) {
+      if (sum((x) => x.nowCost) <= opts.budget) break;
+      r.stamp = "WAIT";
+      r.holdUntilDay = day + 30;
+      r.heldCost = r.nowCost;
+      r.nowCost = 0;
+      r.reasons.unshift(`Over the family's ${usd(opts.budget)} budget for now: this one can wait a month`);
+    }
+  }
+  holdAddonsWithPhones(); // a phone held for budget takes its protection plan with it
+  const now = sum((r) => r.nowCost);
   return {
     day,
     rulings,
     before: sum((r) => r.originalCost),
-    now: sum((r) => r.nowCost),
+    now,
     held: sum((r) => r.heldCost),
     savings: sum((r) => r.savings),
+    budget: opts.budget,
+    overBudget: opts.budget !== undefined && now > opts.budget,
   };
 }
 
@@ -230,7 +357,8 @@ export function advanceTrial(world: World, cart: CartItem[], old: Trial | undefi
 
 /** Held (WAIT) rulings whose moment has arrived by `day`. */
 export function readyHolds(trial: Trial | undefined, day: number): Ruling[] {
-  return (trial?.rulings ?? []).filter((r) => r.stamp === "WAIT" && (r.holdUntilDay ?? Infinity) <= day);
+  // Phones only: a held protection plan just starts alongside its phone, no separate alert.
+  return (trial?.rulings ?? []).filter((r) => r.stamp === "WAIT" && !!r.proposed && (r.holdUntilDay ?? Infinity) <= day);
 }
 
 /** A kid moving out (or anyone leaving): stay on the family plan or go solo? */
@@ -294,9 +422,12 @@ export function parsePrefs(text: string): Prefs {
   if (/\b(camera|photos?|pictures?|selfies?|video|zoom)\b/.test(t)) p.camera = true;
   if (/\b(gaming|games?|fortnite|genshin|fps)\b/.test(t)) p.gaming = true;
   if (/\b(simple|easy to use|big buttons|flip phone|for (my )?(grandma|grandpa|mom|dad))\b/.test(t)) p.simple = true;
-  if (/\b(cheap(er|est)?|affordable|budget|inexpensive|save money|not expensive)\b/.test(t)) p.cheap = true;
-  const money = t.match(/(?:under|below|less than|max(?:imum)?|up to|budget(?: is| of)?)\s*\$?\s*(\d{3,4})/) ?? t.match(/\$\s*(\d{3,4})/);
-  if (money) p.budget = Number(money[1]);
+  // "Our budget is $1500" is the family's budget (see familyBudget), not one person's price limit.
+  if (!familyBudget(text)) {
+    if (/\b(cheap(er|est)?|affordable|budget|inexpensive|save money|not expensive)\b/.test(t)) p.cheap = true;
+    const money = t.match(/(?:under|below|less than|max(?:imum)?|up to|budget(?: is| of)?)\s*\$?\s*(\d{3,4})/) ?? t.match(/\$\s*(\d{3,4})/);
+    if (money) p.budget = Number(money[1]);
+  }
   if (/\b(iphone|apple|ios)\b/.test(t)) p.brand = "Apple";
   else if (/\b(pixel|google)\b/.test(t)) p.brand = "Google";
   else if (/\b(samsung|galaxy)\b/.test(t)) p.brand = "Samsung";
@@ -408,4 +539,12 @@ export function describePrefs(p: Prefs): string {
   if (p.brand) parts.push(p.brand === "Apple" ? "an iPhone" : `a ${p.brand} phone`);
   if (p.budget) parts.push(`under ${usd(p.budget)}`);
   return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+/** "Our budget is $1,500" / "family budget 2000" / "we can spend $1200" -> 1500. Undefined if not a family budget. */
+export function familyBudget(text: string): number | undefined {
+  const t = text.toLowerCase().replace(/,(\d{3})/g, "$1");
+  if (!/\b(our|family|household|total|we have|we can spend|we've got)\b/.test(t)) return undefined;
+  const m = t.match(/(?:budget|spend|have|got)[^$\d]{0,20}\$?\s*(\d{3,5})/) ?? t.match(/\$\s*(\d{3,5})/);
+  return m ? Number(m[1]) : undefined;
 }

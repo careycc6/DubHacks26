@@ -1,7 +1,7 @@
 // Family feed: on Photon's free plan everyone talks to the court in their own 1:1 chat, so when one
 // person changes the shared cart (or the court rules), everyone else gets a one-line update.
 // It feels like a group chat without needing one. Private things (DM notes, budget talk) never go out.
-import { usd } from "./engine.ts";
+import { usd, VERDICT } from "./engine.ts";
 import { sendTo } from "./channels/index.ts";
 import { photonReady, sendToHandle } from "./channels/photon.ts";
 import { logActivity, state, world } from "./store.ts";
@@ -57,11 +57,11 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
   if (state.trialRuns > before.trialRuns && state.trial) {
     const t = state.trial;
     const stamps = t.rulings
-      .filter((r) => r.memberId)
-      .map((r) => `${first(nameOf(r.memberId))}: ${r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`)
+      .filter((r) => r.memberId && !r.label.includes("Protection"))
+      .map((r) => `${first(nameOf(r.memberId))}: ${VERDICT[r.stamp]?.word ?? r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`)
       .join(", ");
     const url = process.env.PUBLIC_URL ?? "http://localhost:3000";
-    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}. Case file: ${url}/cart`);
+    lines.push(`⚖️ ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} → ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== undefined ? ` Budget ${usd(t.budget)}: ${t.overBudget ? "still over" : `${usd(t.budget - t.now)} left`}.` : ""} Case file: ${url}/cart`);
   }
 
   if (state.nest && state.nest !== before.nest) {

@@ -158,3 +158,17 @@ a { color: inherit; }
 .join-qr img { width: 110px; height: 110px; display: block; border: 1px solid var(--rule); border-radius: 8px; }
 .join-qr figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 @media (max-width: 899px) { .join-qr { display: none !important; } }
+
+/* ---------- Price tracker, protection advice, budget */
+.tracker { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: var(--swap); flex-wrap: wrap; }
+.tracker svg { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; flex: none; }
+.tracker-text { font-size: 13px; color: #3d362d; }
+.tracker-text b { color: var(--keep); }
+.shield { margin-top: 8px; font-size: 13px; padding: 6px 10px; border-radius: 6px; background: var(--paper-2); color: #3d362d; }
+.shield.ADD { background: #e6efe5; }
+.shield.ADD b { color: var(--keep); }
+.shield.SKIP b { color: var(--muted); }
+.budget-line { font-family: var(--mono); font-size: 12px; margin-top: 6px; color: var(--keep); }
+.budget-line.over { color: var(--cut); }
+.stamp.SWAP { color: var(--keep); }
+.mini.SWAP { color: var(--keep); }

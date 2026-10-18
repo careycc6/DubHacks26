@@ -20,10 +20,17 @@ function countUp(id, to) {
 }
 
 const initials = (name) => esc((name ?? "?").slice(0, 1));
+// Plain words people understand at a glance.
+const VERDICT = {
+  KEEP: ["BUY", "go ahead"], SWAP: ["BUY", "better pick"], WAIT: ["WAIT", ""], CUT: ["SKIP", "cancel it"],
+  STAY: ["STAY", "family plan"], LEAVE: ["GO SOLO", "own plan"], PENDING: ["PENDING", "awaiting trial"],
+};
 const stampHtml = (r) => {
   const fresh = seenStamps.get(r.itemId) !== r.stamp;
   seenStamps.set(r.itemId, r.stamp);
-  return `<span class="stamp ${r.stamp} ${fresh ? "fresh" : ""}">${r.stamp}${r.stamp === "WAIT" ? `<small>until day ${r.holdUntilDay}</small>` : ""}</span>`;
+  const [word, hint] = VERDICT[r.stamp] ?? [r.stamp, ""];
+  const small = r.stamp === "WAIT" ? `until day ${r.holdUntilDay}` : hint;
+  return `<span class="stamp ${r.stamp} ${fresh ? "fresh" : ""}">${word}${small ? `<small>${small}</small>` : ""}</span>`;
 };
 
 // "Show the math": the engine's receipt for a ruling. Open receipts stay open across live re-renders.
@@ -50,6 +57,42 @@ function mathHtml(r) {
   </details>`;
 }
 
+/** Tiny price chart for the price tracker: where the price is now and when it bottoms out. */
+function sparkline(track, holdDay) {
+  if (!track || track.points.length < 2) return "";
+  const pts = track.points, w = 220, h = 44, pad = 4;
+  const d0 = pts[0].day, d1 = pts[pts.length - 1].day;
+  const lo = Math.min(...pts.map((p) => p.price)), hi = Math.max(...pts.map((p) => p.price));
+  const x = (d) => pad + ((d - d0) / Math.max(1, d1 - d0)) * (w - pad * 2);
+  const y = (v) => (hi === lo ? h / 2 : pad + ((hi - v) / (hi - lo)) * (h - pad * 2));
+  let path = "";
+  pts.forEach((p, i) => { path += i === 0 ? `M${x(p.day)},${y(p.price)}` : `H${x(p.day)}V${y(p.price)}`; });
+  const low = track.lowest;
+  const flat = hi === lo;
+  return `<div class="tracker">
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+      <path d="${path}" fill="none" stroke="currentColor" stroke-width="2"/>
+      ${holdDay !== undefined ? `<line x1="${x(holdDay)}" x2="${x(holdDay)}" y1="0" y2="${h}" stroke="var(--wait)" stroke-dasharray="3 3"/>` : ""}
+      <circle cx="${x(low.day)}" cy="${y(low.price)}" r="4" fill="var(--keep)"/>
+    </svg>
+    <div class="tracker-text">📈 Price tracker: ${trackerText(track)}</div>
+  </div>`;
+}
+
+/** "$1,099 now → $787 on day 41 (lowest)" or "Lowest price is today: goes up to $899 on day 30". */
+function trackerText(track) {
+  const pts = track.points, low = track.lowest;
+  if (low.price < track.now) return `${usd(track.now)} now → <b>${usd(low.price)}</b> on day ${low.day}, the lowest coming up`;
+  const up = pts.find((p) => p.price > track.now);
+  return up ? `<b>${usd(track.now)}</b> today is the lowest. It goes up to ${usd(up.price)} on day ${up.day}` : `${usd(track.now)}, no price changes coming up`;
+}
+
+function shieldHtml(p) {
+  if (!p) return "";
+  const label = { ADD: "🛡️ Protection: worth it", SKIP: "🛡️ Protection: skip it", OPTIONAL: "🛡️ Protection: optional" }[p.verdict];
+  return `<div class="shield ${p.verdict}"><b>${label}.</b> ${esc(p.reason)}</div>`;
+}
+
 function rulingCard(r, names) {
   const who = r.memberId ? names[r.memberId] : "Account";
   const item = r.label.includes(" · ") ? r.label.split(" · ").slice(1).join(" · ") : r.label;
@@ -64,7 +107,9 @@ function rulingCard(r, names) {
     <h3>${esc(item)}${changed ? ` <span class="arrow">→</span> <span class="to-inline">${esc(r.proposed.label)}</span>` : ""}</h3>
     <ul>${r.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     ${r.witness ? `<blockquote class="witness"><div class="witness-label">Witness statement · ${esc(names[r.memberId])}'s current phone</div>“${esc(r.witness)}”</blockquote>` : ""}
-    <div class="money">${money}${r.savings > 0 ? `<b>saves ${usd(r.savings)}</b>` : ""}</div>
+    ${r.memberId && r.track ? sparkline(r.track, r.stamp === "WAIT" ? r.holdUntilDay : undefined) : ""}
+    ${shieldHtml(r.protection)}
+    <div class="money">${money}${r.savings > 0 ? `<b>you save ${usd(r.savings)}</b>` : ""}</div>
     ${mathHtml(r)}
   </article>`;
 }
@@ -111,14 +156,14 @@ function render(s) {
     const cut = t.rulings.filter((r) => r.stamp === "CUT");
     $("subtitle").textContent = `Ruled on day ${t.day} · ${buy.length} to buy now · ${held.length} held · ${cut.length} struck`;
     $("totals").innerHTML = `
-      <div class="total"><div class="label">Spend today</div><div class="value"><s>${usd(t.before)}</s><span id="tNow"></span></div></div>
+      <div class="total"><div class="label">Spend today</div><div class="value"><s>${usd(t.before)}</s><span id="tNow"></span></div>${t.budget !== undefined && t.budget !== null ? `<div class="budget-line ${t.overBudget ? "over" : ""}">💰 Budget ${usd(t.budget)} · ${t.overBudget ? `${usd(t.now - t.budget)} over` : `${usd(t.budget - t.now)} left`}</div>` : ""}</div>
       <div class="total"><div class="label">Held for the right moment</div><div class="value" id="tHeld"></div></div>
-      <div class="total savings"><div class="label">Saved by the court</div><div class="value" id="tSaved"></div></div>`;
+      <div class="total savings"><div class="label">You save</div><div class="value" id="tSaved"></div></div>`;
     countUp("tNow", t.now); countUp("tHeld", t.held); countUp("tSaved", t.savings);
     $("sections").innerHTML =
-      section("Buy today", "the phones that actually need replacing", buy, names) +
-      section("Held for the right moment", "we'll text the group when it's time", held, names) +
-      section("Struck from the account", "paying for things nobody uses", cut, names);
+      section("✅ Buy", "worth buying today", buy, names) +
+      section("⏳ Wait", "cheaper later; we'll text everyone when it's time", held, names) +
+      section("✂️ Skip", "paying for things nobody uses", cut, names);
 
     if (held.length) {
       const end = Math.max(...held.map((h) => h.holdUntilDay)) * 1.08;

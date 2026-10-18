@@ -31,6 +31,8 @@
     .person .avatar { width: 30px; height: 30px; font-size: 14px; }
     .person .nm { font-weight: 600; font-size: 14.5px; }
     .person .sub { font-size: 12.5px; color: var(--muted); }
+    .budget-row { display: flex; gap: 8px; }
+    .budget-row input { flex: 1; min-width: 0; font: 15px var(--mono); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: #fff; }
     .mini { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 2px 7px; border: 2px solid currentColor; border-radius: 4px; }
     .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 360px; overflow-y: auto; }
     .feed li { font-size: 13.5px; line-height: 1.45; padding-bottom: 8px; border-bottom: 1px dashed var(--rule); }
@@ -154,6 +156,17 @@
       </section>
 
       <section class="card">
+        <h2>💰 Family budget <span id="budgetStatus">not set</span></h2>
+        <div class="budget-row"><input id="budget" type="number" min="0" step="50" placeholder="e.g. 1500" /><button class="btn small" id="budgetSave">Set</button></div>
+        <div class="msg" id="budgetMsg">What the family can spend today. Over it, the court holds purchases that can wait. (Or text: "our budget is $1500".)</div>
+      </section>
+
+      <section class="card">
+        <h2>📈 Price tracker <span>store prices</span></h2>
+        <ul class="feed" id="tracker"><li class="empty-feed">Phones in the cart show up here, with the best day to buy.</li></ul>
+      </section>
+
+      <section class="card">
         <h2>Household <span><a href="/setup">edit</a></span></h2>
         <div class="people" id="people"></div>
       </section>
@@ -210,11 +223,18 @@ async function loadDashboard() {
   $("pfSum").className = `pf-sum ${worst}`;
   $("pfSum").textContent = worst === "ok" ? "✓ Ready" : worst === "err" ? "✕ Fix first" : "Needs attention";
   $("preflight").innerHTML = d.preflight.map((c) => `<li class="${c.status}"><span class="dot"></span><b>${esc(c.label)}</b><span class="d">${esc(c.detail)}</span></li>`).join("");
+  // Budget
+  if (document.activeElement !== $("budget")) $("budget").value = d.budget ?? "";
+  $("budgetStatus").textContent = d.budget == null ? "not set" : d.spendToday == null ? `${d.budget.toLocaleString()}` : d.overBudget ? `over by ${(d.spendToday - d.budget).toLocaleString()}` : `${(d.budget - d.spendToday).toLocaleString()} left`;
+  $("budgetStatus").style.color = d.overBudget ? "var(--cut)" : d.budget != null ? "var(--keep)" : "";
+  // Price tracker
+  if (d.tracker.length) $("tracker").innerHTML = d.tracker.map((t) => `<li><span class="when">${esc(t.who)}</span><b>${esc(t.label)}</b><br>${usd(t.now)} now${t.lowest.price < t.now ? ` → <b style="color:var(--keep)">${usd(t.lowest.price)}</b> on day ${t.lowest.day}` : " · no drops coming up"}</li>`).join("");
+  else $("tracker").innerHTML = `<li class="empty-feed">Phones in the cart show up here, with the best day to buy.</li>`;
   $("people").innerHTML = d.members.map((m) => `
     <div class="person">
       <span class="avatar">${esc(m.name.slice(0, 1))}</span>
       <div><div class="nm">${esc(m.name)}</div><div class="sub">${esc(m.role)} · ${esc(m.phone)} · ${m.battery}% battery<br>${m.linked ? (m.welcomed ? "📱 texting the court" : "📱 number saved") : "no phone linked"}</div></div>
-      ${m.ruling ? `<span class="mini ${m.ruling.stamp}">${m.ruling.stamp}</span>` : ""}
+      ${m.ruling ? `<span class="mini ${m.ruling.stamp}">${({ KEEP: "BUY", SWAP: "BUY", WAIT: "WAIT", CUT: "SKIP" })[m.ruling.stamp] ?? m.ruling.stamp}</span>` : ""}
     </div>`).join("");
 }
 
@@ -233,6 +253,12 @@ es.addEventListener("state", (e) => {
   loadDashboard();
 });
 
+$("budgetSave").onclick = async () => {
+  const r = await post("/api/dashboard/budget", { amount: Number($("budget").value || 0) });
+  $("budgetMsg").className = "msg ok";
+  $("budgetMsg").textContent = r.budget === "none" ? "Budget cleared." : `✓ Budget set. ${r.spendToday == null ? "It applies when the court rules." : r.overBudget ? "Still over: what's left can't wait." : "Rulings updated to fit."}`;
+  loadDashboard();
+};
 $("rule").onclick = async () => {
   $("ruleMsg").className = "msg"; $("ruleMsg").textContent = "The court is deliberating…";
   const r = await post("/api/dashboard/rule");

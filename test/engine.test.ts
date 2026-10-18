@@ -163,3 +163,33 @@ test("every ruling's math adds up to what the family pays", () => {
     }
   }
 });
+
+test("family budget holds the purchases that can wait, never a failing phone", async () => {
+  const { familyBudget } = await import("../src/engine.ts");
+  assert.equal(familyBudget("our budget is $1,500"), 1500);
+  assert.equal(familyBudget("I want something under $600"), undefined);
+  const cart: CartItem[] = [
+    { id: "a", kind: "device", memberId: "elena", phoneId: "pixel-10", storageGB: 256 }, // battery 71%: needs it now
+    { id: "b", kind: "device", memberId: "marco", phoneId: "pixel-10", storageGB: 256 }, // healthy 89%
+  ];
+  const t = runTrial(world, cart, 50, { budget: 600 }); // past the promos, so nothing is waiting on a sale
+  assert.equal(t.rulings.find((r) => r.itemId === "a")!.stamp !== "WAIT", true);
+  assert.equal(t.rulings.find((r) => r.itemId === "b")!.stamp, "WAIT");
+  assert.ok(t.now <= 600 || t.overBudget);
+});
+
+test("protection advice: worth it for a teen's $1,199 phone, skip for a $399 one", async () => {
+  const { protectionAdvice } = await import("../src/engine.ts");
+  const maya = world.household.members.find((m) => m.id === "maya")!;
+  const marco = world.household.members.find((m) => m.id === "marco")!;
+  assert.equal(protectionAdvice(maya, 1199).verdict, "ADD");
+  assert.equal(protectionAdvice(marco, 399).verdict, "SKIP");
+  assert.equal(protectionAdvice(marco, 899).verdict, "OPTIONAL");
+});
+
+test("price tracker finds the promo dip", async () => {
+  const { priceTrack } = await import("../src/engine.ts");
+  const t = priceTrack(world, "iphone-17-pro", 256, 0, 120);
+  assert.equal(t.now, 1099);
+  assert.deepEqual(t.lowest, { day: 41, price: 1099 - 312 });
+});
