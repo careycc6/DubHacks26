@@ -30,6 +30,19 @@ Every line below works **without Gemini** (rules mode). If Gemini is on, the cou
       - Kairui: `https://store.example.com/pixel-10-pro-256gb`
 - [ ] **Projector:** `http://localhost:3000`, the dashboard. Open **Demo tools** and click **Reset cart**.
 - [ ] Backup video open in a browser tab, in case the Wi-Fi dies.
+- [ ] **Ready for judges?** card on the dashboard: every row is green, or you know why it's amber.
+
+## Between judges (30 seconds)
+
+1. Press **Shift+R** to reset, or **S** to load the pre-trial scene (three links filed plus Kairui's private aside; it starts at 0:45).
+2. Glance at **Ready for judges?** The Cart row should say empty or awaiting trial.
+3. Mid-demo walk-up? Press **P** to replay the stamps instead of re-ruling. To come back to a moment later,
+   use **Demo tools → Save checkpoint**, then Restore. Restoring never texts anyone.
+4. "Can I try?" Point them at the **Let a judge try** QR codes. On Photon's free plan, add their number under Users first.
+
+**Dashboard shortcuts** (ignored while typing): **R** Rule now · **1 / 2 / 3** +41 days / +120 days / +2 years ·
+**S** pre-trial scene · **Shift+R** reset · **P** replay stamps · **F** case file full screen · **C** hide the cue strip · **?** list.
+The cue strip at the top always shows the next beat and the numbers to say.
 
 ---
 
