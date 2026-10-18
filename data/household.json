@@ -4,12 +4,12 @@
   "plan": "Family Unlimited",
   "members": [
     {
-      "id": "marco", "name": "Marco", "role": "parent", "age": 47, "handles": [],
+      "id": "marco", "name": "Marco", "role": "parent", "aka": ["dad"], "age": 47, "handles": [],
       "usage": { "camera": 4, "gaming": 1, "dataGBPerMonth": 18 },
       "device": { "model": "iPhone 15 Pro", "ageMonths": 26, "storageGB": 256, "storageUsedGB": 96, "batteryHealth": 89, "installmentsLeft": 0, "monthlyInstallment": 0, "tradeInValue": 380 }
     },
     {
-      "id": "elena", "name": "Elena", "role": "parent", "age": 45, "handles": [],
+      "id": "elena", "name": "Elena", "role": "parent", "aka": ["mom"], "age": 45, "handles": [],
       "usage": { "camera": 4, "gaming": 1, "dataGBPerMonth": 12 },
       "device": { "model": "Pixel 7", "ageMonths": 40, "storageGB": 128, "storageUsedGB": 74, "batteryHealth": 71, "installmentsLeft": 0, "monthlyInstallment": 0, "tradeInValue": 90 }
     },

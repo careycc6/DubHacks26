@@ -17,6 +17,31 @@ export function member(world: World, id: string): Member {
   return m;
 }
 
+/** Roles that run the cart (and whose money worries count). */
+export const MANAGER_ROLES = new Set(["parent", "partner"]);
+export const managers = (world: World) => world.household.members.filter((m) => MANAGER_ROLES.has(m.role));
+
+const TITLES: [RegExp, string][] = [
+  [/\b(dad|father)\b/, "dad"],
+  [/\b(mom|mum|mother)\b/, "mom"],
+  [/\b(grandma|grandmother|abuela)\b/, "grandma"],
+];
+
+/** "dad", "mom", "grandma" → a member: whoever the household calls that (`aka`), else the only parent / a grandparent. */
+export function memberByTitle(world: World, text: string): Member | undefined {
+  const t = text.toLowerCase();
+  for (const [re, title] of TITLES) {
+    if (!re.test(t)) continue;
+    if (title === "grandma") return world.household.members.find((m) => m.aka?.includes(title)) ?? world.household.members.find((m) => m.role === "grandparent");
+    // /setup can re-role a slot, so an example "dad" only counts while they're still a parent.
+    const parents = managers(world);
+    const named = parents.find((m) => m.aka?.includes(title));
+    if (named) return named;
+    if (parents.length === 1) return parents[0]; // two parents and no aka: don't guess which one
+  }
+  return undefined;
+}
+
 export function phone(world: World, id: string): Phone {
   const p = world.catalog.phones.find((x) => x.id === id);
   if (!p) throw new Error(`Unknown phone "${id}"`);
@@ -142,10 +167,11 @@ function sticker(world: World, id: string, variant: string | number): { price: n
   return { price: pr.prices[String(variant)] ?? Math.min(...Object.values(pr.prices)), category: pr.category };
 }
 
-/** Store price on a given demo day (sticker minus any promo running that day). Pass `custom` for items not in the catalog. */
-export function priceOn(world: World, id: string, variant: string | number, day: number, custom?: { price: number; category?: string }): number {
+/** Store price on a given demo day: sticker minus the best deal running that day that the ruling would accept
+ *  (for `m` when known). Pass `custom` for items not in the catalog. */
+export function priceOn(world: World, id: string, variant: string | number, day: number, custom?: { price: number; category?: string }, m?: Member): number {
   const { price, category } = custom ?? sticker(world, id, variant);
-  const promo = world.offers.promos.find((x) => promoCovers(x, id, category) && x.startsOnDay <= day && day < x.endsOnDay);
+  const promo = promoFor(world, id, day, { m, category, sticker: price }).active;
   return price - (promo ? promoCredit(promo, price) : 0);
 }
 
@@ -157,7 +183,7 @@ export interface PriceTrack {
 
 /** Price over the next `span` days, with every promo start/end as its own point, so drops show exactly. */
 export function priceTrack(
-  world: World, id: string, variant: string | number, fromDay: number, span = 120, custom?: { price: number; category?: string },
+  world: World, id: string, variant: string | number, fromDay: number, span = 120, custom?: { price: number; category?: string }, m?: Member,
 ): PriceTrack {
   const { category } = custom ?? sticker(world, id, variant);
   const days = new Set<number>();
@@ -165,7 +191,7 @@ export function priceTrack(
   for (const x of world.offers.promos.filter((x) => promoCovers(x, id, category))) {
     for (const d of [x.startsOnDay - 1, x.startsOnDay, x.endsOnDay - 1, x.endsOnDay]) if (d >= fromDay && d <= fromDay + span) days.add(d);
   }
-  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world, id, variant, day, custom) }));
+  const points = [...days].sort((a, b) => a - b).map((day) => ({ day, price: priceOn(world, id, variant, day, custom, m) }));
   const lowest = points.reduce((best, p) => (p.price < best.price ? p : best), points[0]);
   return { points, now: points[0].price, lowest };
 }
@@ -357,7 +383,7 @@ function judgeDevice(world: World, item: CartItem, day: number, opts: TrialOptio
     tradeIn: ti.value > 0
       ? { device: m.device.model, value: ti.value, withTradeIn: price, withoutTradeIn: price + ti.value + tradeInDeal }
       : undefined,
-    track: priceTrack(world, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40)),
+    track: priceTrack(world, target.id, gb, day, Math.max(90, (holdUntilDay ?? day) - day + 40), undefined, m),
   };
 }
 
@@ -407,7 +433,7 @@ function overrule(world: World, item: CartItem, day: number, court: Ruling): Rul
     witness: undefined,
     protection: protectionAdvice(m, sticker),
     tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, withTradeIn: price, withoutTradeIn: price + ti.value } : undefined,
-    track: priceTrack(world, picked.id, gb, day, 90),
+    track: priceTrack(world, picked.id, gb, day, 90, undefined, m),
     math,
     overruled: { by, courtPlan, extra },
   };
@@ -597,7 +623,18 @@ export function advanceTrial(world: World, cart: CartItem[], old: Trial | undefi
     return prev && (prev.stamp !== "WAIT" || stillHeld) ? prev : r;
   });
   const sum = (f: (r: Ruling) => number) => rulings.reduce((t, r) => t + f(r), 0);
-  return { day, rulings, before: sum((r) => r.originalCost), now: sum((r) => r.nowCost), held: sum((r) => r.heldCost), savings: sum((r) => r.savings) };
+  const planned = sum((r) => r.nowCost + r.heldCost);
+  return {
+    day,
+    rulings,
+    before: sum((r) => r.originalCost),
+    now: sum((r) => r.nowCost),
+    held: sum((r) => r.heldCost),
+    savings: sum((r) => r.savings),
+    planned,
+    budget: opts.budget,
+    overBudget: opts.budget !== undefined && planned > opts.budget,
+  };
 }
 
 /** Held (WAIT) rulings whose moment has arrived by `day`. */

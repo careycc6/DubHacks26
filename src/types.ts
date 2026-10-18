@@ -76,6 +76,7 @@ export interface Member {
   id: string;
   name: string;
   role: string;
+  aka?: string[]; // what the family calls them ("dad", "mom", "grandma")
   age: number;
   handles: string[];
   usage: { camera: number; gaming: number; dataGBPerMonth: number };

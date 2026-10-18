@@ -2,7 +2,7 @@
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
 import {
-  accessoryType, bestMatch, familyBudget, findAccessory, findCategory, findPhone, hasPrefs, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
+  accessoryType, bestMatch, familyBudget, findAccessory, findCategory, findPhone, hasPrefs, managers, memberByTitle, MANAGER_ROLES, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
 } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, findCartItems, formatMonthly, formatOldPhone, formatStatus, formatVerdict, tools } from "./tools.ts";
@@ -371,9 +371,7 @@ function mentionedMember(text: string) {
   // Full name or first name ("Jaret Zhang" or "Jaret").
   const word = (w: string) => new RegExp(`\\b${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t);
   return world.household.members.find((m) => word(m.name) || word(m.name.split(/\s+/)[0]))
-    ?? (/\b(dad|my dad)\b/.test(t) ? world.household.members.find((m) => m.id === "marco") : undefined)
-    ?? (/\bmom\b/.test(t) ? world.household.members.find((m) => m.id === "elena") : undefined)
-    ?? (/\bgrandma\b/.test(t) ? world.household.members.find((m) => m.role === "grandparent") : undefined);
+    ?? memberByTitle(world, t);
 }
 
 /** Appeals, overrules, reinstatements and "why?" are engine work: always deterministic, even with Gemini on. */
@@ -407,7 +405,8 @@ function continuesAppeal(msg: Incoming) {
 
 function rulesReply(msg: Incoming): string {
   const text = msg.text;
-  const target = mentionedMember(text)?.id ?? msg.memberId ?? "marco";
+  const target = mentionedMember(text)?.id ?? msg.memberId ?? managers(world)[0]?.id ?? world.household.members[0]?.id;
+  if (!target) return "⚖️ The court doesn't know anyone in this household yet. Add the family on /setup first.";
   if (courtroom(msg)) {
     const about = mentionedMember(text)?.id;
     if (REINSTATE.test(text)) return reinstate(msg.memberId, about, canManage);
@@ -673,7 +672,7 @@ function rulesReply(msg: Incoming): string {
 // parents (and partners) run the cart; everyone else can add things and edit only their own items.
 // The dashboard is always allowed (it's the admin view).
 
-const MANAGERS = new Set(["parent", "partner"]);
+const MANAGERS = MANAGER_ROLES;
 const ONLY_PARENTS = (what: string) => `Only a parent can ${what}.`;
 
 export function canManage(memberId?: string) {

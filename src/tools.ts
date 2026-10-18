@@ -1,6 +1,7 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
   accessoryType, bestMatch, cartLabel, cartPrice, categories, describePrefs, findAccessory, findCategory, findPhone, handMeDownText, leavingNest,
+  memberByTitle,
   member, mergePrefs, parseLink, parseProductLink, perMonth, phone, phoneBrandFor, pickVariant, PREF_LABELS, priceTrack, productProtection,
   promosFor, protectionAdvice, recommend, recommendAccessories, recommendProducts, runTrial, tradeIn, usd,
   type Prefs,
@@ -14,8 +15,8 @@ import type { Accessory, Promo, Ruling, Stamp, Trial } from "./types.ts";
 function resolveMember(nameOrId: string) {
   const q = String(nameOrId).toLowerCase().trim();
   const m = world.household.members.find(
-    (x) => x.id === q || x.name.toLowerCase() === q || x.role === q || (q === "dad" && x.id === "marco") || (q === "mom" && x.id === "elena") || (q === "grandma" && x.role === "grandparent"),
-  );
+    (x) => x.id === q || x.name.toLowerCase() === q || x.role === q,
+  ) ?? memberByTitle(world, q);
   if (!m) throw new Error(`No household member "${nameOrId}". Members: ${world.household.members.map((x) => x.name).join(", ")}`);
   return m;
 }
@@ -181,7 +182,7 @@ export const tools = {
         forWhom: m.name,
         remembered: describePrefs(prefs),
         picks: recs.map((r) => {
-          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90);
+          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, undefined, m);
           return {
             ...r,
             protection: protectionAdvice(m, r.price),
@@ -217,7 +218,7 @@ export const tools = {
         forWhom: m.name,
         category: cat.label,
         picks: picks.map((r) => {
-          const track = priceTrack(world, r.productId, r.variant, state.day, 90);
+          const track = priceTrack(world, r.productId, r.variant, state.day, 90, undefined, m);
           return {
             ...r,
             protection: cat.fragile ? productProtection(m, r.price) : undefined,

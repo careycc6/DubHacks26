@@ -119,3 +119,26 @@ test("a private DM never reaches the family feed", async () => {
   // ...and isn't on the public case file either.
   assert.ok(!JSON.stringify(store.publicState()).includes("tight"));
 });
+
+test("only a parent's DM can say money is tight; the demo numbers hold", async () => {
+  fresh();
+  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17-pro-max", storageGB: 512, addedBy: "maya" });
+  callTool("add_phone_to_cart", { member: "marco", phone: "iphone-17-pro", storageGB: 256, addedBy: "marco" });
+  callTool("add_phone_to_cart", { member: "elena", phone: "pixel-10-pro", storageGB: 256, addedBy: "elena" });
+  await say("maya", "ugh the Pro Max is so expensive lol");
+  assert.equal(store.trialOpts().tightBudget, false);
+  await say("elena", "money is really tight this month, keep it between us");
+  assert.equal(store.trialOpts().tightBudget, true);
+  const t = (callTool("run_trial", {}) as { trial: { before: number; now: number } }).trial;
+  assert.equal(t.before, 3933);
+  assert.equal(t.now, 709);
+});
+
+test("\"dad\" in a text means the household's dad, and tools resolve it too", async () => {
+  fresh();
+  const { introducedAs } = await import("../src/claims.ts");
+  assert.equal(introducedAs("hi this is dad"), "marco");
+  assert.equal(introducedAs("it's mom"), "elena");
+  callTool("add_phone_to_cart", { member: "dad", phone: "iphone-17", storageGB: 256, addedBy: "marco" });
+  assert.equal(store.state.cart.at(-1)?.memberId, "marco");
+});
