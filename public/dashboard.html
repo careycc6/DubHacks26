@@ -221,7 +221,7 @@
       </section>
 
       <section class="card">
-        <h2>Activity <span>what everyone's phones saw</span></h2>
+        <h2>Activity</h2>
         <ul class="feed" id="feed"><li class="empty-feed">Nothing yet. Text the court from a phone to get started.</li></ul>
       </section>
 
@@ -310,6 +310,8 @@ live({ onState: (s) => {
   $("cartCount").textContent = s.cart.length ? `${s.cart.length} in the cart` : "cart empty";
   renderFeed(s.activity);
   renderCart(s);
+  last = s;
+  showCue();
   loadDashboard();
 } });
 
@@ -419,7 +421,6 @@ function toggleCue() {
   try { localStorage.setItem("cc-cue-hidden", cueHidden ? "1" : "0"); } catch {}
   showCue();
 }
-es.addEventListener("state", (e) => { last = JSON.parse(e.data); showCue(); });
 $("cueHide").onclick = toggleCue;
 
 // ---- Keyboard shortcuts (same endpoints as the buttons; ignored while typing)

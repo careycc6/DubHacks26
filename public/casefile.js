@@ -183,7 +183,8 @@ function render(s) {
   const t = s.trial;
 
   if (!t) {
-    seenStamps.clear(); shown.clear();
+    // Keep the sticker's last value: every poll re-renders, and starting from $0 made it count up again each time.
+    seenStamps.clear(); for (const k of ["tNow", "tHeld", "tSaved"]) shown.delete(k);
     const sticker = s.cart.reduce((sum, i) => sum + (i.price ?? 0), 0);
     $("subtitle").textContent = s.cart.length ? `${s.cart.length} item${s.cart.length > 1 ? "s" : ""} entered · awaiting trial` : "Awaiting arguments";
     $("totals").innerHTML = s.cart.length ? `<div class="total wide"><div class="label">Sticker total, as argued</div><div class="value" id="tSticker"></div></div>` : "";
