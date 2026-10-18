@@ -93,6 +93,8 @@ export interface Ruling {
   holdUntilDay?: number;
   proposed?: { phoneId: string; storageGB: number; label: string };
   witness?: string; // the old phone's statement, for WAIT rulings
+  protection?: { verdict: "ADD" | "SKIP" | "OPTIONAL"; monthly: number; reason: string };
+  track?: { points: { day: number; price: number }[]; now: number; lowest: { day: number; price: number } };
 }
 
 export interface Trial {
@@ -102,6 +104,8 @@ export interface Trial {
   now: number;
   held: number;
   savings: number;
+  budget?: number; // the family's budget for today, if set
+  overBudget?: boolean;
 }
 
 export interface NestRuling {

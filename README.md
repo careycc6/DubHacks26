@@ -45,6 +45,12 @@ in that browser. Everyone else only gets the case file. Check `https://<host>/he
 On first connect, an empty database copies in whatever `data/*.local.json` the server finds, so you can move a
 household you set up on a laptop by running it once locally with `MONGODB_URI` set.
 
+## Where prices come from
+
+The price tracker, promos and protection math run on `data/catalog.json` and `data/offers.json`. The data is **synthetic**,
+as T-Mobile's challenge requires (no real customer, account or transaction data). The engine isn't tied to one carrier:
+point those files at any store's or carrier's catalog and promo feed and every ruling, price drop and saving follows.
+
 ## How it works
 
 ```

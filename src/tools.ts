@@ -1,6 +1,7 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
   describePrefs, findPhone, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
+  priceTrack, protectionAdvice,
   type Prefs,
 } from "./engine.ts";
 import { changed, newId, refreshTrial, state, trialOpts, world } from "./store.ts";
@@ -19,19 +20,41 @@ function resolveMember(nameOrId: string) {
 
 const STAMP_ICON: Record<Stamp, string> = { KEEP: "✅", SWAP: "🔁", WAIT: "⏳", CUT: "✂️", STAY: "🏠", LEAVE: "🚪" };
 
-function rulingLine(r: Ruling) {
-  const extra =
-    r.stamp === "WAIT" ? ` until day ${r.holdUntilDay}${r.proposed && !r.label.endsWith(r.proposed.label) ? ` (as ${r.proposed.label})` : ""}`
-    : r.stamp === "SWAP" ? ` → ${r.proposed?.label}`
-    : "";
-  return `${STAMP_ICON[r.stamp]} ${r.stamp}${extra}: ${r.label}. ${r.reasons[0] ?? ""}${r.savings > 0 ? ` (saves ${usd(r.savings)})` : ""}`;
+const firstName = (label: string) => label.split(" · ")[0].split(/\s+/)[0];
+
+/** One plain line per ruling: what to do, what it costs, what it saves. */
+function rulingLine(r: Ruling, day: number, hasProtection = false) {
+  const who = r.memberId ? `${firstName(r.label)} · ` : "";
+  const item = r.proposed?.label ?? r.label.split(" · ").slice(1).join(" · ");
+  const was = r.label.split(" · ").slice(1).join(" · ");
+  const swapped = r.proposed && !r.label.endsWith(r.proposed.label) ? ` (instead of ${was})` : "";
+  const save = r.savings > 0 ? ` · saves ${usd(r.savings)}` : "";
+  const shield = r.protection?.verdict === "ADD" && !hasProtection ? " · 🛡️ add protection" : "";
+  switch (r.stamp) {
+    case "KEEP":
+    case "SWAP":
+      return `✅ BUY: ${who}${r.memberId ? item : r.label.split(" · ").slice(1).join(" · ")}${swapped} · ${usd(r.nowCost)} today${save}${shield}`;
+    case "WAIT": {
+      const days = (r.holdUntilDay ?? day) - day;
+      return `⏳ WAIT ${days} day${days === 1 ? "" : "s"}: ${who}${item}${swapped} · ${usd(r.heldCost)} on day ${r.holdUntilDay}${save}${shield}`;
+    }
+    case "CUT":
+      return `✂️ SKIP: ${r.label.split(" · ").slice(1).join(" · ") || r.label}${save ? `${save}/yr` : ""}`;
+    default:
+      return `${STAMP_ICON[r.stamp]} ${r.stamp}: ${r.label}`;
+  }
 }
 
 export function formatVerdict(t: Trial) {
+  const budget =
+    t.budget === undefined ? []
+    : t.overBudget ? [`💰 Budget ${usd(t.budget)}: still ${usd(t.now - t.budget)} over (everything left is a phone that can't wait)`]
+    : [`💰 Budget ${usd(t.budget)}: ${usd(t.budget - t.now)} left`];
   return [
-    "⚖️ CART COURT IS IN SESSION",
-    ...t.rulings.map(rulingLine),
-    `Spend today: ${usd(t.before)} → ${usd(t.now)}${t.held ? ` (+${usd(t.held)} held for the right moment)` : ""}`,
+    "⚖️ THE COURT RULES",
+    ...t.rulings.map((r) => rulingLine(r, t.day, t.rulings.some((x) => x.memberId === r.memberId && x.label.includes("Protection")))),
+    `Spend today: ${usd(t.before)} → ${usd(t.now)} · You save ${usd(t.savings)}`,
+    ...budget,
     `Case file: ${caseFileUrl()}`,
   ].join("\n");
 }
@@ -74,7 +97,15 @@ export const tools = {
       return {
         forWhom: m.name,
         remembered: describePrefs(prefs),
-        picks: recs.map((r) => ({ ...r, promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: −${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`) })),
+        picks: recs.map((r) => {
+          const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90);
+          return {
+            ...r,
+            protection: protectionAdvice(m, r.price),
+            priceDrop: track.lowest.price < track.now ? { price: track.lowest.price, inDays: track.lowest.day - state.day } : undefined,
+            promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: −${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`),
+          };
+        }),
       };
     },
   },
@@ -155,6 +186,28 @@ export const tools = {
         device: m.device,
         updatedRuling: ruling ? { stamp: ruling.stamp, reasons: ruling.reasons, nowCost: ruling.nowCost } : "no trial yet; it will count when the cart goes on trial",
       };
+    },
+  },
+  set_budget: {
+    description: "Set the FAMILY's budget for this round of shopping (what can be spent today), e.g. 'our budget is $1500'. A personal limit ('under $600 for me') goes to recommend_phones instead.",
+    params: { amount: { type: "number", description: "USD; 0 clears it" } },
+    required: ["amount"],
+    run: (a: { amount: number }) => {
+      state.budget = a.amount > 0 ? Math.round(a.amount) : undefined;
+      refreshTrial();
+      changed();
+      const t = state.trial;
+      return { budget: state.budget ?? "none", spendToday: t?.now, overBudget: t?.overBudget ?? false };
+    },
+  },
+  add_protection: {
+    description: "Add Device Protection for someone's new phone (use when the court advised it, or they ask).",
+    params: { member: { type: "string" } },
+    required: ["member"],
+    run: (a: { member: string }): unknown => {
+      const m = resolveMember(a.member);
+      if (state.cart.some((i) => i.kind === "addon" && i.addonId === "protection-360" && i.memberId === m.id)) return { added: `Device Protection for ${m.name} (already in the cart)` };
+      return callTool("add_addon_to_cart", { member: m.id, addon: "protection-360" });
     },
   },
   remove_from_cart: {

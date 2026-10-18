@@ -37,6 +37,7 @@ export interface State {
   activity: { at: number; day: number; text: string }[]; // public one-liners for the dashboard
   prefs: Record<string, Prefs>; // what each person said they care about (battery, screen, camera…)
   lastRecs: Record<string, { phoneId: string; storageGB: number }[]>; // so "add the first one" works
+  budget?: number; // the family's budget for this round of shopping
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
@@ -101,6 +102,7 @@ export function publicState() {
     }),
     trial: state.trial,
     nest: state.nest,
+    budget: state.budget,
     exhibits: state.exhibits.filter((e) => !e.private).map(({ private: _p, ...e }) => e),
     activity: state.activity.slice(-40),
   };
@@ -119,7 +121,7 @@ const BUDGET_WORDS = /\b(tight|budget|afford|broke|expensive|money|bills?)\b/i;
 
 /** Private DMs can shape rulings (never revealed): e.g. "money is tight" -> budget mode. */
 export function trialOpts(): TrialOptions {
-  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs };
+  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs, budget: state.budget };
 }
 
 /** Add public one-liners to the dashboard activity log (never private DM content). */

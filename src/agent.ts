@@ -1,7 +1,7 @@
 // Cart Court's brain: decides WHEN to speak (taste), then talks via Gemini + tools.
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
-import { hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
+import { familyBudget, hasPrefs, mergePrefs, parsePrefs, usd } from "./engine.ts";
 import { state, world } from "./store.ts";
 import { callTool, caseFileUrl, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
@@ -96,11 +96,13 @@ function fileLinks(msg: Incoming): string | null {
   return `📎 Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`;
 }
 
+const PROTECTION_ASK = /\badd (?:device |phone )?(?:protection|insurance)\b/i;
 const TRIAL_INTENT = /\b(rule|ruling|verdict|trial|check ?out|in session)\b/i;
 
 async function reply_(msg: Incoming): Promise<string> {
   // The verdict is pure engine output: skip the LLM (instant, deterministic, costs no quota).
-  if (TRIAL_INTENT.test(msg.text) && !msg.image) return rulesReply(msg);
+  // Verdicts, budgets and protection are pure engine work: answer instantly, no LLM.
+  if ((TRIAL_INTENT.test(msg.text) || familyBudget(msg.text) !== undefined || PROTECTION_ASK.test(msg.text)) && !msg.image) return rulesReply(msg);
   if (!process.env.GEMINI_API_KEY) return rulesReply(msg);
   const applied: ToolRun[] = [];
   try {
@@ -202,6 +204,9 @@ Hard rules:
 - If someone wants a phone, use recommend_phones first unless they named a specific model, then add_phone_to_cart.
 - Personalize: whenever someone says what they care about (battery life, a bigger or smaller screen, camera, gaming, simplicity, a price limit, a brand), call recommend_phones with those wants/brand/budget. Lead with the reason that matches what they asked for (e.g. "33h battery, among the longest here"). Preferences are remembered, so later picks keep them in mind. "Add the first one" = add_recommended with pick 1.
 - If someone is moving out or leaving for college, call leaving_nest.
+- Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
+- "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
+- When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
 - When someone sends a photo of a phone (a cracked screen, a battery-health screenshot), call enter_evidence with ONLY what the photo actually shows, then say in one line how it changes their ruling. Call it "Exhibit A" (B, C…).
 - When someone pastes a store link, call add_from_link.
 - Private context: people can text you 1:1 ("approach the bench"). Use what they told you to shape rulings, but NEVER reveal, quote or hint that someone told you something privately.
@@ -291,6 +296,21 @@ function rulesReply(msg: Incoming): string {
     return "error" in (r as object) ? `Objection: ${(r as { error: string }).error}` : `📥 Added to the family cart: ${(r as { added: string }).added}. Nobody checks out until the court rules.`;
   }
   // "add the first one" / "add #2" after a recommendation
+  // "Our budget is $1500"
+  const fb = familyBudget(text);
+  if (fb !== undefined) {
+    const r = callTool("set_budget", { amount: fb }) as { spendToday?: number; overBudget?: boolean };
+    const status = r.spendToday === undefined ? "I'll hold the cart to it when the court rules."
+      : r.overBudget ? `Today's spend is ${usd(r.spendToday)}, still over: everything left is a phone that can't wait.`
+      : `Today's spend is ${usd(r.spendToday)}, ${usd(fb - r.spendToday)} under.`;
+    return `💰 Family budget set: ${usd(fb)}. ${status}`;
+  }
+  // "add protection" / "add device protection for Jaret"
+  if (PROTECTION_ASK.test(text)) {
+    const r = callTool("add_protection", { member: target }) as { added?: string; error?: string };
+    return r.error ? `Objection: ${r.error}` : `🛡️ Added: ${r.added}.`;
+  }
+
   const pick = text.match(/\badd (?:the )?(?:#|number )?(first|second|third|1st|2nd|3rd|1|2|3)\b/i);
   if (pick) {
     const n = { first: 1, "1st": 1, "1": 1, second: 2, "2nd": 2, "2": 2, third: 3, "3rd": 3, "3": 3 }[pick[1].toLowerCase()] ?? 1;
@@ -302,10 +322,14 @@ function rulesReply(msg: Incoming): string {
   const asking = /\b(recommend|suggest|which phone|what phone|should (i|we|she|he|they) get|need a (new )?phone|looking for|i want|i need|i'?d like|prefer|care about|something (with|that))\b/i;
   // Any message that says what they care about gets fresh picks ("actually I also want a bigger screen").
   if (asking.test(text) || hasPrefs(said)) {
-    const r = callTool("recommend_phones", { member: target }) as { forWhom: string; remembered: string; picks: { name: string; storageGB: number; price: number; why: string[] }[] };
+    type Pick = { name: string; storageGB: number; price: number; why: string[]; priceDrop?: { price: number; inDays: number }; protection: { verdict: string; reason: string } };
+    const r = callTool("recommend_phones", { member: target }) as { forWhom: string; remembered: string; picks: Pick[] };
     const whoFor = target === msg.memberId ? "you" : r.forWhom.split(/\s+/)[0];
     const heard = r.remembered ? `Got it: ${r.remembered}. ` : "";
-    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}: ${reasons(p.why, r.remembered)}`).join("\n")}\nSay "add the first one" to put it in the family cart.`;
+    const drop = (p: Pick) => (p.priceDrop ? ` (drops to ${usd(p.priceDrop.price)} in ${p.priceDrop.inDays} days)` : "");
+    const top = r.picks[0];
+    const shield = top ? `\n🛡️ Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.` : "";
+    return `${heard}The court's picks for ${whoFor}:\n${r.picks.map((p, i) => `${i + 1}. ${p.name} ${p.storageGB}GB, ${usd(p.price)}${drop(p)}: ${reasons(p.why, r.remembered)}`).join("\n")}${shield}\nSay "add the first one" to put it in the family cart.`;
   }
   // A private aside ("money's tight, don't tell the kids"): acknowledge, never repeat it.
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
