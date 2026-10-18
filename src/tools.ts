@@ -1,6 +1,7 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
-  findPhone, leavingNest, member, parseProductLink, phone, promosFor, recommend, runTrial, usd,
+  describePrefs, findPhone, leavingNest, member, mergePrefs, parseProductLink, phone, PREF_LABELS, promosFor, recommend, runTrial, usd,
+  type Prefs,
 } from "./engine.ts";
 import { changed, newId, refreshTrial, state, trialOpts, world } from "./store.ts";
 import type { Ruling, Stamp, Trial } from "./types.ts";
@@ -47,12 +48,45 @@ export const tools = {
     }),
   },
   recommend_phones: {
-    description: "Matchmaker: top 3 phones for a member based on how they actually use their phone, with the right storage size and price.",
-    params: { member: { type: "string", description: "member name or id" }, budget: { type: "number", description: "optional max price in USD" } },
+    description:
+      "Matchmaker: top 3 phones for a member, based on how they use their phone AND what they said they care about. " +
+      "Pass `wants` whenever they mention battery life, screen size, camera, gaming, simplicity or price; it's remembered for next time.",
+    params: {
+      member: { type: "string", description: "member name or id" },
+      wants: {
+        type: "array",
+        items: { type: "string", enum: ["battery", "bigScreen", "smallScreen", "camera", "gaming", "simple", "cheap"] },
+        description: "what they said matters to them",
+      },
+      brand: { type: "string", enum: ["Apple", "Google", "Samsung"], description: "only if they named a brand" },
+      budget: { type: "number", description: "max price in USD, if they gave one" },
+    },
     required: ["member"],
-    run: (a: { member: string; budget?: number }) => {
+    run: (a: { member: string; wants?: string[]; brand?: Prefs["brand"]; budget?: number }) => {
       const m = resolveMember(a.member);
-      return recommend(world, m.id, { budget: a.budget }).map((r) => ({ ...r, promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: −${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`) }));
+      const said: Prefs = {};
+      for (const w of a.wants ?? []) if (w in PREF_LABELS) (said as Record<string, boolean>)[w] = true;
+      if (a.brand) said.brand = a.brand;
+      if (a.budget) said.budget = a.budget;
+      const prefs = (state.prefs[m.id] = mergePrefs(state.prefs[m.id], said));
+      const recs = recommend(world, m.id, { prefs });
+      state.lastRecs[m.id] = recs.map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
+      return {
+        forWhom: m.name,
+        remembered: describePrefs(prefs),
+        picks: recs.map((r) => ({ ...r, promos: promosFor(world, r.phoneId, state.day).map((p) => `${p.name}: −${usd(p.credit)} (days ${p.startsOnDay}-${p.endsOnDay})`) })),
+      };
+    },
+  },
+  add_recommended: {
+    description: "Add one of the phones just recommended to the cart: 'add the first one' = pick 1.",
+    params: { member: { type: "string" }, pick: { type: "number", description: "1, 2 or 3" } },
+    required: ["member", "pick"],
+    run: (a: { member: string; pick: number }): unknown => {
+      const m = resolveMember(a.member);
+      const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(3, a.pick)) - 1];
+      if (!r) throw new Error(`No recent picks for ${m.name}. Ask the court for a recommendation first.`);
+      return callTool("add_phone_to_cart", { member: m.id, phone: r.phoneId, storageGB: r.storageGB, addedBy: m.id });
     },
   },
   add_phone_to_cart: {

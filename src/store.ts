@@ -1,7 +1,7 @@
 // In-memory app state + a tiny pub/sub so the live cart page and simulator update instantly.
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
-import { runTrial, type TrialOptions } from "./engine.ts";
+import { runTrial, type Prefs, type TrialOptions } from "./engine.ts";
 import type { CartItem, NestRuling, Trial, World } from "./types.ts";
 
 export interface ChatLine {
@@ -33,6 +33,8 @@ export interface State {
   groupSpaceId?: string; // where proactive "it's time" messages go
   exhibits: Exhibit[];
   activity: { at: number; day: number; text: string }[]; // public one-liners for the dashboard
+  prefs: Record<string, Prefs>; // what each person said they care about (battery, screen, camera…)
+  lastRecs: Record<string, { phoneId: string; storageGB: number }[]>; // so "add the first one" works
   trialRuns: number; // bumps each time the court actually rules (for the family feed)
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
 }
@@ -40,7 +42,7 @@ export interface State {
 export const world: World = loadWorld();
 export const bus = new EventEmitter();
 
-const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], trialRuns: 0 });
+const fresh = (): State => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, trialRuns: 0 });
 export let state: State = fresh();
 
 let seq = 0;
@@ -81,7 +83,7 @@ const BUDGET_WORDS = /\b(tight|budget|afford|broke|expensive|money|bills?)\b/i;
 
 /** Private DMs can shape rulings (never revealed): e.g. "money is tight" -> budget mode. */
 export function trialOpts(): TrialOptions {
-  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)) };
+  return { tightBudget: Object.values(state.privateNotes).flat().some((n) => BUDGET_WORDS.test(n)), prefs: state.prefs };
 }
 
 /** Add public one-liners to the dashboard activity log (never private DM content). */

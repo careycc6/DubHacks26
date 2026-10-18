@@ -116,3 +116,27 @@ test("a cracked screen on a healthy phone gets a repair today, not a new phone",
   assert.equal(r.nowCost, 129);
   assert.match(r.reasons.join(" "), /screen repair/);
 });
+
+test("reads what people care about from a message", async () => {
+  const { parsePrefs } = await import("../src/engine.ts");
+  assert.deepEqual(parsePrefs("I want a phone with long battery life and a bigger screen"), { battery: true, bigScreen: true });
+  assert.deepEqual(parsePrefs("something small, under $600, I like Samsung"), { smallScreen: true, budget: 600, brand: "Samsung" });
+  assert.deepEqual(parsePrefs("best camera for selfies"), { camera: true });
+  assert.deepEqual(parsePrefs("ok sounds good"), {});
+});
+
+test("picks follow what they asked for", async () => {
+  const { parsePrefs } = await import("../src/engine.ts");
+  const top = (msg: string, who = "maya") => recommend(world, who, { prefs: parsePrefs(msg) });
+  assert.ok(top("long battery life").slice(0, 2).every((r) => world.catalog.phones.find((p) => p.id === r.phoneId)!.batteryHours >= 32));
+  assert.equal(world.catalog.phones.find((p) => p.id === top("I need a bigger screen")[0].phoneId)!.screenIn, 6.9);
+  assert.ok(top("cheap phone under $500").every((r) => r.price <= 500));
+  assert.ok(top("best camera, I like iPhone").every((r) => r.name.startsWith("iPhone")));
+});
+
+test("someone who asked for a great camera keeps their Pro phone", () => {
+  const plain = runTrial(world, demoCart, 0).rulings.find((r) => r.itemId === "3")!;
+  const withPrefs = runTrial(world, demoCart, 0, { prefs: { maya: { camera: true } } }).rulings.find((r) => r.itemId === "3")!;
+  assert.equal(plain.proposed?.phoneId, "iphone-17");
+  assert.equal(withPrefs.proposed?.phoneId, "iphone-17-pro-max");
+});

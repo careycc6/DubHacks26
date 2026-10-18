@@ -52,13 +52,17 @@ const promoFor = (world: World, phoneId: string, day: number) => ({
   ),
 });
 
-function overkill(p: Phone, m: Member) {
+function overkill(p: Phone, m: Member, prefs: Prefs = {}) {
+  // If they told the court they care about the camera or gaming, the Pro features aren't wasted.
+  if (prefs.camera || prefs.gaming) return false;
   return p.tier === "flagship" && m.usage.camera <= 3 && m.usage.gaming <= 2;
 }
 
 export interface TrialOptions {
   /** Someone privately told the court money is tight. Shapes rulings; never revealed. */
   tightBudget?: boolean;
+  /** What each person said they care about (battery, screen, camera…), by member id. */
+  prefs?: Record<string, Prefs>;
 }
 
 function witnessStatement(m: Member): string {
@@ -76,7 +80,7 @@ function reviewDevice(world: World, item: CartItem, day: number, opts: TrialOpti
 
   // 1. Right phone? Swap flagship -> same-brand mid tier when the Pro features go unused.
   let target = picked;
-  if (overkill(picked, m)) {
+  if (overkill(picked, m, opts.prefs?.[m.id])) {
     const mid = world.catalog.phones.find((p) => p.brand === picked.brand && p.tier === "mid");
     if (mid) {
       target = mid;
@@ -248,31 +252,122 @@ export function leavingNest(world: World, memberId: string): NestRuling {
 }
 
 /** Matchmaker: best phones for how this person actually uses a phone. */
-export function recommend(world: World, memberId: string, opts: { budget?: number } = {}): Recommendation[] {
+/** What someone said they care about, e.g. "I want long battery life and a bigger screen under $800". */
+export interface Prefs {
+  battery?: boolean;
+  bigScreen?: boolean;
+  smallScreen?: boolean;
+  camera?: boolean;
+  gaming?: boolean;
+  simple?: boolean;
+  cheap?: boolean;
+  budget?: number;
+  brand?: "Apple" | "Google" | "Samsung";
+}
+
+export const PREF_LABELS: Record<Exclude<keyof Prefs, "budget" | "brand">, string> = {
+  battery: "long battery life",
+  bigScreen: "a bigger screen",
+  smallScreen: "a smaller phone",
+  camera: "a great camera",
+  gaming: "gaming",
+  simple: "something simple",
+  cheap: "a lower price",
+};
+
+/** Read preferences out of a chat message. Returns {} when nothing was said. */
+export function parsePrefs(text: string): Prefs {
+  const t = text.toLowerCase();
+  const p: Prefs = {};
+  if (/\b(battery|lasts? (all|the whole) day|dies|charging|charge)\b/.test(t)) p.battery = true;
+  if (/\b(big(ger)?|large(r)?|huge) (screen|display|phone)\b|\bscreen size\b|\bmax\b|\bplus\b|\bultra\b/.test(t)) p.bigScreen = true;
+  if (/\b(small(er)?|compact|one[- ]handed|mini|fits? in (my )?pocket) ?(screen|phone)?\b/.test(t)) p.smallScreen = true;
+  if (/\b(camera|photos?|pictures?|selfies?|video|zoom)\b/.test(t)) p.camera = true;
+  if (/\b(gaming|games?|fortnite|genshin|fps)\b/.test(t)) p.gaming = true;
+  if (/\b(simple|easy to use|big buttons|flip phone|for (my )?(grandma|grandpa|mom|dad))\b/.test(t)) p.simple = true;
+  if (/\b(cheap(er|est)?|affordable|budget|inexpensive|save money|not expensive)\b/.test(t)) p.cheap = true;
+  const money = t.match(/(?:under|below|less than|max(?:imum)?|up to|budget(?: is| of)?)\s*\$?\s*(\d{3,4})/) ?? t.match(/\$\s*(\d{3,4})/);
+  if (money) p.budget = Number(money[1]);
+  if (/\b(iphone|apple|ios)\b/.test(t)) p.brand = "Apple";
+  else if (/\b(pixel|google)\b/.test(t)) p.brand = "Google";
+  else if (/\b(samsung|galaxy)\b/.test(t)) p.brand = "Samsung";
+  if (p.bigScreen && p.smallScreen) delete p.smallScreen;
+  return p;
+}
+
+export const hasPrefs = (p: Prefs) => Object.keys(p).length > 0;
+
+/** Matchmaker: best phones for how this person uses a phone, plus anything they told the court they want. */
+export function recommend(world: World, memberId: string, opts: { budget?: number; prefs?: Prefs } = {}): Recommendation[] {
   const m = member(world, memberId);
-  const wantsSimple = m.age >= 70;
-  return world.catalog.phones
+  const prefs = opts.prefs ?? {};
+  const budget = opts.budget ?? prefs.budget;
+  const wantsSimple = prefs.simple || m.age >= 70;
+  const needCamera = prefs.camera ? 5 : m.usage.camera;
+  const needGaming = prefs.gaming ? 5 : m.usage.gaming;
+  const phones = world.catalog.phones;
+  const maxBattery = Math.max(...phones.filter((p) => !p.simple).map((p) => p.batteryHours));
+  const maxScreen = Math.max(...phones.map((p) => p.screenIn));
+  const minScreen = Math.min(...phones.filter((p) => !p.simple).map((p) => p.screenIn));
+
+  return phones
+    .filter((p) => !p.simple || wantsSimple) // big-button phones only for people who want simple
     .map((p) => {
       const gb = neededStorage(p, m);
       const price = p.prices[String(gb)];
+      const why: string[] = [];
       let score = 100;
-      score -= 15 * Math.max(0, m.usage.camera - p.camera);
-      score -= 15 * Math.max(0, m.usage.gaming - p.gaming);
-      score -= 5 * Math.max(0, p.camera - m.usage.camera - 1); // paying for camera you won't use
-      score -= price / 50;
-      if (p.simple) score += wantsSimple ? 40 : -60;
-      if (opts.budget && price > opts.budget) score -= 50;
-      const why = [
-        `${gb}GB fits ${m.device.storageUsedGB}GB of use with room to grow`,
-        `${p.batteryHours}h battery`,
-      ];
+      score -= 15 * Math.max(0, needCamera - p.camera);
+      score -= 15 * Math.max(0, needGaming - p.gaming);
+      score -= 5 * Math.max(0, p.camera - needCamera - 1); // paying for camera you won't use
+      score -= price / (prefs.cheap ? 25 : 50);
+      if (p.simple) score += wantsSimple ? 40 : -100;
+      if (budget && price > budget) score -= 50;
+
+      // Things they said they care about lead the "why".
+      if (prefs.battery) {
+        score += (Math.min(p.batteryHours, 36) - 28) * 10;
+        if (!p.simple && p.batteryHours >= maxBattery - 1) why.push(`${p.batteryHours}h battery, among the longest here`);
+        else why.push(`${p.batteryHours}h battery`);
+      }
+      if (prefs.bigScreen) {
+        score += (p.screenIn - 6.3) * 45;
+        if (p.screenIn >= maxScreen - 0.05) why.push(`${p.screenIn}" screen, the biggest we carry`);
+        else if (p.screenIn >= 6.5) why.push(`${p.screenIn}" big screen`);
+      }
+      if (prefs.smallScreen && !p.simple) {
+        score -= (p.screenIn - 6.1) * 120;
+        why.push(p.screenIn <= minScreen + 0.05 ? `${p.screenIn}" screen, the most compact we carry` : `${p.screenIn}" screen`);
+      }
+      if (prefs.camera) why.push(p.camera >= 5 ? "top-tier camera (5/5)" : `camera ${p.camera}/5`);
+      if (prefs.gaming) why.push(p.gaming >= 5 ? "top-tier gaming performance" : `gaming ${p.gaming}/5`);
+      if (prefs.brand) {
+        if (p.brand === prefs.brand) {
+          score += 25;
+          why.push(`the ${prefs.brand === "Apple" ? "iPhone" : p.brand} you asked for`);
+        } else score -= 15;
+      }
+      if (budget) why.push(price <= budget ? `${usd(price)}, under your ${usd(budget)}` : `${usd(price)}, over your ${usd(budget)}`);
+
       if (p.simple) why.unshift("Big buttons and simple mode");
-      if (p.camera >= m.usage.camera) why.push(`camera ${p.camera}/5 covers ${m.name}'s ${m.usage.camera}/5 use`);
+      why.push(`${gb}GB fits ${m.device.storageUsedGB}GB of use with room to grow`);
+      if (!prefs.battery) why.push(`${p.batteryHours}h battery`);
+      if (!prefs.camera && p.camera >= m.usage.camera) why.push(`camera ${p.camera}/5 covers ${m.name.split(/\s+/)[0]}'s ${m.usage.camera}/5 use`);
       return { phoneId: p.id, name: p.name, storageGB: gb, price, why, score };
     })
     .sort((a, b) => b.score - a.score)
+    // With a budget, only show over-budget phones if fewer than two fit.
+    .filter((r, _i, all) => !budget || r.price <= budget || all.filter((x) => x.price <= budget).length < 2)
     .slice(0, 3)
     .map(({ score: _score, ...r }) => r);
+}
+
+/** Merge new preferences into what we already know about someone. */
+export function mergePrefs(old: Prefs = {}, next: Prefs): Prefs {
+  const merged: Prefs = { ...old, ...next };
+  if (next.bigScreen) delete merged.smallScreen;
+  if (next.smallScreen) delete merged.bigScreen;
+  return merged;
 }
 
 export function promosFor(world: World, phoneId: string, day: number): Promo[] {
@@ -294,4 +389,14 @@ export function parseProductLink(world: World, url: string): { phone: Phone; sto
   const nums = [...decoded.matchAll(/(\d{2,4})\s*(?:gb)?/gi)].map((x) => Number(x[1]));
   const gb = nums.find((n) => opts.includes(n)) ?? Math.min(...opts);
   return { phone: p, storageGB: gb };
+}
+
+/** "long battery life and a bigger screen, under $800, iPhone" */
+export function describePrefs(p: Prefs): string {
+  const parts = (Object.keys(PREF_LABELS) as (keyof typeof PREF_LABELS)[])
+    .filter((k) => p[k] && !(k === "cheap" && p.budget)) // "under $500" already says it
+    .map((k) => PREF_LABELS[k]);
+  if (p.brand) parts.push(p.brand === "Apple" ? "an iPhone" : `a ${p.brand} phone`);
+  if (p.budget) parts.push(`under ${usd(p.budget)}`);
+  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
 }
