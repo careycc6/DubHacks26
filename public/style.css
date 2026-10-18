@@ -150,3 +150,11 @@ a { color: inherit; }
 .math tr.sum td { border-top: 1.5px solid var(--ink); font-weight: 700; padding-top: 5px; }
 .math tr.note td { color: var(--muted); }
 .math .by { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 6px; letter-spacing: 0.5px; }
+
+/* Case file on a big screen: QR codes to join (hidden on phones) */
+.join-qr { display: flex; gap: 14px; justify-content: flex-end; margin-top: 14px; }
+.join-qr[hidden] { display: none; }
+.join-qr figure { margin: 0; text-align: center; }
+.join-qr img { width: 110px; height: 110px; display: block; border: 1px solid var(--rule); border-radius: 8px; }
+.join-qr figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+@media (max-width: 899px) { .join-qr { display: none !important; } }

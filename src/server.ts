@@ -9,6 +9,7 @@ import { isAdmin, setupRouter } from "./setup.ts";
 import { backend } from "./db.ts";
 import { dashboardRouter } from "./dashboard.ts";
 import { demoRouter, seedCart } from "./demo.ts";
+import { shareRouter } from "./share.ts";
 import { deliver } from "./feed.ts";
 import { advanceTrial, readyHolds, usd } from "./engine.ts";
 import { addChat, bus, changed, logActivity, publicState, reset, state, trialOpts, world } from "./store.ts";
@@ -37,6 +38,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, db: backend, photon: pho
 app.get("/", (req, res) => (isAdmin(req) ? res.sendFile(fileURLToPath(new URL("../public/dashboard.html", import.meta.url))) : res.redirect("/cart")));
 app.use(dashboardRouter);
 app.use(demoRouter);
+app.use(shareRouter);
 app.use(express.static(fileURLToPath(new URL("../public/", import.meta.url)), { extensions: ["html"] }));
 
 

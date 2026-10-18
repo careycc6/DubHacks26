@@ -60,6 +60,9 @@
     .keys dt { font-family: var(--mono); font-weight: 700; }
     .keys dd { margin: 0; }
     .file:fullscreen { background: var(--paper); overflow-y: auto; padding: 32px max(32px, calc((100vw - 1100px) / 2)); }
+    .qrs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .qrs figure { margin: 0; text-align: center; font-size: 12.5px; }
+    .qrs img { width: 100%; max-width: 150px; aspect-ratio: 1; display: block; margin: 0 auto 4px; border: 1px solid var(--rule); border-radius: 8px; }
     .tools-h { font-family: var(--serif); font-size: 14px; margin: 14px 0 0; }
     .checkpoints { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
     .checkpoints li { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; font-size: 13px; }
@@ -152,6 +155,12 @@
       <section class="card">
         <h2>Household <span><a href="/setup">edit</a></span></h2>
         <div class="people" id="people"></div>
+      </section>
+
+      <section class="card">
+        <h2>Let a judge try <span>scan with a phone</span></h2>
+        <div class="qrs" id="qrs"></div>
+        <div class="msg" id="qrNote"></div>
       </section>
 
       <section class="card">
@@ -308,8 +317,18 @@ document.addEventListener("keydown", (e) => {
     return document.fullscreenElement ? document.exitFullscreen() : file.requestFullscreen?.();
   }
 });
+async function loadQrs() {
+  const sh = await fetch("/api/share").then((r) => r.json());
+  $("qrs").innerHTML = `<figure><img src="/api/qr?for=cart" alt="QR code: case file"><b>Case file</b><br>${esc(sh.cartUrl.replace(/^https?:\/\//, ""))}</figure>` +
+    (sh.textUrl ? `<figure><img src="/api/qr?for=text" alt="QR code: text the court"><b>Text the court</b><br>“${esc(sh.firstText)}”</figure>` : "");
+  $("qrNote").textContent = sh.textUrl
+    ? "Texting only works once the judge's number is under Users in Photon (app.photon.codes), or added on Setup."
+    : "The texting QR appears once the court's number is known (Photon connected, or COURT_NUMBER set).";
+}
+loadQrs();
 loadDashboard();
 setInterval(loadDashboard, 5000);
+setInterval(loadQrs, 30000);
 </script>
 </body>
 </html>

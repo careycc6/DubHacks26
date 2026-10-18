@@ -22,6 +22,7 @@
       </div>
     </header>
 
+    <aside class="join-qr" id="joinQr" hidden></aside>
     <section class="totals" id="totals"></section>
     <div id="exhibitsWrap"></div>
     <div id="sections"></div>
@@ -42,6 +43,12 @@
 <script>
 const es = new EventSource("/api/events");
 es.addEventListener("state", (e) => render(JSON.parse(e.data)));
+// On a big screen (projector, laptop), invite people in. Phones already have the case file open.
+fetch("/api/share").then((r) => r.json()).then((sh) => {
+  $("joinQr").innerHTML = `<figure><img src="/api/qr?for=cart" alt="QR code: case file"><figcaption>Scan for the case file</figcaption></figure>` +
+    (sh.textUrl ? `<figure><img src="/api/qr?for=text" alt="QR code: text the court"><figcaption>Scan to text the court</figcaption></figure>` : "");
+  $("joinQr").hidden = false;
+});
 </script>
 </body>
 </html>
