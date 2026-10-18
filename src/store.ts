@@ -1,5 +1,6 @@
 // App state + a tiny pub/sub so the live cart page and simulator update instantly.
 // The state is saved through db.ts on every change, so a restart or redeploy picks up where the court left off.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
 import { loadWorld } from "./data.ts";
 import { get, onReload, onShutdown, put } from "./db.ts";
@@ -26,6 +27,19 @@ export interface Exhibit {
   private: boolean; // sent in a DM: shapes rulings, never shown on the case file
   at: number;
 }
+
+/** A kid asked for something: it waits here until a parent texts "approve" (or "deny"). */
+export interface CartRequest {
+  id: string;
+  item: CartItem;
+  label: string; // "iPhone 17 256GB for Jaret"
+  requestedBy: string;
+  at: number;
+}
+
+/** Who sent the message being handled (none: the dashboard or a script, which act as a parent). */
+export const actor = new AsyncLocalStorage<{ memberId?: string }>();
+export const currentActor = () => actor.getStore()?.memberId;
 
 /** Something the family actually bought (from a text, a receipt photo, or the dashboard). */
 export interface Purchase {
@@ -68,6 +82,7 @@ export interface State {
   pendingImage?: { dataUrl: string; private: boolean }; // latest photo, attached when the court files it as evidence
   appeals?: AppealRecord[]; // appeals, overrules and reinstatements, oldest first (public: they're about rulings)
   pendingAppeal?: Record<string, { until: number; about: string }>; // memberId -> the court asked "tell me why"
+  requests?: CartRequest[]; // kids' adds waiting on a parent
 }
 
 export const world: World = loadWorld();

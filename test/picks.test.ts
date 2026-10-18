@@ -9,11 +9,18 @@ const store = await import("../src/store.ts");
 const { handle } = await import("../src/agent.ts");
 const say = (memberId: string, text: string) => handle({ spaceId: `sim:${memberId}`, isGroup: false, memberId, text });
 
-test("add with no 'for' adds the named phone for the sender", async () => {
+test("an inexact phone shows options (other iPhones and Pixels too) instead of adding a guess", async () => {
   store.reset();
   const r = (await say("maya", "court add an iphone 18"))!;
-  assert.match(r, /Added to the family cart: iPhone 18 Pro 256GB for Maya/);
+  assert.match(r, /picks for you/);
   assert.match(r, /the line is iPhone 18 Pro and iPhone 18 Pro Max/);
+  assert.match(r, /\nOther ideas: 4\. .*Pixel/);
+  assert.equal(store.state.cart.length, 0);
+  // A kid picking one asks a parent; the parent's "approve" puts it in the cart.
+  assert.match((await say("maya", "add the first one"))!, /Asked Marco and Elena to OK it: iPhone 18 Pro 256GB for Maya/);
+  assert.equal(store.state.cart.length, 0);
+  await say("marco", "approve");
+  assert.deepEqual([store.state.cart[0].phoneId, store.state.cart[0].memberId], ["iphone-18-pro", "maya"]);
   // Not phones or products: still handled by their own commands.
   assert.match((await say("maya", "court add protection"))!, /Protection 360/);
   assert.match((await say("maya", "court add a case"))!, /Case/);

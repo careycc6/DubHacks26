@@ -1,16 +1,45 @@
 // Tools the agent can call. Every price, date and saving comes from the engine, never from the LLM.
 import {
   accessoryType, bestMatch, cartLabel, cartPrice, categories, describePrefs, findAccessory, findCategory, findPhone, handMeDownText, leavingNest,
-  memberByTitle,
+  memberByTitle, MANAGER_ROLES, missingWords,
   member, mergePrefs, parseLink, parseProductLink, perMonth, phone, phoneBrandFor, pickVariant, PREF_LABELS, priceTrack, productProtection,
   modelLine, promosFor, protectionAdvice, recommend, recommendAccessories, recommendProducts, runTrial, shopLinks, tradeIn, usd,
   type Prefs,
 } from "./engine.ts";
 import { caseFileUrl } from "./share.ts";
-import { changed, newId, refreshTrial, remainingBudget, spent, state, trialOpts, world, type Purchase } from "./store.ts";
-import type { Accessory, Promo, Ruling, Stamp, Trial } from "./types.ts";
+import { changed, currentActor, newId, refreshTrial, remainingBudget, spent, state, trialOpts, world, type Purchase } from "./store.ts";
+import type { Accessory, CartItem, Promo, Ruling, Stamp, Trial } from "./types.ts";
 
 
+
+// Who runs the cart: parents (and partners). Everyone else's adds wait for a parent's OK.
+
+export function canManage(memberId?: string) {
+  if (!memberId) return false;
+  const members = world.household.members;
+  // A household with no parents (roommates, a couple) runs itself: everyone may manage.
+  if (!members.some((m) => MANAGER_ROLES.has(m.role))) return members.some((m) => m.id === memberId);
+  return MANAGER_ROLES.has(members.find((m) => m.id === memberId)?.role ?? "");
+}
+
+/** Into the cart (one phone per person), or, when a kid asked, into the requests a parent approves. True = it's a request. */
+function place(item: CartItem, label: string): boolean {
+  const by = currentActor();
+  if (by && !canManage(by)) {
+    const same = (x: CartItem) => x.memberId === item.memberId && (item.kind === "device" ? x.kind === "device" : cartLabel(world, x) === cartLabel(world, item));
+    state.requests = [...(state.requests ?? []).filter((r) => !same(r.item)), { id: newId("r"), item: { ...item, addedBy: by }, label, requestedBy: by, at: Date.now() }];
+    changed();
+    return true;
+  }
+  put(item);
+  return false;
+}
+function put(item: CartItem) {
+  if (item.kind === "device") state.cart = state.cart.filter((i) => !(i.kind === "device" && i.memberId === item.memberId));
+  state.cart.push(item);
+  refreshTrial();
+  changed();
+}
 
 const unique = <T,>(xs: T[]) => (xs.length === 1 ? xs[0] : undefined);
 
@@ -143,6 +172,7 @@ export function formatStatus(asker?: string) {
     state.cart.length ? `🛒 Family cart, day ${state.day}: ${state.cart.length} item${state.cart.length === 1 ? "" : "s"}, sticker ${usd(total)}` : "🛒 The family cart is empty.",
     ...lines,
     ...(bought.length ? [`🧾 Bought: ${bought.join(", ")}`] : []),
+    ...(state.requests?.length ? [`📨 Waiting on a parent's OK: ${state.requests.map((r) => r.label).join(" · ")}. A parent texts "approve" or "deny".`] : []),
     !state.cart.length ? "Paste a store link or ask \"what phone should I get?\" to start."
     : unruled.length ? `When everyone's in, say "court, rule".`
     : `Case file: ${caseFileUrl()}`,
@@ -186,7 +216,13 @@ export const tools = {
       if (a.budget) said.budget = a.budget;
       const prefs = (state.prefs[m.id] = mergePrefs(state.prefs[m.id], said));
       const recs = recommend(world, m.id, { prefs, model: a.model });
-      state.lastRecs[m.id] = recs.map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
+      // Other ideas from other lines and brands (say "add the fourth one"): the best of each brand not already picked.
+      const seen = new Set(recs.map((r) => r.phoneId));
+      const others = recommend(world, m.id, { prefs: { ...prefs, brand: undefined }, limit: 99 })
+        .filter((r) => !seen.has(r.phoneId))
+        .filter((r, i, all) => all.findIndex((x) => phone(world, x.phoneId).brand === phone(world, r.phoneId).brand) === i)
+        .slice(0, 3);
+      state.lastRecs[m.id] = [...recs, ...others].map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
       // "iphone 18" when there's no plain iPhone 18: say which models make up that line.
       const line = (a.model ? modelLine(world, a.model) : []).sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices)));
       const exact = line.some((p) => p.name.toLowerCase() === a.model!.toLowerCase());
@@ -198,6 +234,7 @@ export const tools = {
           ? line.length ? `There's no plain ${line[0].name.split(" ").slice(0, 2).join(" ")}: the line is ${line.map((p) => p.name).join(" and ")}.` : `The court doesn't carry a "${a.model}".`
           : undefined,
         // What gets traded in, for how much, and where.
+        others: others.map((r) => ({ name: r.name, storageGB: r.storageGB, price: r.price })),
         tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, where: "T-Mobile (in store or by mail), or the maker's own trade-in" } : undefined,
         picks: recs.map((r) => {
           const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, undefined, m);
@@ -272,20 +309,16 @@ export const tools = {
       if (p) {
         const variant = a.variant && a.variant in p.prices ? a.variant : pickVariant(p, `${a.variant ?? ""} ${a.product}`);
         const item = { id: newId("c"), kind: "product" as const, memberId: m.id, productId: p.id, variant, quantity, addedBy: a.addedBy };
-        state.cart.push(item);
-        refreshTrial();
-        changed();
-        return { added: `${cartLabel(world, item)} for ${m.name}`, price: cartPrice(world, item), itemId: item.id };
+        const added = `${cartLabel(world, item)} for ${m.name}`;
+        return { added, requested: place(item, added), price: cartPrice(world, item), itemId: item.id };
       }
       if (!(a.price && a.price > 0)) {
         throw new Error(`"${a.product}" isn't in the catalog. Ask what it costs, then add it with that price.`);
       }
       const category = a.category && a.category in categories(world) ? a.category : findCategory(world, a.product);
       const item = { id: newId("c"), kind: "product" as const, memberId: m.id, custom: { name: a.product, price: Math.round(a.price), category }, url: /^https?:\/\//.test(a.url ?? "") ? a.url : undefined, quantity, addedBy: a.addedBy };
-      state.cart.push(item);
-      refreshTrial();
-      changed();
-      return { added: `${cartLabel(world, item)} for ${m.name}`, price: cartPrice(world, item), itemId: item.id };
+      const added = `${cartLabel(world, item)} for ${m.name}`;
+      return { added, requested: place(item, added), price: cartPrice(world, item), itemId: item.id };
     },
   },
   report_owned_item: {
@@ -323,11 +356,11 @@ export const tools = {
   },
   add_recommended: {
     description: "Add one of the phones, products or accessories just recommended to the cart: 'add the first one' = pick 1.",
-    params: { member: { type: "string" }, pick: { type: "number", description: "1, 2 or 3" } },
+    params: { member: { type: "string" }, pick: { type: "number", description: "1-3 for the picks, 4-6 for the other ideas" } },
     required: ["member", "pick"],
     run: (a: { member: string; pick: number }): unknown => {
       const m = resolveMember(a.member);
-      const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(3, a.pick)) - 1];
+      const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(6, a.pick)) - 1];
       if (!r) throw new Error(`No recent picks for ${m.name}. Ask the court for a recommendation first.`);
       if ("accessoryId" in r) return callTool("add_accessory_to_cart", { member: m.id, accessory: r.accessoryId });
       if (r.productId) return callTool("add_product_to_cart", { member: m.id, product: r.productId, variant: r.variant, addedBy: m.id });
@@ -356,10 +389,8 @@ export const tools = {
       const m = resolveMember(a.member);
       const acc = (world.catalog.accessories ?? []).find((x) => x.id === a.accessory) ?? findAccessory(world, a.accessory);
       if (!acc) throw new Error(`No accessory matching "${a.accessory}"`);
-      state.cart.push({ id: newId("c"), kind: "accessory", memberId: m.id, accessoryId: acc.id, addedBy: m.id });
-      refreshTrial();
-      changed();
-      return { added: `${acc.name} for ${m.name}`, price: acc.price };
+      const added = `${acc.name} for ${m.name}`;
+      return { added, requested: place({ id: newId("c"), kind: "accessory", memberId: m.id, accessoryId: acc.id, addedBy: m.id }, added), price: acc.price };
     },
   },
   add_phone_to_cart: {
@@ -370,14 +401,15 @@ export const tools = {
       const m = resolveMember(a.member);
       const p = world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone);
       if (!p) throw new Error(`No phone matching "${a.phone}". Catalog: ${world.catalog.phones.map((x) => x.name).join(", ")}`);
+      // Never add a guess: "iphone 18" could be the 18 Pro or the Pro Max. Show the options instead.
+      if (p.id !== a.phone && missingWords(p, a.phone).length) {
+        throw new Error(`No phone called "${a.phone}" (closest: ${p.name}). Don't add a guess: call recommend_phones with model "${a.phone}" and let them pick.`);
+      }
       const opts = Object.keys(p.prices).map(Number).sort((x, y) => x - y);
       const gb = a.storageGB && opts.includes(a.storageGB) ? a.storageGB : opts.find((x) => x >= (a.storageGB ?? 0)) ?? opts[0];
-      state.cart = state.cart.filter((i) => !(i.kind === "device" && i.memberId === m.id)); // one phone per person
       const item = { id: newId("c"), kind: "device" as const, memberId: m.id, phoneId: p.id, storageGB: gb, addedBy: a.addedBy };
-      state.cart.push(item);
-      refreshTrial();
-      changed();
-      return { added: `${p.name} ${gb}GB for ${m.name}`, price: p.prices[String(gb)], itemId: item.id };
+      const added = `${p.name} ${gb}GB for ${m.name}`;
+      return { added, requested: place(item, added), price: p.prices[String(gb)], itemId: item.id };
     },
   },
   add_addon_to_cart: {
@@ -388,11 +420,21 @@ export const tools = {
       const m = resolveMember(a.member);
       const addon = world.catalog.addons.find((x) => x.id === a.addon || x.name.toLowerCase().includes(a.addon.toLowerCase()));
       if (!addon) throw new Error(`Unknown add-on "${a.addon}"`);
-      state.cart.push({ id: newId("c"), kind: "addon", memberId: m.id, addonId: addon.id });
-      refreshTrial();
-      changed();
-      return { added: `${addon.name} for ${m.name}`, monthly: addon.monthly };
+      const added = `${addon.name} for ${m.name}`;
+      return { added, requested: place({ id: newId("c"), kind: "addon", memberId: m.id, addonId: addon.id }, added), monthly: addon.monthly };
     },
+  },
+  approve_request: {
+    description: "A parent OKs what a kid asked for (it goes into the cart). Give whose request, or all: true. With one request waiting, no args needed.",
+    params: { member: { type: "string", description: "whose request (optional)" }, all: { type: "boolean" } },
+    required: [],
+    run: (a: { member?: string; all?: boolean }) => decide(a, true),
+  },
+  deny_request: {
+    description: "A parent says no to what a kid asked for (it never goes in the cart).",
+    params: { member: { type: "string", description: "whose request (optional)" }, all: { type: "boolean" } },
+    required: [],
+    run: (a: { member?: string; all?: boolean }) => decide(a, false),
   },
   add_from_link: {
     description: "Someone pasted a store link. Match it to a catalog phone or product (with its storage/size) and add it to the cart for that member.",
@@ -696,4 +738,17 @@ function cartItemLabel(i: { kind: string; memberId: string; phoneId?: string; st
   if (i.kind === "device" && i.phoneId) return `${who}'s ${phone(world, i.phoneId).name} ${i.storageGB}GB`;
   if (i.kind === "accessory") return `${who}'s ${(world.catalog.accessories ?? []).find((a) => a.id === i.accessoryId)?.name ?? "accessory"}`;
   return `${who}'s ${world.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "add-on"}`;
+}
+
+/** Approve or deny kids' requests: one named person's, all of them, or the only one waiting. */
+function decide(a: { member?: string; all?: boolean }, yes: boolean) {
+  const waiting = state.requests ?? [];
+  if (!waiting.length) return { error: "No requests are waiting." };
+  const who = a.member ? resolveMember(a.member).id : undefined;
+  const picked = who ? waiting.filter((r) => r.item.memberId === who || r.requestedBy === who) : a.all || waiting.length === 1 ? waiting : [];
+  if (!picked.length) return { error: who ? "Nothing waiting from them." : "More than one request is waiting.", waiting: waiting.map((r) => r.label) };
+  state.requests = waiting.filter((r) => !picked.includes(r));
+  if (yes) for (const r of picked) put(r.item);
+  else changed();
+  return { [yes ? "approved" : "denied"]: picked.map((r) => r.label) };
 }

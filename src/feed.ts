@@ -16,6 +16,7 @@ export interface Snapshot {
   purchases: number;
   owners: Record<string, string>; // purchase id -> member (to notice "this is for Maya")
   appeals: number;
+  requests: Record<string, string>; // waiting request's cart-item id -> label
 }
 
 const nameOf = (id?: string) => world.household.members.find((m) => m.id === id)?.name ?? "Someone";
@@ -37,6 +38,7 @@ export function snapshot(): Snapshot {
     purchases: state.purchases.length,
     owners: Object.fromEntries(state.purchases.map((p) => [p.id, p.memberId])),
     appeals: state.appeals?.length ?? 0,
+    requests: Object.fromEntries((state.requests ?? []).map((r) => [r.item.id, r.label])),
   };
 }
 
@@ -51,6 +53,15 @@ export function describeChanges(before: Snapshot, actorId?: string): string[] {
     return moved.map((p) => `🧾 ${actor} confirmed the ${p.label} is ${first(nameOf(p.memberId))}'s, not ${first(nameOf(before.owners[p.id]))}'s.`);
   }
 
+  // Kids ask, parents decide.
+  const waiting = state.requests ?? [];
+  for (const r of waiting.filter((x) => !before.requests?.[x.item.id])) {
+    lines.push(`📨 ${first(nameOf(r.requestedBy))} asked for ${r.label}. A parent can text "approve" or "deny".`);
+  }
+  // Approved ones show up below as added; the rest were turned down.
+  for (const [id, label] of Object.entries(before.requests ?? {})) {
+    if (!waiting.some((x) => x.item.id === id) && !state.cart.some((i) => i.id === id)) lines.push(`🚫 ${actor} said no to ${label}.`);
+  }
   const added = state.cart.filter((i) => !before.cartIds.includes(i.id));
   for (const i of added) {
     const forWhom = i.memberId === actorId ? "" : ` for ${first(nameOf(i.memberId))}`;

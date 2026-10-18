@@ -14,9 +14,10 @@ test("a member is found by full, first or last name", async () => {
   const before = store.world.household.members.map((m) => m.name);
   for (const m of store.world.household.members) if (names[m.id]) m.name = names[m.id];
   try {
-    const full = (await say("marco", "court add iphone 18 for kairui cheng"))!;
-    assert.match(full, /Added to the family cart: .*iPhone 18 Pro/);
-    assert.match(full, /closest match for "iphone 18"/);
+    // No phone is just "iPhone 18": the court shows Kairui's options instead of guessing.
+    assert.match((await say("marco", "court add iphone 18 for kairui cheng"))!, /picks for Kairui[\s\S]*1\. iPhone 18 Pro /);
+    assert.equal(store.state.cart.length, 0);
+    assert.match((await say("marco", "court add the iphone 18 pro for kairui cheng"))!, /Added to the family cart: .*iPhone 18 Pro/);
     assert.equal(store.state.cart.at(-1)!.memberId, "elena");
 
     assert.match((await say("marco", "court add the pixel 10 for jaret"))!, /Added/);

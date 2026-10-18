@@ -577,6 +577,10 @@ function modelAsked(text) {
   const m = text.toLowerCase().match(/\b(iphone|pixel|galaxy)\s+(\d{1,2}[a-z]?|air|s\d{2}|a\d{2})\b(?:\s+(pro max|pro xl|pro|ultra|plus|max|fe))?/);
   return m ? m.slice(1).filter(Boolean).join(" ") : void 0;
 }
+function missingWords(p, query) {
+  const asked2 = norm(query).split(" ");
+  return norm(p.name).split(" ").filter((w) => !asked2.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
+}
 function modelLine(world2, model) {
   const want = norm(model).split(" ");
   return world2.catalog.phones.filter((p) => want.every((w) => norm(p.name).split(" ").includes(w)));
@@ -636,7 +640,7 @@ function recommend(world2, memberId, opts = {}) {
     if (!prefs.battery) why.push(`${p.batteryHours}h battery`);
     if (!prefs.camera && p.camera >= m.usage.camera) why.push(`camera ${p.camera}/5 covers ${m.name.split(/\s+/)[0]}'s ${m.usage.camera}/5 use`);
     return { phoneId: p.id, name: p.name, storageGB: gb, price, why, score };
-  }).sort((a, b) => b.score - a.score).filter((r, _i, all) => !budget || r.price <= budget || all.filter((x) => x.price <= budget).length < 2).slice(0, 3).map(({ score: _score, ...r }) => r);
+  }).sort((a, b) => b.score - a.score).filter((r, _i, all) => !budget || r.price <= budget || all.filter((x) => x.price <= budget).length < 2).slice(0, opts.limit ?? 3).map(({ score: _score, ...r }) => r);
 }
 function mergePrefs(old = {}, next) {
   const merged = { ...old, ...next };
@@ -1017,6 +1021,7 @@ function cartPrice(world2, i) {
 }
 
 // src/store.ts
+import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
 
 // src/data.ts
@@ -1150,6 +1155,8 @@ function savedMemberIds() {
 }
 
 // src/store.ts
+var actor = new AsyncLocalStorage();
+var currentActor = () => actor.getStore()?.memberId;
 var world = loadWorld();
 var bus = new EventEmitter();
 var fresh = () => ({ day: 0, cart: [], privateNotes: {}, chat: [], exhibits: [], activity: [], prefs: {}, lastRecs: {}, seenIds: [], purchases: [], trialRuns: 0 });
@@ -2198,6 +2205,29 @@ shareRouter.get(["/case", "/cart", "/cart.html"], (_req, res) => {
 });
 
 // src/tools.ts
+function canManage(memberId) {
+  if (!memberId) return false;
+  const members = world.household.members;
+  if (!members.some((m) => MANAGER_ROLES.has(m.role))) return members.some((m) => m.id === memberId);
+  return MANAGER_ROLES.has(members.find((m) => m.id === memberId)?.role ?? "");
+}
+function place(item, label) {
+  const by = currentActor();
+  if (by && !canManage(by)) {
+    const same2 = (x) => x.memberId === item.memberId && (item.kind === "device" ? x.kind === "device" : cartLabel(world, x) === cartLabel(world, item));
+    state.requests = [...(state.requests ?? []).filter((r) => !same2(r.item)), { id: newId("r"), item: { ...item, addedBy: by }, label, requestedBy: by, at: Date.now() }];
+    changed();
+    return true;
+  }
+  put2(item);
+  return false;
+}
+function put2(item) {
+  if (item.kind === "device") state.cart = state.cart.filter((i) => !(i.kind === "device" && i.memberId === item.memberId));
+  state.cart.push(item);
+  refreshTrial();
+  changed();
+}
 var unique = (xs) => xs.length === 1 ? xs[0] : void 0;
 function resolveMember(nameOrId) {
   const q = String(nameOrId).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
@@ -2299,6 +2329,7 @@ function formatStatus(asker) {
     state.cart.length ? `\u{1F6D2} Family cart, day ${state.day}: ${state.cart.length} item${state.cart.length === 1 ? "" : "s"}, sticker ${usd(total)}` : "\u{1F6D2} The family cart is empty.",
     ...lines,
     ...bought.length ? [`\u{1F9FE} Bought: ${bought.join(", ")}`] : [],
+    ...state.requests?.length ? [`\u{1F4E8} Waiting on a parent's OK: ${state.requests.map((r) => r.label).join(" \xB7 ")}. A parent texts "approve" or "deny".`] : [],
     !state.cart.length ? 'Paste a store link or ask "what phone should I get?" to start.' : unruled.length ? `When everyone's in, say "court, rule".` : `Case file: ${caseFileUrl()}`
   ].join("\n");
 }
@@ -2337,7 +2368,9 @@ var tools = {
       if (a.budget) said.budget = a.budget;
       const prefs = state.prefs[m.id] = mergePrefs(state.prefs[m.id], said);
       const recs = recommend(world, m.id, { prefs, model: a.model });
-      state.lastRecs[m.id] = recs.map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
+      const seen = new Set(recs.map((r) => r.phoneId));
+      const others = recommend(world, m.id, { prefs: { ...prefs, brand: void 0 }, limit: 99 }).filter((r) => !seen.has(r.phoneId)).filter((r, i, all) => all.findIndex((x) => phone(world, x.phoneId).brand === phone(world, r.phoneId).brand) === i).slice(0, 3);
+      state.lastRecs[m.id] = [...recs, ...others].map((r) => ({ phoneId: r.phoneId, storageGB: r.storageGB }));
       const line = (a.model ? modelLine(world, a.model) : []).sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices)));
       const exact = line.some((p) => p.name.toLowerCase() === a.model.toLowerCase());
       const ti = tradeIn(m);
@@ -2346,6 +2379,7 @@ var tools = {
         remembered: describePrefs(prefs),
         modelNote: a.model && !exact ? line.length ? `There's no plain ${line[0].name.split(" ").slice(0, 2).join(" ")}: the line is ${line.map((p) => p.name).join(" and ")}.` : `The court doesn't carry a "${a.model}".` : void 0,
         // What gets traded in, for how much, and where.
+        others: others.map((r) => ({ name: r.name, storageGB: r.storageGB, price: r.price })),
         tradeIn: ti.value > 0 ? { device: m.device.model, value: ti.value, where: "T-Mobile (in store or by mail), or the maker's own trade-in" } : void 0,
         picks: recs.map((r) => {
           const track = priceTrack(world, r.phoneId, r.storageGB, state.day, 90, void 0, m);
@@ -2419,20 +2453,16 @@ var tools = {
       if (p) {
         const variant = a.variant && a.variant in p.prices ? a.variant : pickVariant(p, `${a.variant ?? ""} ${a.product}`);
         const item2 = { id: newId("c"), kind: "product", memberId: m.id, productId: p.id, variant, quantity, addedBy: a.addedBy };
-        state.cart.push(item2);
-        refreshTrial();
-        changed();
-        return { added: `${cartLabel(world, item2)} for ${m.name}`, price: cartPrice(world, item2), itemId: item2.id };
+        const added2 = `${cartLabel(world, item2)} for ${m.name}`;
+        return { added: added2, requested: place(item2, added2), price: cartPrice(world, item2), itemId: item2.id };
       }
       if (!(a.price && a.price > 0)) {
         throw new Error(`"${a.product}" isn't in the catalog. Ask what it costs, then add it with that price.`);
       }
       const category = a.category && a.category in categories(world) ? a.category : findCategory(world, a.product);
       const item = { id: newId("c"), kind: "product", memberId: m.id, custom: { name: a.product, price: Math.round(a.price), category }, url: /^https?:\/\//.test(a.url ?? "") ? a.url : void 0, quantity, addedBy: a.addedBy };
-      state.cart.push(item);
-      refreshTrial();
-      changed();
-      return { added: `${cartLabel(world, item)} for ${m.name}`, price: cartPrice(world, item), itemId: item.id };
+      const added = `${cartLabel(world, item)} for ${m.name}`;
+      return { added, requested: place(item, added), price: cartPrice(world, item), itemId: item.id };
     }
   },
   report_owned_item: {
@@ -2467,11 +2497,11 @@ var tools = {
   },
   add_recommended: {
     description: "Add one of the phones, products or accessories just recommended to the cart: 'add the first one' = pick 1.",
-    params: { member: { type: "string" }, pick: { type: "number", description: "1, 2 or 3" } },
+    params: { member: { type: "string" }, pick: { type: "number", description: "1-3 for the picks, 4-6 for the other ideas" } },
     required: ["member", "pick"],
     run: (a) => {
       const m = resolveMember(a.member);
-      const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(3, a.pick)) - 1];
+      const r = state.lastRecs[m.id]?.[Math.max(1, Math.min(6, a.pick)) - 1];
       if (!r) throw new Error(`No recent picks for ${m.name}. Ask the court for a recommendation first.`);
       if ("accessoryId" in r) return callTool("add_accessory_to_cart", { member: m.id, accessory: r.accessoryId });
       if (r.productId) return callTool("add_product_to_cart", { member: m.id, product: r.productId, variant: r.variant, addedBy: m.id });
@@ -2500,10 +2530,8 @@ var tools = {
       const m = resolveMember(a.member);
       const acc = (world.catalog.accessories ?? []).find((x) => x.id === a.accessory) ?? findAccessory(world, a.accessory);
       if (!acc) throw new Error(`No accessory matching "${a.accessory}"`);
-      state.cart.push({ id: newId("c"), kind: "accessory", memberId: m.id, accessoryId: acc.id, addedBy: m.id });
-      refreshTrial();
-      changed();
-      return { added: `${acc.name} for ${m.name}`, price: acc.price };
+      const added = `${acc.name} for ${m.name}`;
+      return { added, requested: place({ id: newId("c"), kind: "accessory", memberId: m.id, accessoryId: acc.id, addedBy: m.id }, added), price: acc.price };
     }
   },
   add_phone_to_cart: {
@@ -2514,14 +2542,14 @@ var tools = {
       const m = resolveMember(a.member);
       const p = world.catalog.phones.find((x) => x.id === a.phone) ?? findPhone(world, a.phone);
       if (!p) throw new Error(`No phone matching "${a.phone}". Catalog: ${world.catalog.phones.map((x) => x.name).join(", ")}`);
+      if (p.id !== a.phone && missingWords(p, a.phone).length) {
+        throw new Error(`No phone called "${a.phone}" (closest: ${p.name}). Don't add a guess: call recommend_phones with model "${a.phone}" and let them pick.`);
+      }
       const opts = Object.keys(p.prices).map(Number).sort((x, y) => x - y);
       const gb = a.storageGB && opts.includes(a.storageGB) ? a.storageGB : opts.find((x) => x >= (a.storageGB ?? 0)) ?? opts[0];
-      state.cart = state.cart.filter((i) => !(i.kind === "device" && i.memberId === m.id));
       const item = { id: newId("c"), kind: "device", memberId: m.id, phoneId: p.id, storageGB: gb, addedBy: a.addedBy };
-      state.cart.push(item);
-      refreshTrial();
-      changed();
-      return { added: `${p.name} ${gb}GB for ${m.name}`, price: p.prices[String(gb)], itemId: item.id };
+      const added = `${p.name} ${gb}GB for ${m.name}`;
+      return { added, requested: place(item, added), price: p.prices[String(gb)], itemId: item.id };
     }
   },
   add_addon_to_cart: {
@@ -2532,11 +2560,21 @@ var tools = {
       const m = resolveMember(a.member);
       const addon = world.catalog.addons.find((x) => x.id === a.addon || x.name.toLowerCase().includes(a.addon.toLowerCase()));
       if (!addon) throw new Error(`Unknown add-on "${a.addon}"`);
-      state.cart.push({ id: newId("c"), kind: "addon", memberId: m.id, addonId: addon.id });
-      refreshTrial();
-      changed();
-      return { added: `${addon.name} for ${m.name}`, monthly: addon.monthly };
+      const added = `${addon.name} for ${m.name}`;
+      return { added, requested: place({ id: newId("c"), kind: "addon", memberId: m.id, addonId: addon.id }, added), monthly: addon.monthly };
     }
+  },
+  approve_request: {
+    description: "A parent OKs what a kid asked for (it goes into the cart). Give whose request, or all: true. With one request waiting, no args needed.",
+    params: { member: { type: "string", description: "whose request (optional)" }, all: { type: "boolean" } },
+    required: [],
+    run: (a) => decide(a, true)
+  },
+  deny_request: {
+    description: "A parent says no to what a kid asked for (it never goes in the cart).",
+    params: { member: { type: "string", description: "whose request (optional)" }, all: { type: "boolean" } },
+    required: [],
+    run: (a) => decide(a, false)
   },
   add_from_link: {
     description: "Someone pasted a store link. Match it to a catalog phone or product (with its storage/size) and add it to the cart for that member.",
@@ -2829,6 +2867,17 @@ function cartItemLabel(i) {
   if (i.kind === "accessory") return `${who}'s ${(world.catalog.accessories ?? []).find((a) => a.id === i.accessoryId)?.name ?? "accessory"}`;
   return `${who}'s ${world.catalog.addons.find((a) => a.id === i.addonId)?.name ?? "add-on"}`;
 }
+function decide(a, yes) {
+  const waiting = state.requests ?? [];
+  if (!waiting.length) return { error: "No requests are waiting." };
+  const who = a.member ? resolveMember(a.member).id : void 0;
+  const picked = who ? waiting.filter((r) => r.item.memberId === who || r.requestedBy === who) : a.all || waiting.length === 1 ? waiting : [];
+  if (!picked.length) return { error: who ? "Nothing waiting from them." : "More than one request is waiting.", waiting: waiting.map((r) => r.label) };
+  state.requests = waiting.filter((r) => !picked.includes(r));
+  if (yes) for (const r of picked) put2(r.item);
+  else changed();
+  return { [yes ? "approved" : "denied"]: picked.map((r) => r.label) };
+}
 
 // src/feed.ts
 var nameOf = (id) => world.household.members.find((m) => m.id === id)?.name ?? "Someone";
@@ -2847,20 +2896,28 @@ function snapshot2() {
     cartLabels: Object.fromEntries(state.cart.map((i) => [i.id, cartLabel2(i.id)])),
     purchases: state.purchases.length,
     owners: Object.fromEntries(state.purchases.map((p) => [p.id, p.memberId])),
-    appeals: state.appeals?.length ?? 0
+    appeals: state.appeals?.length ?? 0,
+    requests: Object.fromEntries((state.requests ?? []).map((r) => [r.item.id, r.label]))
   };
 }
 function describeChanges(before, actorId) {
-  const actor = actorId ? first2(nameOf(actorId)) : "The family";
+  const actor2 = actorId ? first2(nameOf(actorId)) : "The family";
   const lines = [];
   const moved = state.purchases.filter((p) => before.owners?.[p.id] && before.owners[p.id] !== p.memberId);
   if (moved.length) {
-    return moved.map((p) => `\u{1F9FE} ${actor} confirmed the ${p.label} is ${first2(nameOf(p.memberId))}'s, not ${first2(nameOf(before.owners[p.id]))}'s.`);
+    return moved.map((p) => `\u{1F9FE} ${actor2} confirmed the ${p.label} is ${first2(nameOf(p.memberId))}'s, not ${first2(nameOf(before.owners[p.id]))}'s.`);
+  }
+  const waiting = state.requests ?? [];
+  for (const r of waiting.filter((x) => !before.requests?.[x.item.id])) {
+    lines.push(`\u{1F4E8} ${first2(nameOf(r.requestedBy))} asked for ${r.label}. A parent can text "approve" or "deny".`);
+  }
+  for (const [id, label] of Object.entries(before.requests ?? {})) {
+    if (!waiting.some((x) => x.item.id === id) && !state.cart.some((i) => i.id === id)) lines.push(`\u{1F6AB} ${actor2} said no to ${label}.`);
   }
   const added = state.cart.filter((i) => !before.cartIds.includes(i.id));
   for (const i of added) {
     const forWhom = i.memberId === actorId ? "" : ` for ${first2(nameOf(i.memberId))}`;
-    lines.push(`\u{1F4E5} ${actor} added ${cartLabel2(i.id)}${forWhom} to the family cart.`);
+    lines.push(`\u{1F4E5} ${actor2} added ${cartLabel2(i.id)}${forWhom} to the family cart.`);
   }
   const bought = state.purchases.slice(before.purchases);
   for (const p of bought) {
@@ -2869,24 +2926,24 @@ function describeChanges(before, actorId) {
   }
   const gone = before.cartIds.filter((id) => !state.cart.some((i) => i.id === id));
   if (gone.length && !state.cart.length && !bought.length && gone.length > 1) {
-    lines.push(`\u{1F9F9} ${actor} cleared the family cart (${gone.length} items). Starting fresh.`);
+    lines.push(`\u{1F9F9} ${actor2} cleared the family cart (${gone.length} items). Starting fresh.`);
   } else if (!added.length && !bought.length) {
-    for (const id of gone) lines.push(`\u{1F5D1}\uFE0F ${actor} took ${before.cartLabels[id] ?? "an item"} out of the cart.`);
+    for (const id of gone) lines.push(`\u{1F5D1}\uFE0F ${actor2} took ${before.cartLabels[id] ?? "an item"} out of the cart.`);
   }
   for (const i of state.cart) {
     const was = before.cartLabels[i.id];
     const now = cartLabel2(i.id);
-    if (was && was !== now) lines.push(`\u270F\uFE0F ${actor} changed ${was} \u2192 ${now}.`);
+    if (was && was !== now) lines.push(`\u270F\uFE0F ${actor2} changed ${was} \u2192 ${now}.`);
   }
   if (state.exhibits.length > before.exhibits) {
     for (const e of state.exhibits.slice(before.exhibits)) {
-      if (!e.private) lines.push(`\u{1F5C2}\uFE0F ${actor} filed evidence for ${first2(nameOf(e.memberId))}: ${e.finding}.`);
+      if (!e.private) lines.push(`\u{1F5C2}\uFE0F ${actor2} filed evidence for ${first2(nameOf(e.memberId))}: ${e.finding}.`);
     }
   }
   if (state.trialRuns > before.trialRuns && state.trial) {
     const t = state.trial;
     const stamps = t.rulings.filter((r) => r.memberId && !r.label.includes("Protection")).map((r) => `${first2(nameOf(r.memberId))}: ${VERDICT[r.stamp]?.word ?? r.stamp}${r.stamp === "WAIT" ? ` till day ${r.holdUntilDay}` : ""}`).join(", ");
-    lines.push(`\u2696\uFE0F ${actorId ? `${actor} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} \u2192 ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== void 0 ? ` Phone budget: ${t.overBudget ? "over" : `${usd(t.budget - (t.planned ?? t.now))} left`} after this plan.` : ""} Case file: ${caseFileUrl()}`);
+    lines.push(`\u2696\uFE0F ${actorId ? `${actor2} asked the court to rule.` : "The court has ruled."} ${stamps}. Spend today ${usd(t.before)} \u2192 ${usd(t.now)}, you save ${usd(t.savings)}.${t.budget !== void 0 ? ` Phone budget: ${t.overBudget ? "over" : `${usd(t.budget - (t.planned ?? t.now))} left`} after this plan.` : ""} Case file: ${caseFileUrl()}`);
   }
   for (const a of (state.appeals ?? []).slice(before.appeals ?? 0)) {
     const who = first2(nameOf(a.memberId));
@@ -3116,6 +3173,9 @@ function shouldRespond(msg) {
   return !msg.isGroup || !!msg.addressed || ADDRESSED.test(msg.text) || SHOPPING_INPUT.test(msg.text) || !!msg.image || continuesAppeal(msg);
 }
 async function handle(msg) {
+  return actor.run({ memberId: msg.memberId }, () => handleAs(msg));
+}
+async function handleAs(msg) {
   const before = snapshot2();
   const reply = await respond(msg);
   later(() => broadcastChanges(before, msg.memberId, msg.spaceId), 400);
@@ -3170,20 +3230,22 @@ function fileLinks(msg) {
   if (!forWhom) return null;
   const added = [];
   const unread = [];
+  let requested = false;
   for (const url of urls) {
     const r = callTool("add_from_link", { url, member: forWhom });
     if (r.added) added.push(`${r.added} (${usd(r.price ?? 0)})`);
     else unread.push(url);
+    requested ||= !!r.added && !!r.requested;
   }
   const lines = [];
-  if (added.length) lines.push(`\u{1F4CE} Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`);
+  if (added.length) lines.push(requested ? addedText({ added: added.join(", "), requested }) : `\u{1F4CE} Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`);
   if (unread.length) {
     const url = unread[0];
     const name = nameFromLink(url);
     const price = priceIn(msg.text.replace(URLS, " "));
     if (name && price) {
       const r = callTool("add_product_to_cart", { member: forWhom, product: name, price, url, addedBy: msg.memberId });
-      if (r.added) lines.push(`\u{1F4CE} Filed into the family cart: ${r.added} (${usd(price)}, the price you gave). Nobody checks out until the court rules.`);
+      if (r.added) lines.push(r.requested ? addedText(r, ` (${usd(price)}, the price you gave)`) : `\u{1F4CE} Filed into the family cart: ${r.added} (${usd(price)}, the price you gave). Nobody checks out until the court rules.`);
     } else {
       (state.pendingLink ??= {})[msg.memberId ?? forWhom] = { url, forWhom, until: Date.now() + RECEIPT_MS, name, price };
       const store = storeName(url);
@@ -3212,7 +3274,7 @@ function finishLink(msg) {
   }
   delete state.pendingLink[msg.memberId];
   const r = callTool("add_product_to_cart", { member: done.forWhom, product: done.name, price: done.price, url: done.url, addedBy: msg.memberId });
-  return r.added ? `\u{1F4E5} Added to the family cart: ${r.added} (${usd(done.price)}, the price you gave). Nobody checks out until the court rules.` : `Objection: ${r.error}`;
+  return addedText(r, ` (${usd(done.price)}, the price you gave)`);
 }
 var STATUS = /\b(what'?s|whats|what is|show( me)?|see|view|check)\b[^?.!]{0,15}\b(in )?(the |our |my )?cart\b|\bwhere do we stand\b|\bwhere are we at\b|\b(what'?s|whats|what is) the status\b|\bstatus (update|check)\b|^\W*(court,?\s*)?(status|cart)\W*$/i;
 var MONTHLY = /\b(pay|paying|cost|costs|bill|total|how much)\b[^.?!]{0,25}\b(a|per|each|every) month\b|^\W*(court,?\s*)?monthly\W*$|\bmonthly (cost|total|bill|payments?)\b/i;
@@ -3258,6 +3320,10 @@ async function reply_(msg) {
   }
 }
 var reasons = (why, remembered) => why.slice(0, Math.max(1, Math.min(2, remembered ? remembered.split(/, | and /).length : 1))).join("; ");
+function pairsFor(memberId, phoneId) {
+  if (!phoneId) return [];
+  return recommendAccessories(world, memberId, { cart: [{ id: "preview", kind: "device", memberId, phoneId }] }).slice(0, 2).map((a) => `${a.name} (${usd(a.price)})`);
+}
 function phonePicksText(r, who, whose, pairs = []) {
   const top = r.picks[0];
   const tmo = (p) => p.stores?.find((l) => l.store === "T-Mobile" && l.price !== void 0 && Math.round(l.price) === Math.round(p.price));
@@ -3265,6 +3331,7 @@ function phonePicksText(r, who, whose, pairs = []) {
   const out = [`${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks for ${who}:`];
   if (r.modelNote) out.push(r.modelNote);
   out.push(...r.picks.map(line));
+  if (r.others?.length) out.push(`Other ideas: ${r.others.map((o, i) => `${r.picks.length + i + 1}. ${o.name} ${o.storageGB}GB, ${usd(o.price)}`).join(" \xB7 ")}`);
   if (r.tradeIn) out.push(`\u267B\uFE0F Trade-in: ${whose} ${r.tradeIn.device}, worth about ${usd(r.tradeIn.value)} at ${r.tradeIn.where}.`);
   const deal = top?.carrierDeal;
   if (deal) out.push(`\u{1F4E3} ${deal.store} deal on #1: up to ${usd(deal.value)} off ${deal.needs} on ${deal.plans}, paid as monthly bill credits. ${deal.url}`);
@@ -3274,7 +3341,7 @@ ${top.stores.map((l) => `   ${l.store}${l.price !== void 0 ? ` ${usd(l.price)}` 
   }
   if (top) out.push(`\u{1F6E1}\uFE0F Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.`);
   if (pairs.length) out.push(`\u{1F3A7} Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.`);
-  out.push(`Say "add the first one" to put it in the family cart.`);
+  out.push(`Say "add the first one" (or any number) to put it in the family cart.`);
   return out.join("\n");
 }
 function summarizeRuns(runs) {
@@ -3288,7 +3355,12 @@ function summarizeRuns(runs) {
       case "add_product_to_cart":
       case "add_from_link":
       case "add_addon_to_cart":
-        return `\u{1F4E5} Added: ${r.added}.`;
+      case "add_accessory_to_cart":
+        return addedText(r, "", "");
+      case "approve_request":
+        return r.error ? "" : `\u2705 Approved: ${r.approved.join(", ")}. It's in the family cart.`;
+      case "deny_request":
+        return r.error ? "" : `\u{1F6AB} Not this time: ${r.denied.join(", ")}.`;
       case "recommend_products":
         return `The court's ${r.category} picks:
 ` + r.picks.map((x, i) => `${i + 1}. ${x.name}, ${usd(x.price)}: ${x.why.slice(0, 2).join("; ")}`).join("\n");
@@ -3301,7 +3373,7 @@ function summarizeRuns(runs) {
       case "recommend_phones":
         return phonePicksText(r, r.forWhom.split(/\s+/)[0], `${r.forWhom.split(/\s+/)[0]}'s`);
       case "add_recommended":
-        return `\u{1F4E5} Added: ${r.added}.`;
+        return addedText(r, "", "");
       default:
         return "";
     }
@@ -3363,7 +3435,9 @@ Hard rules:
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
-- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove/change other people's items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly.
+- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove or change cart items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly (a kid who bought something says "bought it for $X" and it comes off the cart).
+- Kids' adds become requests (the add tools return requested: true): tell them a parent has to OK it. A parent says "approve" / "approve Jaret's" / "deny" -> approve_request / deny_request.
+- Never add a phone that isn't exactly what they named ("iphone 18" when there's an 18 Pro and an 18 Pro Max): call recommend_phones with model and let them pick.
 - Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it. Kids can log their own purchases; logging one as someone else's needs a receipt photo (the tool refuses otherwise).
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
@@ -3482,6 +3556,16 @@ function rulesReply(msg) {
     const n = callTool("leaving_nest", { member: target });
     return `\u{1F3E0} ${n.stamp}: ${n.reasons.join(". ")}.`;
   }
+  const verdictOnAsk = (state.requests?.length ?? 0) > 0 && text.match(/^\W*(?:(?:court|judge)[\s,:]+)?(approve|approved|ok(?:ay)? it|yes,? add it|deny|denied|reject|decline|no to)\b(.*)$/i);
+  if (verdictOnAsk) {
+    const yes = !/^(deny|denied|reject|decline|no to)$/i.test(verdictOnAsk[1]);
+    const denied = guard(msg.memberId, yes ? "approve_request" : "deny_request", {});
+    if (denied) return `Objection: ${denied}`;
+    const who = mentionedMember(verdictOnAsk[2])?.id;
+    const r = callTool(yes ? "approve_request" : "deny_request", { member: who, all: /\b(all|both|everything)\b/i.test(verdictOnAsk[2]) });
+    if (r.error) return r.waiting ? `${r.error} Say whose: ${r.waiting.join(" \xB7 ")} (e.g. "approve Jaret's", or "approve all").` : r.error;
+    return yes ? `\u2705 Approved: ${r.approved.join(", ")}. It's in the family cart. Say "court, rule" when everyone's in.` : `\u{1F6AB} Not this time: ${r.denied.join(", ")}.`;
+  }
   const bare = text.match(/\b(?:add|buy|get me)\s+(?:me\s+)?(?:the\s+|a\s+|an\s+)?(.+?)(?:\s+(?:to|in)\s+(?:the\s+|our\s+|my\s+)?(?:family\s+)?cart)?\s*[.!]*$/i);
   const bareItem = bare?.[1].replace(/\s+for\s+.*$/i, "").trim();
   const bareAdd = bare && !/\sfor\s/i.test(bare[1]) && !PROTECTION_ASK.test(text) && !accessoryType(bareItem) && !/\?/.test(text) && !/^(?:#|number )?(first|second|third|1st|2nd|3rd|[123])\b/i.test(bareItem) && (bestMatch(world.catalog.phones, bareItem) || bestMatch(world.catalog.products ?? [], bareItem)) ? [bare[0], bareItem, "me", void 0] : void 0;
@@ -3503,20 +3587,22 @@ function rulesReply(msg) {
         price: stated2 ? Number(stated2.replace(/,/g, "")) : void 0,
         addedBy: msg.memberId
       });
-      return r2.error ? `Objection: ${r2.error}` : `\u{1F4E5} Added to the family cart: ${r2.added}. Nobody checks out until the court rules.`;
+      return addedText(r2);
     }
     const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
     const phone2 = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
+    if (missingWords(phoneHit.item, phone2).length) {
+      const r2 = callTool("recommend_phones", { member: forWhom, model: modelAsked(phone2) ?? phone2 });
+      if (r2.error) return `Objection: ${r2.error}`;
+      const you = r2.forWhom === nameOf3(msg.memberId);
+      const whose = world.household.members.find((m) => m.name === r2.forWhom)?.id ?? target;
+      return phonePicksText(r2, you ? "you" : r2.forWhom.split(/\s+/)[0], you ? "your" : `${r2.forWhom.split(/\s+/)[0]}'s`, pairsFor(whose, r2.picks[0]?.phoneId));
+    }
     const r = callTool("add_phone_to_cart", { member: forWhom, phone: phone2, storageGB: gb ? Number(gb) : void 0, addedBy: msg.memberId });
-    if ("error" in r) return `Objection: ${r.error}`;
-    const asked2 = phone2.toLowerCase().split(/\s+/);
-    const extra = phoneHit.item.name.toLowerCase().split(/\s+/).filter((w) => !asked2.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
-    const family = world.catalog.phones.filter((p) => asked2.every((w) => p.name.toLowerCase().split(/\s+/).includes(w))).sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices))).map((p) => p.name);
-    const closest = extra.length ? ` (closest match for "${phone2}": there's no exact model by that name${family.length > 1 ? `; the line is ${family.join(" and ")}` : ""})` : "";
-    return `\u{1F4E5} Added to the family cart: ${r.added}${closest}. Nobody checks out until the court rules.`;
+    return addedText(r);
   }
   if (CLEAR_CART.test(text)) {
-    if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")} You can take out your own things, like "remove my phone".`;
+    if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")}`;
     if (!state.cart.length) return "The family cart is already empty.";
     (state.pendingClear ??= {})[msg.memberId] = Date.now() + CONFIRM_MS;
     const n = state.cart.length;
@@ -3594,7 +3680,7 @@ Not ${first4}'s? A parent can text "this is for <name>".`);
     const named = findAccessory(world, text);
     if (/\b(add|buy)\b/i.test(text) && named && accType) {
       const r2 = callTool("add_accessory_to_cart", { member: target, accessory: named.id });
-      return r2.error ? `Objection: ${r2.error}` : `\u{1F4E5} Added to the family cart: ${r2.added} (${usd(r2.price ?? 0)}).`;
+      return addedText(r2, ` (${usd(r2.price ?? 0)})`, "");
     }
     const r = callTool("recommend_accessories", { member: target, type: accType });
     if (r.error) return `Objection: ${r.error}`;
@@ -3615,13 +3701,13 @@ Say "add the first one" to put it in the family cart, or shop it yourself and te
   }
   if (PROTECTION_ASK.test(text)) {
     const r = callTool("add_protection", { member: target });
-    return r.error ? `Objection: ${r.error}` : `\u{1F6E1}\uFE0F Added: ${r.added}.`;
+    return r.requested || r.error ? addedText(r) : `\u{1F6E1}\uFE0F Added: ${r.added}.`;
   }
-  const pick = text.match(/\badd (?:the )?(?:#|number )?(first|second|third|1st|2nd|3rd|1|2|3)\b/i);
+  const pick = text.match(/\badd (?:the )?(?:#|number )?(first|second|third|fourth|fifth|sixth|1st|2nd|3rd|4th|5th|6th|[1-6])\b/i);
   if (pick) {
-    const n = { first: 1, "1st": 1, "1": 1, second: 2, "2nd": 2, "2": 2, third: 3, "3rd": 3, "3": 3 }[pick[1].toLowerCase()] ?? 1;
+    const n = ["first", "second", "third", "fourth", "fifth", "sixth"].findIndex((w) => w === pick[1].toLowerCase()) + 1 || parseInt(pick[1], 10) || 1;
     const r = callTool("add_recommended", { member: target, pick: n });
-    return r.error ? `Objection: ${r.error}` : `\u{1F4E5} Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
+    return addedText(r);
   }
   const category = findCategory(world, text);
   const shopping = /\b(recommend|suggest|which|what|should (i|we|she|he|they) get|need|looking for|want|best|cheap(est)?)\b/i;
@@ -3646,9 +3732,7 @@ Say "add the first one" to put it in the family cart.`;
   if (asking.test(text) || hasPrefs(said)) {
     const r = callTool("recommend_phones", { member: target, model: modelAsked(text) });
     const you = target === msg.memberId;
-    const top = r.picks[0];
-    const pairs = top ? recommendAccessories(world, target, { cart: [{ id: "preview", kind: "device", memberId: target, phoneId: top.phoneId }] }).slice(0, 2).map((a) => `${a.name} (${usd(a.price)})`) : [];
-    return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairs);
+    return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId));
   }
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
     return "Noted. That stays between us, and the court will keep it in mind. \u2696\uFE0F";
@@ -3666,13 +3750,14 @@ Say "add the first one" to put it in the family cart.`;
     '\u2022 Say "court, rule" when the family is ready to check out'
   ].join("\n");
 }
-var MANAGERS = MANAGER_ROLES;
 var ONLY_PARENTS = (what) => `Only a parent can ${what}.`;
-function canManage(memberId) {
-  if (!memberId) return false;
-  const members = world.household.members;
-  if (!members.some((m) => MANAGERS.has(m.role))) return members.some((m) => m.id === memberId);
-  return MANAGERS.has(members.find((m) => m.id === memberId)?.role ?? "");
+function addedText(r, extra = "", tail = " Nobody checks out until the court rules.") {
+  if (r.error) return `Objection: ${r.error}`;
+  if (r.requested) {
+    const parents = world.household.members.filter((m) => canManage(m.id)).map((m) => m.name.split(/\s+/)[0]);
+    return `\u{1F4E8} Asked ${parents.join(" and ") || "a parent"} to OK it: ${r.added}${extra}. A parent texts "approve" to put it in the family cart.`;
+  }
+  return `\u{1F4E5} Added to the family cart: ${r.added}${extra}.${tail}`;
 }
 function guard(memberId, name, args, ctx = {}) {
   if (canManage(memberId)) return null;
@@ -3682,11 +3767,9 @@ function guard(memberId, name, args, ctx = {}) {
   if (name === "clear_cart") return ONLY_PARENTS("clear the family cart");
   if (name === "reassign_purchase") return ONLY_PARENTS("change who a purchase was for");
   if (name === "set_budget") return ONLY_PARENTS("set the family budget");
+  if (name === "approve_request" || name === "deny_request") return ONLY_PARENTS("approve what goes in the cart");
   if (name === "remove_from_cart" || name === "change_cart_item") {
-    const hits = findCartItems(args);
-    if (hits.some((i) => i.memberId !== memberId)) {
-      return `${ONLY_PARENTS(`${name === "remove_from_cart" ? "remove" : "change"} someone else's items`)} You can edit your own.`;
-    }
+    return `${ONLY_PARENTS(`${name === "remove_from_cart" ? "take things out of" : "change"} the family cart`)} Bought it? Text "bought it for $\u2026" and it comes off.`;
   }
   return null;
 }

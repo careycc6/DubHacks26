@@ -53,9 +53,9 @@ The cue strip at the top always shows the next beat and the numbers to say.
 > right time to buy. T-Mobile asked for the one that says *wait*. We built a court your family can text."
 
 ### 0:15, everyone shops from their own phone (Jaret, Carey, Kairui)
-1. **Jaret** pastes their link into the Cart Court chat. The court replies *"📎 Filed into the family cart: iPhone 17 Pro Max 512GB for Jaret Zhang ($1,400). You can close that tab."*
-2. **Carey** pastes theirs, and **Kairui** pastes theirs.
-3. Each time, **the other two phones buzz**: *"📥 Jaret added iPhone 17 Pro Max 512GB to the family cart."*
+1. **Jaret** pastes their link into the Cart Court chat. Jaret's a teen, so it's a request: *"📨 Asked Carey and Kairui to OK it: iPhone 17 Pro Max 512GB for Jaret ($1,400)."* The parents' phones buzz: *"📨 Jaret asked for iPhone 17 Pro Max 512GB. A parent can text "approve" or "deny"."*
+2. **Carey** texts **`approve`** → *"✅ Approved: iPhone 17 Pro Max 512GB for Jaret. It's in the family cart."*
+3. **Carey** pastes theirs, and **Kairui** pastes theirs (parents' adds go straight in). Each time, **the other phones buzz** with a one-line update.
 
 **Driver points at the projector:** three PENDING cards, the sticker total climbing to **$3,599**, and the Activity feed filling up.
 > "Everyone texts the court on their own. It's one shared cart, and everyone sees what everyone else adds. Close your tabs, text them to us."

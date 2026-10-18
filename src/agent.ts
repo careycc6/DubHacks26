@@ -2,10 +2,10 @@
 // Without GEMINI_API_KEY it falls back to a rules-only mode so the pipeline is testable offline.
 import { GoogleGenAI, type Content, type Part } from "@google/genai";
 import {
-  accessoryType, bestMatch, familyBudget, modelAsked, findAccessory, findCategory, findPhone, hasPrefs, managers, memberByTitle, MANAGER_ROLES, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
+  accessoryType, bestMatch, familyBudget, missingWords, modelAsked, findAccessory, findCategory, findPhone, hasPrefs, managers, memberByTitle, MANAGER_ROLES, mergePrefs, nameFromLink, parsePrefs, recommendAccessories, storeName, usd,
 } from "./engine.ts";
-import { state, world } from "./store.ts";
-import { callTool, caseFileUrl, findCartItems, formatMonthly, formatOldPhone, formatStatus, formatVerdict, tools } from "./tools.ts";
+import { actor, state, world } from "./store.ts";
+import { callTool, canManage, caseFileUrl, findCartItems, formatMonthly, formatOldPhone, formatStatus, formatVerdict, tools } from "./tools.ts";
 import { claim, introducedAs, shouldAsk, welcome, welcomeQuestion } from "./claims.ts";
 import { broadcastChanges, snapshot } from "./feed.ts";
 import { later } from "./runtime.ts";
@@ -41,6 +41,11 @@ export function shouldRespond(msg: Incoming) {
 }
 
 export async function handle(msg: Incoming): Promise<string | null> {
+  // Everything this message does runs "as" its sender: a kid's adds become requests for a parent.
+  return actor.run({ memberId: msg.memberId }, () => handleAs(msg));
+}
+
+async function handleAs(msg: Incoming): Promise<string | null> {
   const before = snapshot();
   const reply = await respond(msg);
   // Family feed: changes made in a 1:1 chat get a one-line update in everyone else's chat.
@@ -107,21 +112,23 @@ function fileLinks(msg: Incoming): string | null {
   if (!forWhom) return null;
   const added: string[] = [];
   const unread: string[] = [];
+  let requested = false;
   for (const url of urls) {
-    const r = callTool("add_from_link", { url, member: forWhom }) as { added?: string; price?: number };
+    const r = callTool("add_from_link", { url, member: forWhom }) as { added?: string; price?: number; requested?: boolean };
     if (r.added) added.push(`${r.added} (${usd(r.price ?? 0)})`);
     else unread.push(url);
+    requested ||= !!r.added && !!r.requested;
   }
   const lines: string[] = [];
-  if (added.length) lines.push(`📎 Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`);
+  if (added.length) lines.push(requested ? addedText({ added: added.join(", "), requested }) : `📎 Filed into the family cart: ${added.join(", ")}. You can close that tab. Nobody checks out until the court rules.`);
   if (unread.length) {
     // Not in the catalog: never guess a price. Ask, and file it with their number (the link stays on the case file).
     const url = unread[0];
     const name = nameFromLink(url);
     const price = priceIn(msg.text.replace(URLS, " "));
     if (name && price) {
-      const r = callTool("add_product_to_cart", { member: forWhom, product: name, price, url, addedBy: msg.memberId }) as { added?: string; error?: string };
-      if (r.added) lines.push(`📎 Filed into the family cart: ${r.added} (${usd(price)}, the price you gave). Nobody checks out until the court rules.`);
+      const r = callTool("add_product_to_cart", { member: forWhom, product: name, price, url, addedBy: msg.memberId }) as { added?: string; error?: string; requested?: boolean };
+      if (r.added) lines.push(r.requested ? addedText(r, ` (${usd(price)}, the price you gave)`) : `📎 Filed into the family cart: ${r.added} (${usd(price)}, the price you gave). Nobody checks out until the court rules.`);
     } else {
       (state.pendingLink ??= {})[msg.memberId ?? forWhom] = { url, forWhom, until: Date.now() + RECEIPT_MS, name, price };
       const store = storeName(url);
@@ -154,7 +161,7 @@ function finishLink(msg: Incoming): string | null {
   }
   delete state.pendingLink![msg.memberId];
   const r = callTool("add_product_to_cart", { member: done.forWhom, product: done.name, price: done.price, url: done.url, addedBy: msg.memberId }) as { added?: string; error?: string };
-  return r.added ? `📥 Added to the family cart: ${r.added} (${usd(done.price!)}, the price you gave). Nobody checks out until the court rules.` : `Objection: ${r.error}`;
+  return addedText(r, ` (${usd(done.price!)}, the price you gave)`);
 }
 
 // "what's in the cart?", "where do we stand?", "status": answered from the cart itself, instantly.
@@ -227,7 +234,15 @@ type PhonePick = {
   withTradeIn?: { price: number; tradeIn: string }; stores?: { store: string; url: string; price?: number }[];
   carrierDeal?: { store: string; value: number; needs: string; plans: string; url: string };
 };
-type PhonePicks = { forWhom: string; remembered: string; modelNote?: string; tradeIn?: { device: string; value: number; where: string }; picks: PhonePick[] };
+type PhonePicks = { forWhom: string; remembered: string; modelNote?: string; others?: { name: string; storageGB: number; price: number }[]; tradeIn?: { device: string; value: number; where: string }; picks: PhonePick[] };
+
+/** Accessories that fit a phone (as if it were already in their cart), for "Pairs well with". */
+function pairsFor(memberId: string, phoneId?: string): string[] {
+  if (!phoneId) return [];
+  return recommendAccessories(world, memberId, { cart: [{ id: "preview", kind: "device", memberId, phoneId }] })
+    .slice(0, 2)
+    .map((a) => `${a.name} (${usd(a.price)})`);
+}
 
 /** The court's phone picks: price at T-Mobile, what's traded in and where, the carrier deal, and every store for #1. */
 function phonePicksText(r: PhonePicks, who: string, whose: string, pairs: string[] = []): string {
@@ -241,6 +256,7 @@ function phonePicksText(r: PhonePicks, who: string, whose: string, pairs: string
   const out = [`${r.remembered ? `Got it: ${r.remembered}. ` : ""}The court's picks for ${who}:`];
   if (r.modelNote) out.push(r.modelNote);
   out.push(...r.picks.map(line));
+  if (r.others?.length) out.push(`Other ideas: ${r.others.map((o, i) => `${r.picks.length + i + 1}. ${o.name} ${o.storageGB}GB, ${usd(o.price)}`).join(" · ")}`);
   if (r.tradeIn) out.push(`♻️ Trade-in: ${whose} ${r.tradeIn.device}, worth about ${usd(r.tradeIn.value)} at ${r.tradeIn.where}.`);
   const deal = top?.carrierDeal;
   if (deal) out.push(`📣 ${deal.store} deal on #1: up to ${usd(deal.value)} off ${deal.needs} on ${deal.plans}, paid as monthly bill credits. ${deal.url}`);
@@ -249,7 +265,7 @@ function phonePicksText(r: PhonePicks, who: string, whose: string, pairs: string
   }
   if (top) out.push(`🛡️ Protection for #1: ${top.protection.verdict === "ADD" ? "worth it. " : ""}${top.protection.reason}.`);
   if (pairs.length) out.push(`🎧 Pairs well with: ${pairs.join(", ")}. Ask "what case should I get?" for more.`);
-  out.push(`Say "add the first one" to put it in the family cart.`);
+  out.push(`Say "add the first one" (or any number) to put it in the family cart.`);
   return out.join("\n");
 }
 
@@ -261,13 +277,15 @@ function summarizeRuns(runs: ToolRun[]): string | null {
         const u = r.updatedRuling;
         return `🗂️ ${r.exhibit} entered.` + (typeof u === "string" ? " It will count when the cart goes on trial." : ` Updated ruling: ${u.stamp}. ${u.reasons[0]}.`);
       }
-      case "add_phone_to_cart": case "add_product_to_cart": case "add_from_link": case "add_addon_to_cart": return `📥 Added: ${r.added}.`;
+      case "add_phone_to_cart": case "add_product_to_cart": case "add_from_link": case "add_addon_to_cart": case "add_accessory_to_cart": return addedText(r, "", "");
+      case "approve_request": return r.error ? "" : `✅ Approved: ${r.approved.join(", ")}. It's in the family cart.`;
+      case "deny_request": return r.error ? "" : `🚫 Not this time: ${r.denied.join(", ")}.`;
       case "recommend_products": return `The court's ${r.category} picks:\n` + r.picks.map((x: any, i: number) => `${i + 1}. ${x.name}, ${usd(x.price)}: ${x.why.slice(0, 2).join("; ")}`).join("\n");
       case "report_owned_item": return `🗂️ Noted: ${r.owned.name}${r.owned.broken ? " (broken)" : ""}.` + (typeof r.updatedRuling === "string" ? "" : ` Updated ruling: ${r.updatedRuling.stamp}.`);
       case "run_trial": return r.verdictText;
       case "leaving_nest": return `🏠 ${r.stamp}: ${r.reasons.join(". ")}.`;
       case "recommend_phones": return phonePicksText(r, r.forWhom.split(/\s+/)[0], `${r.forWhom.split(/\s+/)[0]}'s`);
-      case "add_recommended": return `📥 Added: ${r.added}.`;
+      case "add_recommended": return addedText(r, "", "");
       default: return "";
     }
   }).filter(Boolean);
@@ -344,7 +362,9 @@ Hard rules:
 - If someone is moving out or leaving for college, call leaving_nest.
 - Talk in plain verdicts: BUY, WAIT (and until when), SKIP. Always say how much they save.
 - Accessories: for cases, screen protectors, chargers, power banks or earbuds, call recommend_accessories (it matches their phone's brand), then add_accessory_to_cart. When recommending a phone, you may suggest one matching accessory.
-- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove/change other people's items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly.
+- Editing: "remove my phone" -> remove_from_cart; "change mine to 256GB" / "switch to the Pixel 10" -> change_cart_item; clearing the WHOLE cart: never call clear_cart yourself, tell them to text "cart clear" (parents only, confirmed with YES). Only parents may remove or change cart items, set the family budget, or reassign a purchase; the tools refuse otherwise, so explain kindly (a kid who bought something says "bought it for $X" and it comes off the cart).
+- Kids' adds become requests (the add tools return requested: true): tell them a parent has to OK it. A parent says "approve" / "approve Jaret's" / "deny" -> approve_request / deny_request.
+- Never add a phone that isn't exactly what they named ("iphone 18" when there's an 18 Pro and an 18 Pro Max): call recommend_phones with model and let them pick.
 - Purchases: when someone says they bought/ordered a phone, or sends a receipt or order confirmation, call record_purchase with the total they actually paid (read it from the receipt; never guess). If the total isn't stated or readable, ask for it. Kids can log their own purchases; logging one as someone else's needs a receipt photo (the tool refuses otherwise).
 - "Our budget is $X" (the family's spend for now) -> set_budget. A personal limit ("under $600 for me") -> recommend_phones budget.
 - When recommending, mention protection advice for the top pick (from the tool: worth it / optional / skip) and any upcoming price drop. If they want it, add_protection.
@@ -486,6 +506,17 @@ function rulesReply(msg: Incoming): string {
     const n = callTool("leaving_nest", { member: target }) as { stamp: string; reasons: string[] };
     return `🏠 ${n.stamp}: ${n.reasons.join(". ")}.`;
   }
+  // A parent answers a kid's request: "approve", "approve Jaret's", "approve all", "deny".
+  const verdictOnAsk = (state.requests?.length ?? 0) > 0 && text.match(/^\W*(?:(?:court|judge)[\s,:]+)?(approve|approved|ok(?:ay)? it|yes,? add it|deny|denied|reject|decline|no to)\b(.*)$/i);
+  if (verdictOnAsk) {
+    const yes = !/^(deny|denied|reject|decline|no to)$/i.test(verdictOnAsk[1]);
+    const denied = guard(msg.memberId, yes ? "approve_request" : "deny_request", {});
+    if (denied) return `Objection: ${denied}`;
+    const who = mentionedMember(verdictOnAsk[2])?.id;
+    const r = callTool(yes ? "approve_request" : "deny_request", { member: who, all: /\b(all|both|everything)\b/i.test(verdictOnAsk[2]) }) as { approved?: string[]; denied?: string[]; error?: string; waiting?: string[] };
+    if (r.error) return r.waiting ? `${r.error} Say whose: ${r.waiting.join(" · ")} (e.g. "approve Jaret's", or "approve all").` : r.error;
+    return yes ? `✅ Approved: ${r.approved!.join(", ")}. It's in the family cart. Say "court, rule" when everyone's in.` : `🚫 Not this time: ${r.denied!.join(", ")}.`;
+  }
   // "add the iPhone 17 Pro 256GB for me" / "get a pixel 10 for maya 256gb"
   // "add an iPhone 18" / "buy me the pixel 10 256gb": no "for", so it's for whoever's named, else the sender.
   // Only when it names a phone or product; "add the first one", "add protection" and "add a case" are handled below.
@@ -513,26 +544,25 @@ function rulesReply(msg: Incoming): string {
         member: forWhom, product: qty ? what.slice(qty[0].length) : what, quantity: qty ? Number(qty[1]) : undefined,
         price: stated ? Number(stated.replace(/,/g, "")) : undefined, addedBy: msg.memberId,
       }) as { added?: string; error?: string };
-      return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
+      return addedText(r);
     }
     const gb = add[3] ?? add[1].match(/(\d{3,4})\s*(gb)?\b/i)?.[1];
     const phone = add[1].replace(/\b\d{3,4}\s*(gb)?\b/i, "").trim();
-    const r = callTool("add_phone_to_cart", { member: forWhom, phone, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId });
-    if ("error" in (r as object)) return `Objection: ${(r as { error: string }).error}`;
-    // "iphone 18" -> iPhone 18 Pro: say it was the closest model, so nobody's surprised by the price.
-    const asked = phone.toLowerCase().split(/\s+/);
-    const extra = phoneHit.item.name.toLowerCase().split(/\s+/).filter((w) => !asked.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
-    const family = world.catalog.phones.filter((p) => asked.every((w) => p.name.toLowerCase().split(/\s+/).includes(w)))
-      .sort((x, y) => Math.min(...Object.values(x.prices)) - Math.min(...Object.values(y.prices))).map((p) => p.name);
-    const closest = extra.length
-      ? ` (closest match for "${phone}": there's no exact model by that name${family.length > 1 ? `; the line is ${family.join(" and ")}` : ""})`
-      : "";
-    return `📥 Added to the family cart: ${(r as { added: string }).added}${closest}. Nobody checks out until the court rules.`;
+    // Not an exact model ("iphone 18": 18 Pro or Pro Max?): show the options and let them pick, never a guess.
+    if (missingWords(phoneHit.item, phone).length) {
+      const r = callTool("recommend_phones", { member: forWhom, model: modelAsked(phone) ?? phone }) as PhonePicks & { error?: string };
+      if (r.error) return `Objection: ${r.error}`;
+      const you = r.forWhom === nameOf(msg.memberId);
+      const whose = world.household.members.find((m) => m.name === r.forWhom)?.id ?? target;
+      return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(whose, r.picks[0]?.phoneId));
+    }
+    const r = callTool("add_phone_to_cart", { member: forWhom, phone, storageGB: gb ? Number(gb) : undefined, addedBy: msg.memberId }) as { added?: string; requested?: boolean; error?: string };
+    return addedText(r);
   }
   // "add the first one" / "add #2" after a recommendation
   // ---- Editing the cart
   if (CLEAR_CART.test(text)) {
-    if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")} You can take out your own things, like "remove my phone".`;
+    if (!canManage(msg.memberId)) return `Objection: ${ONLY_PARENTS("clear the family cart")}`;
     if (!state.cart.length) return "The family cart is already empty.";
     (state.pendingClear ??= {})[msg.memberId!] = Date.now() + CONFIRM_MS;
     const n = state.cart.length;
@@ -630,7 +660,7 @@ function rulesReply(msg: Incoming): string {
     // "add the rugged case" / "buy airpods" adds; "what case should I get?" only asks.
     if (/\b(add|buy)\b/i.test(text) && named && accType) {
       const r = callTool("add_accessory_to_cart", { member: target, accessory: named.id }) as { added?: string; price?: number; error?: string };
-      return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added} (${usd(r.price ?? 0)}).`;
+      return addedText(r, ` (${usd(r.price ?? 0)})`, "");
     }
     const r = callTool("recommend_accessories", { member: target, type: accType }) as {
       forWhom: string; phoneBrand: string; picks: { name: string; price: number; why: string[]; shopUrl: string; shopLinks: { store: string; url: string }[] }[]; error?: string;
@@ -655,15 +685,15 @@ function rulesReply(msg: Incoming): string {
   }
   // "add protection" / "add device protection for Jaret"
   if (PROTECTION_ASK.test(text)) {
-    const r = callTool("add_protection", { member: target }) as { added?: string; error?: string };
-    return r.error ? `Objection: ${r.error}` : `🛡️ Added: ${r.added}.`;
+    const r = callTool("add_protection", { member: target }) as { added?: string; requested?: boolean; error?: string };
+    return r.requested || r.error ? addedText(r) : `🛡️ Added: ${r.added}.`;
   }
 
-  const pick = text.match(/\badd (?:the )?(?:#|number )?(first|second|third|1st|2nd|3rd|1|2|3)\b/i);
+  const pick = text.match(/\badd (?:the )?(?:#|number )?(first|second|third|fourth|fifth|sixth|1st|2nd|3rd|4th|5th|6th|[1-6])\b/i);
   if (pick) {
-    const n = { first: 1, "1st": 1, "1": 1, second: 2, "2nd": 2, "2": 2, third: 3, "3rd": 3, "3": 3 }[pick[1].toLowerCase()] ?? 1;
-    const r = callTool("add_recommended", { member: target, pick: n }) as { added?: string; error?: string };
-    return r.error ? `Objection: ${r.error}` : `📥 Added to the family cart: ${r.added}. Nobody checks out until the court rules.`;
+    const n = ["first", "second", "third", "fourth", "fifth", "sixth"].findIndex((w) => w === pick[1].toLowerCase()) + 1 || parseInt(pick[1], 10) || 1;
+    const r = callTool("add_recommended", { member: target, pick: n }) as { added?: string; requested?: boolean; error?: string };
+    return addedText(r);
   }
   // "what laptop should I get?" / "we need a new vacuum under $400"
   const category = findCategory(world, text);
@@ -687,14 +717,7 @@ function rulesReply(msg: Incoming): string {
   if (asking.test(text) || hasPrefs(said)) {
     const r = callTool("recommend_phones", { member: target, model: modelAsked(text) }) as PhonePicks;
     const you = target === msg.memberId;
-    const top = r.picks[0];
-    // Accessories that fit the top pick (as if it were in the cart).
-    const pairs = top
-      ? recommendAccessories(world, target, { cart: [{ id: "preview", kind: "device", memberId: target, phoneId: top.phoneId }] })
-          .slice(0, 2)
-          .map((a) => `${a.name} (${usd(a.price)})`)
-      : [];
-    return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairs);
+    return phonePicksText(r, you ? "you" : r.forWhom.split(/\s+/)[0], you ? "your" : `${r.forWhom.split(/\s+/)[0]}'s`, pairsFor(target, r.picks[0]?.phoneId));
   }
   // A private aside ("money's tight, don't tell the kids"): acknowledge, never repeat it.
   if (!msg.isGroup && /\b(tight|budget|afford|broke|expensive|money|bills?|don'?t tell)\b/i.test(text)) {
@@ -720,15 +743,18 @@ function rulesReply(msg: Incoming): string {
 // parents (and partners) run the cart; everyone else can add things and edit only their own items.
 // The dashboard is always allowed (it's the admin view).
 
-const MANAGERS = MANAGER_ROLES;
 const ONLY_PARENTS = (what: string) => `Only a parent can ${what}.`;
 
-export function canManage(memberId?: string) {
-  if (!memberId) return false;
-  const members = world.household.members;
-  // A household with no parents (roommates, a couple) runs itself: everyone may manage.
-  if (!members.some((m) => MANAGERS.has(m.role))) return members.some((m) => m.id === memberId);
-  return MANAGERS.has(members.find((m) => m.id === memberId)?.role ?? "");
+export { canManage };
+
+/** "Added to the family cart", or, for a kid, "sent to Mom and Dad for an OK". */
+function addedText(r: { added?: string; requested?: boolean; error?: string }, extra = "", tail = " Nobody checks out until the court rules.") {
+  if (r.error) return `Objection: ${r.error}`;
+  if (r.requested) {
+    const parents = world.household.members.filter((m) => canManage(m.id)).map((m) => m.name.split(/\s+/)[0]);
+    return `📨 Asked ${parents.join(" and ") || "a parent"} to OK it: ${r.added}${extra}. A parent texts "approve" to put it in the family cart.`;
+  }
+  return `📥 Added to the family cart: ${r.added}${extra}.${tail}`;
 }
 
 /** Why this person can't run this tool, or null if they can. */
@@ -741,11 +767,10 @@ export function guard(memberId: string | undefined, name: string, args: Record<s
   if (name === "clear_cart") return ONLY_PARENTS("clear the family cart");
   if (name === "reassign_purchase") return ONLY_PARENTS("change who a purchase was for");
   if (name === "set_budget") return ONLY_PARENTS("set the family budget");
+  if (name === "approve_request" || name === "deny_request") return ONLY_PARENTS("approve what goes in the cart");
+  // Kids ask; parents edit. Buying something still takes it out of the cart ("bought it for $899").
   if (name === "remove_from_cart" || name === "change_cart_item") {
-    const hits = findCartItems(args as { member?: string; phone?: string; itemId?: string });
-    if (hits.some((i) => i.memberId !== memberId)) {
-      return `${ONLY_PARENTS(`${name === "remove_from_cart" ? "remove" : "change"} someone else's items`)} You can edit your own.`;
-    }
+    return `${ONLY_PARENTS(`${name === "remove_from_cart" ? "take things out of" : "change"} the family cart`)} Bought it? Text "bought it for $…" and it comes off.`;
   }
   return null;
 }

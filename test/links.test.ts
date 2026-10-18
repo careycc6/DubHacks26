@@ -50,7 +50,9 @@ test("a link the court can't read: it asks what it costs, then files it with the
 test("a short link with no name: it asks what it is, too", async () => {
   store.reset();
   assert.match((await say("maya", "https://amzn.to/3xYz"))!, /can't read that Amazon link yet\. What is it, and what does it cost\?/);
-  assert.match((await say("maya", "a desk lamp, $35"))!, /Added to the family cart: desk lamp .*\$35/);
+  assert.match((await say("maya", "a desk lamp, $35"))!, /Asked Marco and Elena to OK it: desk lamp .*\$35/);
+  await say("marco", "approve");
+  assert.equal(store.state.cart.at(-1)?.custom?.name, "desk lamp");
 });
 
 test("a link with its price in the same text files right away", async () => {

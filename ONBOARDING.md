@@ -56,8 +56,9 @@ Everyone texts the court one-on-one, and it keeps the family in sync:
 
 - **Family feed:** when someone adds, buys or removes something, everyone else gets a one-line update in their own chat.
 - **Parents run the cart.** Only people saved as **Parent** (or **Partner**) can clear the cart, set the family budget,
-  remove or change someone else's items, or fix who a purchase was for. Kids and teens can add things, ask for picks,
-  and edit or remove their own items. (A household with no parents, like roommates, lets everyone do it.)
+  add, remove or change items, or fix who a purchase was for. When a kid, teen or grandparent adds something, it's a
+  **request**: parents get a text and reply **approve** or **deny** ("approve Maya's", "approve all"). Anyone's purchase
+  ("bought it for $…") still takes their item off the cart. (A household with no parents, like roommates, lets everyone do it.)
 - **Clearing takes two texts:** text `cart clear` (it must say "cart"), then reply **YES** within 2 minutes.
 - **Anyone can report a purchase:** "bought my iPhone 17 for $799" or a photo of the receipt. The court confirms who it's
   for ("this is Maya's new phone"), matching the model to whoever has it in the cart. Kids can log their own purchases by text, but logging one as

@@ -728,6 +728,12 @@ export function modelAsked(text: string): string | undefined {
   return m ? m.slice(1).filter(Boolean).join(" ") : undefined;
 }
 
+/** Words of the phone's name they didn't say ("iphone 18" vs iPhone 18 Pro -> ["pro"]); brand words don't count. */
+export function missingWords(p: Phone, query: string): string[] {
+  const asked = norm(query).split(" ");
+  return norm(p.name).split(" ").filter((w) => !asked.includes(w) && !/^(iphone|pixel|galaxy|apple|google|samsung|5g)$/.test(w));
+}
+
 /** Catalog phones in the line someone named ("iphone 18" -> 18 Pro, 18 Pro Max). */
 export function modelLine(world: World, model: string): Phone[] {
   const want = norm(model).split(" ");
@@ -735,7 +741,7 @@ export function modelLine(world: World, model: string): Phone[] {
 }
 
 /** Matchmaker: best phones for how this person uses a phone, plus anything they told the court they want. */
-export function recommend(world: World, memberId: string, opts: { budget?: number; prefs?: Prefs; model?: string } = {}): Recommendation[] {
+export function recommend(world: World, memberId: string, opts: { budget?: number; prefs?: Prefs; model?: string; limit?: number } = {}): Recommendation[] {
   const m = member(world, memberId);
   const line = new Set(opts.model ? modelLine(world, opts.model).map((p) => p.id) : []);
   const prefs = opts.prefs ?? {};
@@ -801,7 +807,7 @@ export function recommend(world: World, memberId: string, opts: { budget?: numbe
     .sort((a, b) => b.score - a.score)
     // With a budget, only show over-budget phones if fewer than two fit.
     .filter((r, _i, all) => !budget || r.price <= budget || all.filter((x) => x.price <= budget).length < 2)
-    .slice(0, 3)
+    .slice(0, opts.limit ?? 3)
     .map(({ score: _score, ...r }) => r);
 }
 

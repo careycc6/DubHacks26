@@ -41,14 +41,32 @@ test("\"nope\" cancels a pending clear", async () => {
   assert.equal(store.state.cart.length, 1);
 });
 
-test("a kid can't remove someone else's item, but can remove their own", async () => {
+test("only a parent changes the cart, but a kid's purchase still takes their item off", async () => {
   fresh();
   callTool("add_phone_to_cart", { member: "marco", phone: "iphone-17-pro", storageGB: 256, addedBy: "marco" });
-  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17", storageGB: 256, addedBy: "maya" });
+  callTool("add_phone_to_cart", { member: "maya", phone: "iphone-17", storageGB: 256, addedBy: "marco" });
   assert.match((await say("maya", "remove marco's phone"))!, /Only a parent/);
+  assert.match((await say("maya", "remove my phone"))!, /Only a parent[\s\S]*bought it for/);
   assert.equal(store.state.cart.length, 2);
-  await say("maya", "remove my phone");
+  await say("maya", "I bought my iPhone 17 for $930");
   assert.deepEqual(store.state.cart.map((i) => i.memberId), ["marco"]);
+});
+
+test("a kid's add is a request until a parent approves or denies it", async () => {
+  fresh();
+  assert.match((await say("maya", "court add the iphone 17 for me"))!, /Asked Marco and Elena to OK it: iPhone 17/);
+  assert.equal(store.state.cart.length, 0);
+  assert.match((await say("maya", "what's in the cart?"))!, /Waiting on a parent's OK: .*iPhone 17/);
+  assert.match((await say("maya", "approve"))!, /Only a parent/);
+  await say("marco", "approve");
+  assert.deepEqual(store.state.cart.map((i) => i.memberId), ["maya"]);
+  assert.equal(store.state.requests?.length ?? 0, 0);
+
+  await say("maya", "court add a case");
+  assert.equal(store.state.requests?.length, 1);
+  await say("elena", "deny");
+  assert.equal(store.state.requests?.length ?? 0, 0);
+  assert.equal(store.state.cart.length, 1);
 });
 
 test("a kid logs their own purchase by text", async () => {
